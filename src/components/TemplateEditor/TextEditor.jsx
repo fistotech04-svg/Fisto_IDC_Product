@@ -741,35 +741,35 @@ const TextEditor = ({ selectedElement, selectedElementType, onUpdate, onPopupPre
     <div className="relative flex items-start gap-4 justify-end font-sans">
 
       {/* DASHED POPUP */}
-      <div ref={dashedRef} className={`fixed top-80 w-[270px] bg-white border border-gray-100 rounded-3xl shadow-2xl transition-all duration-300 z-50 overflow-hidden ${showDashedPopup ? 'right-[440px] opacity-100 scale-100' : 'right-[700px] opacity-0 scale-95 pointer-events-none'}`}>
-        <div className="p-6 space-y-6">
-          <div className="flex items-center gap-3">
-            <span className="font-bold text-sm text-gray-800">Dashed Settings</span>
+      <div ref={dashedRef} className={`fixed top-80 w-[18.75vw] bg-white border border-gray-100 rounded-[1.5vw] shadow-2xl transition-all duration-300 z-50 overflow-hidden ${showDashedPopup ? 'right-[30.5vw] opacity-100 scale-100' : 'right-[48.6vw] opacity-0 scale-95 pointer-events-none'}`}>
+        <div className="p-[1.5vw] space-y-[1.5vw]">
+          <div className="flex items-center gap-[0.75vw]">
+            <span className="font-bold text-[0.75vw] text-gray-800">Dashed Settings</span>
             <div className="h-[1px] flex-grow bg-gray-100"></div>
           </div>
-          <div className="space-y-4">
+          <div className="space-y-[1vw]">
             <div className="flex items-center justify-between">
-              <span className="text-sm font-medium text-gray-700">Length</span>
-              <input type="range" min="1" max="20" value={dashLength} onChange={(e) => setDashLength(parseInt(e.target.value))} className="w-24 accent-indigo-600" />
-              <span className="text-sm font-bold w-6 text-center">{dashLength}</span>
+              <span className="text-[0.75vw] font-medium text-gray-700">Length</span>
+              <input type="range" min="1" max="20" value={dashLength} onChange={(e) => setDashLength(parseInt(e.target.value))} className="w-[6vw] accent-indigo-600" />
+              <span className="text-[0.75vw] font-bold w-[1.5vw] text-center">{dashLength}</span>
             </div>
             <div className="flex items-center justify-between">
-              <span className="text-sm font-medium text-gray-700">Gap</span>
-              <input type="range" min="1" max="20" value={dashGap} onChange={(e) => setDashGap(parseInt(e.target.value))} className="w-24 accent-indigo-600" />
-              <span className="text-sm font-bold w-6 text-center">{dashGap}</span>
+              <span className="text-[0.75vw] font-medium text-gray-700">Gap</span>
+              <input type="range" min="1" max="20" value={dashGap} onChange={(e) => setDashGap(parseInt(e.target.value))} className="w-[6vw] accent-indigo-600" />
+              <span className="text-[0.75vw] font-bold w-[1.5vw] text-center">{dashGap}</span>
             </div>
             <div className="flex items-center justify-between">
-              <span className="text-sm font-medium text-gray-700">Round Corners</span>
-              <input type="checkbox" checked={isRoundCorners} onChange={(e) => setIsRoundCorners(e.target.checked)} className="w-5 h-5 accent-indigo-600" />
+              <span className="text-[0.75vw] font-medium text-gray-700">Round Corners</span>
+              <input type="checkbox" checked={isRoundCorners} onChange={(e) => setIsRoundCorners(e.target.checked)} className="w-[1.25vw] h-[1.25vw] accent-indigo-600" />
             </div>
           </div>
         </div>
       </div>
 
       {/* SIMPLE STROKE COLOR PICKER */}
-      <div className={`fixed top-1/2 -translate-y-1/2 right-[330px] w-[240px] bg-white border border-gray-200 rounded-2xl shadow-xl transition-all duration-300 z-50 overflow-hidden ${showStrokePicker ? 'opacity-100 scale-100 pointer-events-auto' : 'opacity-0 scale-95 pointer-events-none'}`}>
-        <div className="p-4">
-          <div className="grid grid-cols-6 gap-2">
+      <div className={`fixed top-1/2 -translate-y-1/2 right-[22.9vw] w-[16.7vw] bg-white border border-gray-200 rounded-[1vw] shadow-xl transition-all duration-300 z-50 overflow-hidden ${showStrokePicker ? 'opacity-100 scale-100 pointer-events-auto' : 'opacity-0 scale-95 pointer-events-none'}`}>
+        <div className="p-[1vw]">
+          <div className="grid grid-cols-6 gap-[0.5vw]">
             {[
               '#FFFFFF', '#000000', '#FF0000', '#FFA500', '#8B4513', '#FFFF00',
               '#00FF00', '#808000', '#006400', '#00FFFF', '#008080', '#008B8B',
@@ -779,7 +779,7 @@ const TextEditor = ({ selectedElement, selectedElementType, onUpdate, onPopupPre
               <button
                 key={color}
                 onClick={() => updateStrokeColorFromHex(color)}
-                className="w-8 h-8  rounded border border-gray-300 hover:scale-110 transition-transform cursor-pointer"
+                className="w-[2vw] h-[2vw] rounded-[0.25vw] border border-gray-300 hover:scale-110 transition-transform cursor-pointer"
                 style={{ backgroundColor: color }}
                 title={color}
               />
@@ -789,22 +789,22 @@ const TextEditor = ({ selectedElement, selectedElementType, onUpdate, onPopupPre
       </div>
 
       {/* GRADIENT STOP COLOR PICKER */}
-      <div className={`fixed top-[50%] -translate-y-1/2 right-[50px] w-[250px] bg-white rounded-2xl shadow-[0_10px_40px_-10px_rgba(0,0,0,0.3)] border-2 border-blue-500 transition-all duration-300 z-[100] overflow-hidden ${editingGradientStopIndex !== null ? 'opacity-100 scale-100 pointer-events-auto' : 'opacity-0 scale-95 pointer-events-none'}`}>
+      <div className={`fixed top-[50%] -translate-y-1/2 right-[3.5vw] w-[17.4vw] bg-white rounded-[1vw] shadow-[0_10px_40px_-10px_rgba(0,0,0,0.3)] border-2 border-blue-500 transition-all duration-300 z-[100] overflow-hidden ${editingGradientStopIndex !== null ? 'opacity-100 scale-100 pointer-events-auto' : 'opacity-0 scale-95 pointer-events-none'}`}>
         {/* Close Icon */}
         <button
           onClick={() => setEditingGradientStopIndex(null)}
-          className="absolute top-2 right-2 w-7 h-7 flex items-center justify-center rounded-full bg-gray-100 hover:bg-gray-200 text-gray-600 hover:text-gray-800 transition-colors z-10"
+          className="absolute top-[0.5vw] right-[0.5vw] w-[1.75vw] h-[1.75vw] flex items-center justify-center rounded-full bg-gray-100 hover:bg-gray-200 text-gray-600 hover:text-gray-800 transition-colors z-10"
           title="Close"
         >
           <X size={16} />
         </button>
 
-        <div className="p-5 space-y-4">
+        <div className="p-[1.25vw] space-y-[1vw]">
           {/* Color Picker: Saturation/Value + Hue Slider */}
           <div className="flex gap-3">
             {/* Saturation/Value Picker */}
             <div
-              className="w-[200px] h-[200px] rounded-lg relative cursor-crosshair overflow-hidden border border-gray-200"
+              className="w-[13.9vw] h-[13.9vw] rounded-lg relative cursor-crosshair overflow-hidden border border-gray-200"
               style={{ backgroundColor: `hsl(${gradientStopHsv.h}, 100%, 50%)` }}
               onMouseDown={(e) => {
                 const handleMove = (moveEvent) => {
@@ -828,7 +828,7 @@ const TextEditor = ({ selectedElement, selectedElementType, onUpdate, onPopupPre
 
             {/* Vertical Hue Slider */}
             <div
-              className="w-[40px] h-[200px] rounded-lg relative cursor-pointer border border-gray-200"
+              className="w-[2.8vw] h-[13.9vw] rounded-lg relative cursor-pointer border border-gray-200"
               style={{ background: 'linear-gradient(to bottom, #ff0000 0%, #ffff00 17%, #00ff00 33%, #00ffff 50%, #0000ff 67%, #ff00ff 83%, #ff0000 100%)' }}
               onMouseDown={(e) => {
                 const handleMove = (moveEvent) => {
@@ -849,17 +849,17 @@ const TextEditor = ({ selectedElement, selectedElementType, onUpdate, onPopupPre
           </div>
 
           {/* Color Code Input */}
-          <div className="flex items-center gap-1 bg-white">
-            <span className="text-sm font-medium text-gray-800 whitespace-nowrap">Color Code :</span>
-            <div className="flex-grow flex items-center gap-2 px-2 h-10 border border-gray-300 rounded-lg bg-white mr-1">
+          <div className="flex items-center gap-[0.25vw] bg-white">
+            <span className="text-[0.85vw] font-medium text-gray-800 whitespace-nowrap">Color Code :</span>
+            <div className="flex-grow flex items-center gap-[0.5vw] px-[0.5vw] h-[2.5vw] border border-gray-300 rounded-[0.5vw] bg-white mr-[0.25vw]">
               <input
                 type="text"
                 value={gradientStopHex}
                 onChange={(e) => updateGradientStopColorFromHex(e.target.value)}
-                className="flex-grow text-sm font-mono text-gray-700 outline-none uppercase w-full"
+                className="flex-grow text-[0.85vw] font-mono text-gray-700 outline-none uppercase w-full"
                 maxLength={7}
               />
-              <svg className="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <svg className="w-[1vw] h-[1vw] text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
               </svg>
             </div>
@@ -891,7 +891,7 @@ const TextEditor = ({ selectedElement, selectedElementType, onUpdate, onPopupPre
       </div>
 
       {/* COLOR FILL CONTAINER (Only for Fill, not Stroke) */}
-      <div className={`fixed top-1/2 -translate-y-1/2 right-[320px] w-[280px] bg-white rounded-3xl shadow-[0_10px_40px_-10px_rgba(0,0,0,0.2)] transition-all duration-300 z-50 overflow-hidden flex flex-col max-h-[90vh] ${showFillPicker ? 'opacity-100 scale-100 pointer-events-auto' : 'opacity-0 scale-95 pointer-events-none'}`}>
+      <div className={`fixed top-1/2 -translate-y-1/2 right-[22.2vw] w-[19.4vw] bg-white rounded-3xl shadow-[0_10px_40px_-10px_rgba(0,0,0,0.2)] transition-all duration-300 z-50 overflow-hidden flex flex-col max-h-[90vh] ${showFillPicker ? 'opacity-100 scale-100 pointer-events-auto' : 'opacity-0 scale-95 pointer-events-none'}`}>
 
         {/* Header */}
         <div className="flex items-center justify-between p-4 pb-0">
@@ -899,12 +899,12 @@ const TextEditor = ({ selectedElement, selectedElementType, onUpdate, onPopupPre
             <div className="relative" ref={fillTypeRef}>
               <button
                 onClick={() => setShowFillTypeDropdown(!showFillTypeDropdown)}
-                className="flex items-center gap-2 px-3 py-1.5 rounded-xl border border-gray-200 text-xs font-medium text-gray-700 hover:bg-gray-50 transition-colors bg-white min-w-[100px] justify-between shadow-sm"
+                className="flex items-center gap-2 px-3 py-1.5 rounded-xl border border-gray-200 text-xs font-medium text-gray-700 hover:bg-gray-50 transition-colors bg-white min-w-[6.9vw] justify-between shadow-sm"
               >
                 <span className="capitalize">{fillType}</span> <ChevronDown size={14} className="text-gray-400" />
               </button>
               {showFillTypeDropdown && (
-                <div className="absolute top-full left-0 mt-1 w-[120px] bg-white border border-gray-200 rounded-xl shadow-xl z-50 overflow-hidden py-1">
+                <div className="absolute top-full left-0 mt-1 w-[8.3vw] bg-white border border-gray-200 rounded-xl shadow-xl z-50 overflow-hidden py-1">
                   <button onClick={() => updateFillType('solid')} className="w-full text-left px-4 py-2 text-xs font-medium text-gray-700 hover:bg-gray-50">Solid</button>
                   <button onClick={() => updateFillType('gradient')} className="w-full text-left px-4 py-2 text-xs font-medium text-gray-700 hover:bg-gray-50">Gradient</button>
                 </div>
@@ -915,12 +915,12 @@ const TextEditor = ({ selectedElement, selectedElementType, onUpdate, onPopupPre
               <div className="relative gradient-type-trigger">
                 <button
                   onClick={() => setShowGradientTypeDropdown(!showGradientTypeDropdown)}
-                  className="flex items-center gap-2 px-3 py-1.5 rounded-xl border border-gray-200 text-xs font-medium text-gray-700 hover:bg-gray-50 transition-colors bg-white min-w-[100px] justify-between shadow-sm"
+                  className="flex items-center gap-2 px-3 py-1.5 rounded-xl border border-gray-200 text-xs font-medium text-gray-700 hover:bg-gray-50 transition-colors bg-white min-w-[6.9vw] justify-between shadow-sm"
                 >
                   {gradientType} <ChevronDown size={14} className="text-gray-400" />
                 </button>
                 {showGradientTypeDropdown && (
-                  <div className="absolute top-full right-0 mt-1 w-[120px] bg-white border border-gray-200 rounded-xl shadow-xl z-50 overflow-hidden py-1">
+                  <div className="absolute top-full right-0 mt-1 w-[8.3vw] bg-white border border-gray-200 rounded-xl shadow-xl z-50 overflow-hidden py-1">
                     <button onClick={() => { setGradientType('Linear'); applyGradient(gradientStops, 'Linear'); setShowGradientTypeDropdown(false); }} className="w-full text-left px-4 py-2 text-xs font-medium text-gray-700 hover:bg-gray-50">Linear</button>
                     <button onClick={() => { setGradientType('Radial'); applyGradient(gradientStops, 'Radial'); setShowGradientTypeDropdown(false); }} className="w-full text-left px-4 py-2 text-xs font-medium text-gray-700 hover:bg-gray-50">Radial</button>
                   </div>
@@ -1138,9 +1138,9 @@ const TextEditor = ({ selectedElement, selectedElementType, onUpdate, onPopupPre
               </div>
 
               {/* Interactive Gradient Bar */}
-              <div className="relative pt-6 pb-2 px-1">
+              <div className="relative pt-[1.5vw] pb-[0.5vw] px-[0.25vw]">
                 {/* Pins/Handles above the bar */}
-                <div className="absolute top-0 left-0 w-full h-8 flex items-center pointer-events-none px-1">
+                <div className="absolute top-0 left-0 w-full h-[2vw] flex items-center pointer-events-none px-[0.25vw]">
                   {gradientStops.map((stop, idx) => (
                     <div
                       key={idx}
@@ -1149,7 +1149,7 @@ const TextEditor = ({ selectedElement, selectedElementType, onUpdate, onPopupPre
                       onClick={() => openGradientStopPicker(idx)}
                       title="Click to edit color"
                     >
-                      <div className="w-5 h-5 rounded-md border-2 border-white shadow-md relative hover:scale-110 transition-transform" style={{ backgroundColor: stop.color }}>
+                      <div className="w-[1.25vw] h-[1.25vw] rounded-[0.4vw] border-2 border-white shadow-md relative hover:scale-110 transition-transform" style={{ backgroundColor: stop.color }}>
                         <div className="absolute top-[100%] left-1/2 -translate-x-1/2 w-[2px] h-[5px] bg-white shadow-sm"></div>
                       </div>
                     </div>
@@ -1157,7 +1157,7 @@ const TextEditor = ({ selectedElement, selectedElementType, onUpdate, onPopupPre
                 </div>
                 {/* The Bar */}
                 <div
-                  className="w-full h-8 rounded-lg shadow-inner border border-gray-100 cursor-copy"
+                  className="w-full h-[2vw] rounded-[0.5vw] shadow-inner border border-gray-100 cursor-copy"
                   onClick={addGradientStop}
                   title="Click to add a color stop"
                   style={{
@@ -1171,12 +1171,12 @@ const TextEditor = ({ selectedElement, selectedElementType, onUpdate, onPopupPre
               </div>
 
               {/* Stop Detail Row List */}
-              <div className="space-y-2 max-h-[180px] overflow-y-auto pr-1 custom-scrollbar">
+              <div className="space-y-[0.5vw] max-h-[180px] overflow-y-auto pr-1 custom-scrollbar">
                 {gradientStops.map((stop, idx) => (
-                  <div key={idx} className="flex items-center gap-2">
-                    <div className="flex-grow flex items-center gap-3 px-3 py-2.5 bg-white border border-gray-200 rounded-xl shadow-sm hover:border-gray-300 transition-all">
+                  <div key={idx} className="flex items-center gap-[0.5vw]">
+                    <div className="flex-grow flex items-center gap-[0.75vw] px-[0.75vw] py-[0.6vw] bg-white border border-gray-200 rounded-[0.75vw] shadow-sm hover:border-gray-300 transition-all">
                       <div
-                        className="w-8 h-8 rounded-lg shadow-sm border border-gray-100 flex-shrink-0 cursor-pointer hover:scale-105 transition-transform"
+                        className="w-[2vw] h-[2vw] rounded-[0.5vw] shadow-sm border border-gray-100 flex-shrink-0 cursor-pointer hover:scale-105 transition-transform"
                         style={{ backgroundColor: stop.color }}
                         onClick={() => openGradientStopPicker(idx)}
                         title="Click to customize color"
@@ -1185,7 +1185,7 @@ const TextEditor = ({ selectedElement, selectedElementType, onUpdate, onPopupPre
                         type="text"
                         value={stop.color}
                         onChange={(e) => updateGradientStop(idx, { color: e.target.value })}
-                        className="text-[13px] font-medium text-gray-500 flex-grow uppercase font-mono tracking-tight bg-transparent outline-none w-20"
+                        className="text-[0.75vw] font-medium text-gray-500 flex-grow uppercase font-mono tracking-tight bg-transparent outline-none w-[5vw]"
                         maxLength={7}
                       />
 
@@ -1193,7 +1193,7 @@ const TextEditor = ({ selectedElement, selectedElementType, onUpdate, onPopupPre
                     <button
                       onClick={() => removeGradientStop(idx)}
                       disabled={gradientStops.length <= 2}
-                      className={`w-12 h-12 rounded-xl border border-gray-200 flex items-center justify-center transition-all shadow-sm ${gradientStops.length <= 2 ? 'text-gray-300 cursor-not-allowed bg-gray-50' : 'text-gray-400 hover:bg-gray-50 hover:text-gray-600'}`}
+                      className={`w-[3vw] h-[3vw] rounded-[0.75vw] border border-gray-200 flex items-center justify-center transition-all shadow-sm ${gradientStops.length <= 2 ? 'text-gray-300 cursor-not-allowed bg-gray-50' : 'text-gray-400 hover:bg-gray-50 hover:text-gray-600'}`}
                     >
                       <Minus size={20} />
                     </button>
@@ -1206,22 +1206,22 @@ const TextEditor = ({ selectedElement, selectedElementType, onUpdate, onPopupPre
 
       </div>
 
-      <div className="w-full max-w-[360px] space-y-4 z-10 text-[#333]">
+      <div className="w-full max-w-[25vw] space-y-4 z-10 text-[#333]">
 
         {/* TEXT SECTION */}
         <div className="bg-white border border-gray-200 rounded-xl shadow-sm overflow-hidden">
-          <div className="flex items-center justify-between px-4 py-3.5 cursor-pointer hover:bg-gray-50 transition-colors" onClick={() => setIsTextOpen(!isTextOpen)}>
-            <div className="flex items-center gap-2.5">
-              <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-indigo-50 to-indigo-100 flex items-center justify-center">
+          <div className="flex items-center justify-between px-[1vw] py-[0.9vw] cursor-pointer hover:bg-gray-50 transition-colors" onClick={() => setIsTextOpen(!isTextOpen)}>
+            <div className="flex items-center gap-[0.65vw]">
+              <div className="w-[2vw] h-[2vw] rounded-[0.5vw] bg-gradient-to-br from-indigo-50 to-indigo-100 flex items-center justify-center">
                 <PencilLine size={16} className="text-indigo-600" />
               </div>
-              <span className="font-semibold text-gray-800 text-sm">Text</span>
+              <span className="font-semibold text-gray-800 text-[0.85vw]">Text</span>
             </div>
             {isTextOpen ? <ChevronUp size={18} className="text-gray-400" /> : <ChevronDown size={18} className="text-gray-400" />}
           </div>
 
           {isTextOpen && (
-            <div className="p-5 pt-0 space-y-5">
+            <div className="p-[1.25vw] pt-0 space-y-[1.25vw]">
 
               {/* Text Area */}
               <div className="relative group">
@@ -1229,9 +1229,9 @@ const TextEditor = ({ selectedElement, selectedElementType, onUpdate, onPopupPre
                   value={selectedElement?.textContent || ''}
                   onChange={(e) => { if (elementRef.current) { elementRef.current.textContent = e.target.value; if (onUpdate) onUpdate(); } }}
                   placeholder="Enter your text here..."
-                  className="w-full h-[90px] p-3.5 pr-9 bg-white border-2 border-gray-200 rounded-lg resize-none outline-none text-gray-700 text-sm focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100 transition-all placeholder-gray-400"
+                  className="w-full h-[6vw] p-[0.9vw] pr-[2.5vw] bg-white border-2 border-gray-200 rounded-[0.5vw] resize-none outline-none text-gray-700 text-[0.85vw] focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100 transition-all placeholder-gray-400"
                 />
-                <div className="absolute right-3 bottom-3 w-6 h-6 rounded-md bg-gray-100 flex items-center justify-center">
+                <div className="absolute right-[0.75vw] bottom-[0.75vw] w-[1.5vw] h-[1.5vw] rounded-[0.35vw] bg-gray-100 flex items-center justify-center">
                   <PencilLine size={12} className="text-gray-500" />
                 </div>
               </div>
@@ -1243,11 +1243,11 @@ const TextEditor = ({ selectedElement, selectedElementType, onUpdate, onPopupPre
               </div>
 
               {/* Font Controls */}
-              <div className="space-y-3">
+              <div className="space-y-[0.75vw]">
                 {/* Row 1: Font Family & Size */}
-                <div className="flex items-center gap-2.5">
-                  <div className="relative flex-grow h-10" ref={dropdownRef}>
-                    <button onClick={() => setShowFontDropdown(!showFontDropdown)} className="w-full h-full flex items-center justify-between px-3.5 bg-white border-2 border-gray-200 rounded-lg text-sm font-medium hover:border-indigo-300 focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100 transition-all">
+                <div className="flex items-center gap-[0.65vw]">
+                  <div className="relative flex-grow h-[2.5vw]" ref={dropdownRef}>
+                    <button onClick={() => setShowFontDropdown(!showFontDropdown)} className="w-full h-full flex items-center justify-between px-[0.9vw] bg-white border-2 border-gray-200 rounded-[0.5vw] text-[0.85vw] font-medium hover:border-indigo-300 focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100 transition-all">
                       <span className="truncate mr-2 text-gray-700" style={{ fontFamily: getCurrentStyle('fontFamily') }}>{getCurrentStyle('fontFamily').split(',')[0] || 'Arial'}</span>
                       <ChevronDown size={14} className="text-gray-400 flex-shrink-0" />
                     </button>
@@ -1259,18 +1259,18 @@ const TextEditor = ({ selectedElement, selectedElementType, onUpdate, onPopupPre
                       </div>
                     )}
                   </div>
-                  <div className="relative w-[88px] h-10">
-                    <select value={parseInt(getCurrentStyle('fontSize')) || 12} onChange={(e) => updateStyle('fontSize', e.target.value + 'px')} className="w-full h-full pl-3 pr-8 bg-white border-2 border-gray-200 rounded-lg appearance-none text-sm font-semibold text-gray-700 outline-none cursor-pointer hover:border-indigo-300 focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100 transition-all">
+                  <div className="relative w-[6.1vw] h-[2.5vw]">
+                    <select value={parseInt(getCurrentStyle('fontSize')) || 12} onChange={(e) => updateStyle('fontSize', e.target.value + 'px')} className="w-full h-full pl-[0.75vw] pr-[2vw] bg-white border-2 border-gray-200 rounded-[0.5vw] appearance-none text-[0.85vw] font-semibold text-gray-700 outline-none cursor-pointer hover:border-indigo-300 focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100 transition-all">
                       {[12, 14, 16, 18, 20, 24, 32, 48, 64, 72, 96].map(size => <option key={size} value={size}>{size}</option>)}
                     </select>
-                    <ChevronDown size={14} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
+                    <ChevronDown size={14} className="absolute right-[0.6vw] top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
                   </div>
                 </div>
 
                 {/* Row 2: Weight, Spacing, LineHeight */}
-                <div className="flex items-center gap-2.5">
-                  <div className="relative flex-1 h-10" ref={weightRef}>
-                    <button onClick={() => setShowWeightDropdown(!showWeightDropdown)} className="w-full h-full flex items-center justify-between px-3.5 bg-white border-2 border-gray-200 rounded-lg text-sm font-medium hover:border-indigo-300 focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100 transition-all">
+                <div className="flex items-center gap-[0.65vw]">
+                  <div className="relative flex-1 h-[2.5vw]" ref={weightRef}>
+                    <button onClick={() => setShowWeightDropdown(!showWeightDropdown)} className="w-full h-full flex items-center justify-between px-[0.9vw] bg-white border-2 border-gray-200 rounded-[0.5vw] text-[0.85vw] font-medium hover:border-indigo-300 focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100 transition-all">
                       <span className="truncate text-gray-700">{fontWeights.find(w => w.value === getCurrentStyle('fontWeight'))?.name || 'Regular'}</span>
                       <ChevronDown size={14} className="text-gray-400 flex-shrink-0" />
                     </button>
@@ -1284,30 +1284,30 @@ const TextEditor = ({ selectedElement, selectedElementType, onUpdate, onPopupPre
                   </div>
 
                   {/* Spacing */}
-                  <div className="relative w-[106px] h-10 border-2 border-gray-200 rounded-lg bg-white flex items-center px-1.5 hover:border-indigo-300 transition-colors group">
+                  <div className="relative w-[7.4vw] h-[2.5vw] border-2 border-gray-200 rounded-[0.5vw] bg-white flex items-center px-1.5 hover:border-indigo-300 transition-colors group">
                     <button onClick={() => {
                       const current = parseInt(getCurrentStyle('letterSpacing')) || 0;
                       updateStyle('letterSpacing', (current - 1) + 'px');
-                    }} className="w-7 h-7 flex items-center justify-center text-gray-500 hover:bg-indigo-50 hover:text-indigo-600 rounded-md transition-colors font-bold">−</button>
-                    <input readOnly className="w-full text-center text-xs font-semibold text-gray-700 outline-none bg-transparent" value={parseInt(getCurrentStyle('letterSpacing')) || 0} />
+                    }} className="w-[1.75vw] h-[1.75vw] flex items-center justify-center text-gray-500 hover:bg-indigo-50 hover:text-indigo-600 rounded-md transition-colors font-bold">−</button>
+                    <input readOnly className="w-full text-center text-[0.75vw] font-semibold text-gray-700 outline-none bg-transparent" value={parseInt(getCurrentStyle('letterSpacing')) || 0} />
                     <button onClick={() => {
                       const current = parseInt(getCurrentStyle('letterSpacing')) || 0;
                       updateStyle('letterSpacing', (current + 1) + 'px');
-                    }} className="w-7 h-7 flex items-center justify-center text-gray-500 hover:bg-indigo-50 hover:text-indigo-600 rounded-md transition-colors font-bold">+</button>
+                    }} className="w-[1.75vw] h-[1.75vw] flex items-center justify-center text-gray-500 hover:bg-indigo-50 hover:text-indigo-600 rounded-md transition-colors font-bold">+</button>
                     <ArrowLeftRight size={13} className="text-gray-400 group-hover:text-indigo-400 flex-shrink-0 ml-1 transition-colors" />
                   </div>
 
                   {/* Line Height */}
-                  <div className="relative w-[106px] h-10 border-2 border-gray-200 rounded-lg bg-white flex items-center px-1.5 hover:border-indigo-300 transition-colors group">
+                  <div className="relative w-[7.4vw] h-[2.5vw] border-2 border-gray-200 rounded-[0.5vw] bg-white flex items-center px-1.5 hover:border-indigo-300 transition-colors group">
                     <button onClick={() => {
                       const current = parseFloat(getCurrentStyle('lineHeight')) || 1.2;
                       updateStyle('lineHeight', (current - 0.1).toFixed(1));
-                    }} className="w-7 h-7 flex items-center justify-center text-gray-500 hover:bg-indigo-50 hover:text-indigo-600 rounded-md transition-colors font-bold">−</button>
-                    <input readOnly className="w-full text-center text-xs font-semibold text-gray-700 outline-none bg-transparent" value={parseFloat(getCurrentStyle('lineHeight')) || 1.2} />
+                    }} className="w-[1.75vw] h-[1.75vw] flex items-center justify-center text-gray-500 hover:bg-indigo-50 hover:text-indigo-600 rounded-md transition-colors font-bold">−</button>
+                    <input readOnly className="w-full text-center text-[0.75vw] font-semibold text-gray-700 outline-none bg-transparent" value={parseFloat(getCurrentStyle('lineHeight')) || 1.2} />
                     <button onClick={() => {
                       const current = parseFloat(getCurrentStyle('lineHeight')) || 1.2;
                       updateStyle('lineHeight', (current + 0.1).toFixed(1));
-                    }} className="w-7 h-7 flex items-center justify-center text-gray-500 hover:bg-indigo-50 hover:text-indigo-600 rounded-md transition-colors font-bold">+</button>
+                    }} className="w-[1.75vw] h-[1.75vw] flex items-center justify-center text-gray-500 hover:bg-indigo-50 hover:text-indigo-600 rounded-md transition-colors font-bold">+</button>
                     <ArrowUpDown size={13} className="text-gray-400 group-hover:text-indigo-400 flex-shrink-0 ml-1 transition-colors" />
                   </div>
                 </div>
@@ -1318,7 +1318,7 @@ const TextEditor = ({ selectedElement, selectedElementType, onUpdate, onPopupPre
                   {/* Alignment */}
                   <div className="relative" ref={alignmentRef}>
                     <button
-                      className={`alignment-trigger w-10 h-10 flex items-center justify-center rounded-lg border-2 transition-all ${activePanel === 'alignment' ? 'bg-indigo-50 border-indigo-200 text-indigo-600 shadow-sm' : 'bg-white border-gray-200 text-gray-600 hover:bg-gray-50 hover:border-gray-300'}`}
+                      className={`alignment-trigger w-[2.5vw] h-[2.5vw] flex items-center justify-center rounded-[0.5vw] border-2 transition-all ${activePanel === 'alignment' ? 'bg-indigo-50 border-indigo-200 text-indigo-600 shadow-sm' : 'bg-white border-gray-200 text-gray-600 hover:bg-gray-50 hover:border-gray-300'}`}
                       onClick={() => togglePanel('alignment')}
                     >
                       <AlignLeft size={17} />
@@ -1336,7 +1336,7 @@ const TextEditor = ({ selectedElement, selectedElementType, onUpdate, onPopupPre
                   {/* Style */}
                   <div className="relative" ref={styleRef}>
                     <button
-                      className={`style-trigger w-10 h-10 flex items-center justify-center rounded-lg border-2 transition-all ${activePanel === 'style' ? 'bg-indigo-50 border-indigo-200 text-indigo-600 shadow-sm' : 'bg-white border-gray-200 text-gray-600 hover:bg-gray-50 hover:border-gray-300'}`}
+                      className={`style-trigger w-[2.5vw] h-[2.5vw] flex items-center justify-center rounded-[0.5vw] border-2 transition-all ${activePanel === 'style' ? 'bg-indigo-50 border-indigo-200 text-indigo-600 shadow-sm' : 'bg-white border-gray-200 text-gray-600 hover:bg-gray-50 hover:border-gray-300'}`}
                       onClick={() => togglePanel('style')}
                     >
                       <Bold size={17} />
@@ -1354,7 +1354,7 @@ const TextEditor = ({ selectedElement, selectedElementType, onUpdate, onPopupPre
                   {/* Case */}
                   <div className="relative" ref={caseRef}>
                     <button
-                      className={`case-trigger w-10 h-10 flex items-center justify-center rounded-lg border-2 transition-all ${activePanel === 'case' ? 'bg-indigo-50 border-indigo-200 text-indigo-600 shadow-sm' : 'bg-white border-gray-200 text-gray-600 hover:bg-gray-50 hover:border-gray-300'}`}
+                      className={`case-trigger w-[2.5vw] h-[2.5vw] flex items-center justify-center rounded-[0.5vw] border-2 transition-all ${activePanel === 'case' ? 'bg-indigo-50 border-indigo-200 text-indigo-600 shadow-sm' : 'bg-white border-gray-200 text-gray-600 hover:bg-gray-50 hover:border-gray-300'}`}
                       onClick={() => togglePanel('case')}
                     >
                       <Type size={17} />
@@ -1372,7 +1372,7 @@ const TextEditor = ({ selectedElement, selectedElementType, onUpdate, onPopupPre
                   {/* List */}
                   <div className="relative" ref={listRef}>
                     <button
-                      className={`list-trigger w-10 h-10 flex items-center justify-center rounded-lg border-2 transition-all ${activePanel === 'list' ? 'bg-indigo-50 border-indigo-200 text-indigo-600 shadow-sm' : 'bg-white border-gray-200 text-gray-600 hover:bg-gray-50 hover:border-gray-300'}`}
+                      className={`list-trigger w-[2.5vw] h-[2.5vw] flex items-center justify-center rounded-[0.5vw] border-2 transition-all ${activePanel === 'list' ? 'bg-indigo-50 border-indigo-200 text-indigo-600 shadow-sm' : 'bg-white border-gray-200 text-gray-600 hover:bg-gray-50 hover:border-gray-300'}`}
                       onClick={() => togglePanel('list')}
                     >
                       <List size={17} />
@@ -1389,88 +1389,88 @@ const TextEditor = ({ selectedElement, selectedElementType, onUpdate, onPopupPre
               </div>
 
               {/* Color Section */}
-              <div className="border-2 border-gray-200 rounded-xl overflow-hidden shadow-sm">
-                <div className="flex items-center justify-between px-4 py-3 bg-gradient-to-r from-white to-gray-50 cursor-pointer hover:from-gray-50 hover:to-gray-100 border-b border-gray-200 transition-all" onClick={() => setIsColorOpen(!isColorOpen)}>
-                  <div className="flex items-center gap-2">
+              <div className="border-2 border-gray-200 rounded-[0.75vw] overflow-hidden shadow-sm">
+                <div className="flex items-center justify-between px-[1vw] py-[0.75vw] bg-gradient-to-r from-white to-gray-50 cursor-pointer hover:from-gray-50 hover:to-gray-100 border-b border-gray-200 transition-all" onClick={() => setIsColorOpen(!isColorOpen)}>
+                  <div className="flex items-center gap-[0.5vw]">
                     <Palette size={16} className="text-indigo-500" />
-                    <span className="font-bold text-sm text-gray-800">Color</span>
+                    <span className="font-bold text-[0.85vw] text-gray-800">Color</span>
                   </div>
                   {isColorOpen ? <ChevronUp size={16} className="text-gray-400" /> : <ChevronDown size={16} className="text-gray-400" />}
                 </div>
 
                 {isColorOpen && (
-                  <div className="p-4 space-y-4 bg-white">
+                  <div className="p-[1vw] space-y-[1vw] bg-white">
                     {/* Fill */}
-                    <div className="flex items-center gap-2">
-                      <span className="text-xs font-bold text-gray-700 w-12">Fill</span>
-                      <div onClick={() => { setShowFillPicker(!showFillPicker); setShowStrokePicker(false); setColorMode('fill'); }} className="w-10 h-10 rounded-lg border-2 border-gray-300 cursor-pointer flex-shrink-0 hover:scale-105 transition-transform shadow-sm" style={{ backgroundColor: hex }}></div>
-                      <div className="flex-grow flex items-center border-2 border-gray-200 rounded-lg overflow-hidden h-10 bg-white hover:border-indigo-300 transition-colors">
+                    <div className="flex items-center gap-[0.5vw]">
+                      <span className="text-[0.7vw] font-bold text-gray-700 w-[3vw]">Fill</span>
+                      <div onClick={() => { setShowFillPicker(!showFillPicker); setShowStrokePicker(false); setColorMode('fill'); }} className="w-[2.5vw] h-[2.5vw] rounded-[0.5vw] border-2 border-gray-300 cursor-pointer flex-shrink-0 hover:scale-105 transition-transform shadow-sm" style={{ backgroundColor: hex }}></div>
+                      <div className="flex-grow flex items-center border-2 border-gray-200 rounded-[0.5vw] overflow-hidden h-[2.5vw] bg-white hover:border-indigo-300 transition-colors">
                         <input
                           type="text"
                           value={hex.toUpperCase()}
                           onChange={(e) => updateColorFromHex(e.target.value)}
-                          className="w-[58px] h-full px-1 text-[11px] font-bold text-gray-700 outline-none flex-shrink-0 text-center"
+                          className="w-[3.5vw] h-full px-1 text-[0.7vw] font-bold text-gray-700 outline-none flex-shrink-0 text-center"
                           maxLength={7}
                           placeholder="#000000"
                         />
                         <div className="flex-grow flex items-center border-l-2 border-gray-200 bg-gradient-to-r from-gray-50 to-white h-full">
                           <button
                             onClick={() => setFillOpacity(Math.max(0, fillOpacity - 5))}
-                            className="w-6 h-full flex items-center justify-center text-gray-600 hover:bg-indigo-50 hover:text-indigo-600 flex-shrink-0 border-r border-gray-200 font-bold transition-colors"
+                            className="w-[1.5vw] h-full flex items-center justify-center text-gray-600 hover:bg-indigo-50 hover:text-indigo-600 flex-shrink-0 border-r border-gray-200 font-bold transition-colors"
                           >−</button>
-                          <span className="text-gray-700 text-[11px] px-1 min-w-[32px] text-center flex-grow font-bold bg-white h-full flex items-center justify-center">{fillOpacity}%</span>
+                          <span className="text-gray-700 text-[0.7vw] px-1 min-w-[2vw] text-center flex-grow font-bold bg-white h-full flex items-center justify-center">{fillOpacity}%</span>
                           <button
                             onClick={() => setFillOpacity(Math.min(100, fillOpacity + 5))}
-                            className="w-6 h-full flex items-center justify-center text-gray-600 hover:bg-indigo-50 hover:text-indigo-600 flex-shrink-0 font-bold transition-colors"
+                            className="w-[1.5vw] h-full flex items-center justify-center text-gray-600 hover:bg-indigo-50 hover:text-indigo-600 flex-shrink-0 font-bold transition-colors"
                           >+</button>
                         </div>
                       </div>
                     </div>
 
                     {/* Stroke */}
-                    <div className="flex items-center gap-2">
-                      <span className="text-xs font-bold text-gray-700 w-12">Stroke</span>
+                    <div className="flex items-center gap-[0.5vw]">
+                      <span className="text-[0.7vw] font-bold text-gray-700 w-[3vw]">Stroke</span>
                       <div
                         onClick={() => { setShowStrokePicker(!showStrokePicker); setShowFillPicker(false); setColorMode('stroke'); }}
-                        className="w-10 h-10 rounded-lg border-2 border-gray-300 cursor-pointer flex-shrink-0 hover:scale-105 transition-transform shadow-sm"
+                        className="w-[2.5vw] h-[2.5vw] rounded-[0.5vw] border-2 border-gray-300 cursor-pointer flex-shrink-0 hover:scale-105 transition-transform shadow-sm"
                         style={{ backgroundColor: strokeColor }}
                       ></div>
-                      <div className="flex-grow flex items-center border-2 border-gray-200 rounded-lg overflow-hidden h-10 bg-white hover:border-indigo-300 transition-colors">
+                      <div className="flex-grow flex items-center border-2 border-gray-200 rounded-[0.5vw] overflow-hidden h-[2.5vw] bg-white hover:border-indigo-300 transition-colors">
                         <input
                           type="text"
                           value={strokeColor.toUpperCase()}
                           onChange={(e) => updateStrokeColorFromHex(e.target.value)}
-                          className="w-[58px] h-full px-1 text-[11px] font-bold text-gray-700 outline-none flex-shrink-0 text-center"
+                          className="w-[3.5vw] h-full px-1 text-[0.7vw] font-bold text-gray-700 outline-none flex-shrink-0 text-center"
                           maxLength={7}
                           placeholder="#000000"
                         />
                         <div className="flex-grow flex items-center border-l-2 border-gray-200 bg-gradient-to-r from-gray-50 to-white h-full">
                           <button
                             onClick={() => setStrokeOpacity(Math.max(0, strokeOpacity - 5))}
-                            className="w-6 h-full flex items-center justify-center text-gray-600 hover:bg-indigo-50 hover:text-indigo-600 flex-shrink-0 border-r border-gray-200 font-bold transition-colors"
+                            className="w-[1.5vw] h-full flex items-center justify-center text-gray-600 hover:bg-indigo-50 hover:text-indigo-600 flex-shrink-0 border-r border-gray-200 font-bold transition-colors"
                           >−</button>
-                          <span className="text-gray-700 text-[11px] px-1 min-w-[32px] text-center flex-grow font-bold bg-white h-full flex items-center justify-center">{strokeOpacity}%</span>
+                          <span className="text-gray-700 text-[0.7vw] px-1 min-w-[2vw] text-center flex-grow font-bold bg-white h-full flex items-center justify-center">{strokeOpacity}%</span>
                           <button
                             onClick={() => setStrokeOpacity(Math.min(100, strokeOpacity + 5))}
-                            className="w-6 h-full flex items-center justify-center text-gray-600 hover:bg-indigo-50 hover:text-indigo-600 flex-shrink-0 font-bold transition-colors"
+                            className="w-[1.5vw] h-full flex items-center justify-center text-gray-600 hover:bg-indigo-50 hover:text-indigo-600 flex-shrink-0 font-bold transition-colors"
                           >+</button>
                         </div>
                       </div>
                     </div>
 
                     {/* Settings / Dashed */}
-                    <div className="flex items-center justify-end gap-2.5 pt-1">
-                      <div className="p-2 rounded-lg hover:bg-indigo-50 transition-colors cursor-pointer group" onClick={() => setShowDashedPopup(!showDashedPopup)}>
+                    <div className="flex items-center justify-end gap-[0.65vw] pt-[0.25vw]">
+                      <div className="p-[0.5vw] rounded-[0.5vw] hover:bg-indigo-50 transition-colors cursor-pointer group" onClick={() => setShowDashedPopup(!showDashedPopup)}>
                         <SlidersHorizontal size={18} className="text-gray-500 group-hover:text-indigo-600 dashed-selector-trigger transition-colors" />
                       </div>
 
                       <div className="relative" ref={borderStyleRef}>
-                        <div className="h-8 px-2 border border-gray-300 rounded flex items-center gap-2 cursor-pointer min-w-[90px] justify-between" onClick={() => setShowBorderStyleDropdown(!showBorderStyleDropdown)}>
-                          <span className="text-xs text-gray-700">{elementRef.current?.style.backgroundImage?.includes('svg') ? 'Dashed' : 'Solid'}</span>
+                        <div className="h-[2vw] px-[0.5vw] border border-gray-300 rounded-[0.25vw] flex items-center gap-[0.5vw] cursor-pointer min-w-[4.6vw] justify-between" onClick={() => setShowBorderStyleDropdown(!showBorderStyleDropdown)}>
+                          <span className="text-[0.7vw] text-gray-700">{elementRef.current?.style.backgroundImage?.includes('svg') ? 'Dashed' : 'Solid'}</span>
                           <ChevronDown size={12} className="text-gray-500" />
                         </div>
                         {showBorderStyleDropdown && (
-                          <div className="absolute right-0 bottom-full mb-1 w-[100px] bg-white border border-gray-200 rounded shadow-lg z-50">
+                          <div className="absolute right-0 bottom-full mb-1 w-[6.9vw] bg-white border border-gray-200 rounded shadow-lg z-50">
                             <div onClick={() => {
                               if (elementRef.current) {
                                 // If we have a gradient, we MUST preserve it and only remove the SVG
@@ -1515,20 +1515,20 @@ const TextEditor = ({ selectedElement, selectedElementType, onUpdate, onPopupPre
                         )}
                       </div>
 
-                      <div className="h-8 w-24 border border-gray-300 rounded flex items-center px-1">
+                      <div className="h-[2vw] w-[6vw] border border-gray-300 rounded-[0.25vw] flex items-center px-[0.25vw]">
                         <button onClick={() => {
                           const val = Math.max(0, borderThickness - 1);
                           setBorderThickness(val);
                           if (elementRef.current?.style.backgroundImage?.includes('svg')) applyDashedStyle(val);
                           else if (elementRef.current) elementRef.current.style.borderWidth = val + 'px';
-                        }} className="w-5 h-5 flex items-center justify-center text-gray-500 hover:bg-gray-100 rounded">-</button>
-                        <input type="number" readOnly value={borderThickness} className="w-full text-xs outline-none text-center bg-transparent" />
+                        }} className="w-[1.25vw] h-[1.25vw] flex items-center justify-center text-gray-500 hover:bg-gray-100 rounded-[0.25vw]">-</button>
+                        <input type="number" readOnly value={borderThickness} className="w-full text-[0.7vw] outline-none text-center bg-transparent" />
                         <button onClick={() => {
                           const val = borderThickness + 1;
                           setBorderThickness(val);
                           if (elementRef.current?.style.backgroundImage?.includes('svg')) applyDashedStyle(val);
                           else if (elementRef.current) elementRef.current.style.borderWidth = val + 'px';
-                        }} className="w-5 h-5 flex items-center justify-center text-gray-500 hover:bg-gray-100 rounded">+</button>
+                        }} className="w-[1.25vw] h-[1.25vw] flex items-center justify-center text-gray-500 hover:bg-gray-100 rounded-[0.25vw]">+</button>
                       </div>
 
                     </div>
@@ -1545,6 +1545,7 @@ const TextEditor = ({ selectedElement, selectedElementType, onUpdate, onPopupPre
           selectedElement={selectedElement}
           onUpdate={onUpdate}
           onPopupPreviewUpdate={onPopupPreviewUpdate}
+          pages={pages}
         />
 
       </div>

@@ -401,16 +401,15 @@ const InteractionPanel = ({ selectedElement, onUpdate, onPopupPreviewUpdate }) =
     switch (interactionType) {
       case 'none':
         return (
-          <div className="w-10 h-10 bg-gray-100 rounded-lg flex items-center justify-center text-gray-400">
+          <div className="w-[2.5vw] h-[2.5vw] bg-gray-100 rounded-[0.4vw] flex items-center justify-center text-gray-400">
             ?
           </div>
         );
 
-      case 'zoom':
         return (
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-[0.5vw]">
             <button
-              className="w-8 h-8 flex items-center justify-center text-gray-500 hover:text-indigo-600 rounded hover:bg-gray-100"
+              className="w-[2vw] h-[2vw] flex items-center justify-center text-gray-500 hover:text-indigo-600 rounded hover:bg-gray-100"
               onClick={() => {
                 const newZoom = Math.max(1.1, zoomLevel - 0.1);
                 setZoomLevel(newZoom);
@@ -420,12 +419,12 @@ const InteractionPanel = ({ selectedElement, onUpdate, onPopupPreviewUpdate }) =
               <ChevronLeft size={18} />
             </button>
 
-            <div className="border border-gray-400 rounded px-3 py-1.5 text-sm font-medium text-gray-900 min-w-[50px] text-center bg-white cursor-default">
+            <div className="border border-gray-400 rounded-[0.25vw] px-[0.75vw] py-[0.4vw] text-[0.75vw] font-medium text-gray-900 min-w-[2.6vw] text-center bg-white cursor-default">
               {Number(zoomLevel).toFixed(0)}X
             </div>
 
             <button
-              className="w-8 h-8 flex items-center justify-center text-gray-500 hover:text-indigo-600 rounded hover:bg-gray-100"
+              className="w-[2vw] h-[2vw] flex items-center justify-center text-gray-500 hover:text-indigo-600 rounded hover:bg-gray-100"
               onClick={() => {
                 const newZoom = Math.min(5, zoomLevel + 0.1);
                 setZoomLevel(newZoom);
@@ -439,7 +438,7 @@ const InteractionPanel = ({ selectedElement, onUpdate, onPopupPreviewUpdate }) =
 
       case 'link':
         return (
-          <div className="flex flex-col items-end gap-2 flex-grow min-w-[200px]">
+          <div className="flex flex-col items-end gap-[0.5vw] flex-grow min-w-[10.5vw]">
             <div className="relative w-full">
               <input
                 type="text"
@@ -455,7 +454,7 @@ const InteractionPanel = ({ selectedElement, onUpdate, onPopupPreviewUpdate }) =
 
       case 'navigation':
         return (
-          <div className="border border-gray-400 rounded-lg px-2 py-1.5 bg-white flex items-center gap-2 min-w-[100px]">
+          <div className="border border-gray-400 rounded-[0.4vw] px-[0.5vw] py-[0.4vw] bg-white flex items-center gap-[0.5vw] min-w-[5.2vw]">
             <select
               value={navPage}
               onChange={(e) => {
@@ -477,10 +476,10 @@ const InteractionPanel = ({ selectedElement, onUpdate, onPopupPreviewUpdate }) =
 
       case 'call':
         return (
-          <div className="flex flex-col items-end gap-2">
-            <div className="border border-gray-400 rounded-lg flex items-center bg-white overflow-hidden p-1">
-              <div className="flex items-center gap-1 px-2 border-r border-gray-200 bg-gray-50 rounded mx-1 py-0.5">
-                <span className="text-xs text-gray-600 font-medium">+91</span>
+          <div className="flex flex-col items-end gap-[0.5vw]">
+            <div className="border border-gray-400 rounded-[0.4vw] flex items-center bg-white overflow-hidden p-[0.25vw]">
+              <div className="flex items-center gap-1 px-[0.5vw] border-r border-gray-200 bg-gray-50 rounded-[0.2vw] mx-[0.25vw] py-[0.15vw]">
+                <span className="text-[0.65vw] text-gray-600 font-medium">+91</span>
                 <ChevronUp size={10} className="text-gray-400 rotate-180" />
               </div>
               <input
@@ -489,11 +488,11 @@ const InteractionPanel = ({ selectedElement, onUpdate, onPopupPreviewUpdate }) =
                 onChange={(e) => setPhoneNumber(e.target.value)}
                 onBlur={() => applyInteraction('call', phoneNumber)}
                 placeholder="1234567890"
-                className="w-28 px-2 py-1 text-sm text-gray-700 outline-none"
+                className="w-[6vw] px-[0.5vw] py-[0.25vw] text-[0.75vw] text-gray-700 outline-none"
               />
             </div>
             <button
-              className="bg-black text-white text-xs font-semibold px-4 py-1.5 rounded-lg flex items-center gap-1 hover:bg-gray-800 transition-colors"
+              className="bg-black text-white text-[0.65vw] font-semibold px-[1vw] py-[0.4vw] rounded-[0.4vw] flex items-center gap-1 hover:bg-gray-800 transition-colors"
               onClick={() => applyInteraction('call', phoneNumber)}
             >
               <Check size={12} strokeWidth={3} />
@@ -520,7 +519,7 @@ const InteractionPanel = ({ selectedElement, onUpdate, onPopupPreviewUpdate }) =
                 className="hidden"
                 onChange={handleImageReplace}
               />
-              <div className="w-16 h-16 bg-gray-50 rounded-lg flex items-center justify-center overflow-hidden mb-1">
+              <div className="w-[4vw] h-[4vw] bg-gray-50 rounded-[0.4vw] flex items-center justify-center overflow-hidden mb-1">
                 {isElementImage || popupImageSrc ? (
                   <img src={popupImageSrc || selectedElement.src} alt="Preview" className="w-full h-full object-cover" />
                 ) : (
@@ -559,7 +558,7 @@ const InteractionPanel = ({ selectedElement, onUpdate, onPopupPreviewUpdate }) =
         return (
           <div className="flex flex-col items-center">
             <div className="border border-gray-400 border-dashed rounded-[14px] p-2 bg-white shadow-sm overflow-hidden mb-1 flex flex-col items-center">
-              <div className="w-16 h-16 bg-gray-50 rounded-lg flex items-center justify-center overflow-hidden mb-1">
+              <div className="w-[4vw] h-[4vw] bg-gray-50 rounded-[0.4vw] flex items-center justify-center overflow-hidden mb-1">
                 {isImage ? (
                   <img src={selectedElement.src} alt="Preview" className="w-full h-full object-cover" />
                 ) : (
@@ -576,10 +575,10 @@ const InteractionPanel = ({ selectedElement, onUpdate, onPopupPreviewUpdate }) =
       case 'tooltip':
         // Tooltip Visual
         return (
-          <div className="border border-gray-400 rounded-lg p-3 min-w-[100px] h-[80px] flex items-center justify-center bg-white relative">
+          <div className="border border-gray-400 rounded-[0.4vw] p-[0.75vw] min-w-[5.2vw] h-[4.2vw] flex items-center justify-center bg-white relative">
             <div className="relative">
               <MessageSquare size={32} className="text-gray-400 fill-gray-100" />
-              <div className="absolute top-1 right-1 w-2 h-2 bg-gray-400 rounded-full"></div>
+              <div className="absolute top-1 right-1 w-[0.4vw] h-[0.4vw] bg-gray-400 rounded-full"></div>
             </div>
           </div>
         )

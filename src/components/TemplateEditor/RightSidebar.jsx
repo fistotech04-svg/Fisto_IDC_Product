@@ -29,7 +29,7 @@ const RightSidebar = ({
   closePanelsSignal
 }) => {
   return (
-    <aside className="w-80 bg-white border-l border-gray-200 overflow-y-auto custom-scrollbar flex flex-col flex-shrink-0">
+    <aside className="w-[25vw] bg-white border-l border-gray-200 overflow-y-auto custom-scrollbar flex flex-col flex-shrink-0">
       
       {/* ================= Display Controls (New Top Section) ================= */}
       <div className="p-4 border-b border-gray-100 bg-gray-50 space-y-4">
