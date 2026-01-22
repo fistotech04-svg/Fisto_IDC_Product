@@ -13,10 +13,7 @@ export default defineConfig({
   server: {
     host: "0.0.0.0",
     port: 5173,
-    allowedHosts: [
-      "hcxqp38j-5000.inc1.devtunnels.ms",
-      "fisto-idc-product.onrender.com",
-    ],
+    allowedHosts: true,
     proxy: {
       "/api": {
         target: "http://localhost:5000",
