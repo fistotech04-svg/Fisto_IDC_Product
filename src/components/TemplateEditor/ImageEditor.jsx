@@ -231,7 +231,7 @@ const ImageEditor = ({ selectedElement, onUpdate, onPopupPreviewUpdate }) => {
           cursor: pointer;
         }
       `}</style>
-      <div className="bg-white border border-gray-200 rounded-lg shadow-sm overflow-hidden relative font-sans">
+      <div className="bg-white border border-gray-200 rounded-lg shadow-sm overflow-hidden relative">
         <input
           type="file"
           ref={fileInputRef}

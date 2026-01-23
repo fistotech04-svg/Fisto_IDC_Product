@@ -1,5 +1,6 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import InteractionPanel from './InteractionPanel';
+import { Icon } from '@iconify/react';
 import {
   ChevronDown, PencilLine, AlignLeft, Bold, Minus, List,
   ChevronUp, Settings2, ArrowsUpFromLine,
@@ -1515,22 +1516,67 @@ const TextEditor = ({ selectedElement, selectedElementType, onUpdate, onPopupPre
                         )}
                       </div>
 
-                      <div className="h-[2vw] w-[6vw] border border-gray-300 rounded-[0.25vw] flex items-center px-[0.25vw]">
-                        <button onClick={() => {
-                          const val = Math.max(0, borderThickness - 1);
-                          setBorderThickness(val);
-                          if (elementRef.current?.style.backgroundImage?.includes('svg')) applyDashedStyle(val);
-                          else if (elementRef.current) elementRef.current.style.borderWidth = val + 'px';
-                        }} className="w-[1.25vw] h-[1.25vw] flex items-center justify-center text-gray-500 hover:bg-gray-100 rounded-[0.25vw]">-</button>
-                        <input type="number" readOnly value={borderThickness} className="w-full text-[0.7vw] outline-none text-center bg-transparent" />
-                        <button onClick={() => {
-                          const val = borderThickness + 1;
-                          setBorderThickness(val);
-                          if (elementRef.current?.style.backgroundImage?.includes('svg')) applyDashedStyle(val);
-                          else if (elementRef.current) elementRef.current.style.borderWidth = val + 'px';
-                        }} className="w-[1.25vw] h-[1.25vw] flex items-center justify-center text-gray-500 hover:bg-gray-100 rounded-[0.25vw]">+</button>
-                      </div>
+                      {/* Figma-style Thickness Control with Drag */}
+                      <div
+                        className="h-[2vw] min-w-[6vw] border border-gray-300 rounded-[0.25vw] flex items-center px-[0.25vw] gap-[0.25vw] bg-white hover:border-blue-500 transition-colors cursor-ew-resize select-none"
+                        onMouseDown={(e) => {
+                          e.preventDefault();
+                          const startX = e.clientX;
+                          const startVal = borderThickness || 0;
 
+                          const handleMove = (moveEvent) => {
+                            const diff = Math.round(moveEvent.clientX - startX);
+                            const newVal = Math.max(0, startVal + diff);
+
+                            setBorderThickness(newVal);
+                            if (elementRef.current?.style.backgroundImage?.includes('svg')) {
+                              applyDashedStyle(newVal);
+                            } else if (elementRef.current) {
+                              elementRef.current.style.borderWidth = newVal + 'px';
+                            }
+                          };
+
+                          const handleUp = () => {
+                            window.removeEventListener('mousemove', handleMove);
+                            window.removeEventListener('mouseup', handleUp);
+                          };
+
+                          window.addEventListener('mousemove', handleMove);
+                          window.addEventListener('mouseup', handleUp);
+                        }}
+                      >
+                        <Icon icon="material-symbols:line-weight" width="18" height="18" className="text-gray-500 flex-shrink-0" />
+                        <div className="w-[1px] h-[1vw] bg-gray-200 mx-[0.15vw]"></div>
+
+                        <button
+                          onMouseDown={(e) => e.stopPropagation()}
+                          onClick={() => {
+                            const val = Math.max(0, borderThickness - 1);
+                            setBorderThickness(val);
+                            if (elementRef.current?.style.backgroundImage?.includes('svg')) applyDashedStyle(val);
+                            else if (elementRef.current) elementRef.current.style.borderWidth = val + 'px';
+                          }}
+                          className="w-[1.25vw] h-[1.25vw] flex items-center justify-center text-gray-500 hover:bg-gray-100 rounded-[0.25vw] cursor-pointer"
+                        >-</button>
+
+                        <input
+                          type="number"
+                          readOnly
+                          value={borderThickness}
+                          className="w-full text-[0.7vw] outline-none text-center bg-transparent cursor-ew-resize pointer-events-none"
+                        />
+
+                        <button
+                          onMouseDown={(e) => e.stopPropagation()}
+                          onClick={() => {
+                            const val = borderThickness + 1;
+                            setBorderThickness(val);
+                            if (elementRef.current?.style.backgroundImage?.includes('svg')) applyDashedStyle(val);
+                            else if (elementRef.current) elementRef.current.style.borderWidth = val + 'px';
+                          }}
+                          className="w-[1.25vw] h-[1.25vw] flex items-center justify-center text-gray-500 hover:bg-gray-100 rounded-[0.25vw] cursor-pointer"
+                        >+</button>
+                      </div>
                     </div>
                   </div>
                 )}

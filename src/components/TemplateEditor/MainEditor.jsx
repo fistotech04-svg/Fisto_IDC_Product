@@ -41,6 +41,7 @@ const MainEditor = () => {
   const [showTemplateModal, setShowTemplateModal] = useState(true);
   const [showPreview, setShowPreview] = useState(false);
   const [showExportModal, setShowExportModal] = useState(false);
+  const [showPageSettingsMenu, setShowPageSettingsMenu] = useState(false);
 
   // Export Logic
   const handleDownloadPages = async (pagesToExport, format = 'png') => {
@@ -211,6 +212,9 @@ const MainEditor = () => {
   const [selectedElement, setSelectedElement] = useState(null);
   const [selectedElementType, setSelectedElementType] = useState(null);
 
+  // Page renaming state (for auto-rename after add/duplicate)
+  const [editingPageId, setEditingPageId] = useState(null);
+
   // Alert State
   const [alertState, setAlertState] = useState({
     isOpen: false,
@@ -293,6 +297,22 @@ const MainEditor = () => {
   useEffect(() => {
     const handleKeyDown = (e) => {
         const isInput = ['INPUT', 'TEXTAREA'].includes(e.target.tagName);
+        
+        // Undo: Ctrl+Z (but not input fields)
+        if (e.ctrlKey && e.key === 'z' && !isInput) {
+            e.preventDefault();
+            handleUndo();
+            return;
+        }
+        
+        // Redo: Ctrl+Y or Ctrl+Shift+Z (but not input fields)
+        if (e.ctrlKey && (e.key === 'y' || (e.shiftKey && e.key === 'z')) && !isInput) {
+            e.preventDefault();
+            handleRedo();
+            return;
+        }
+        
+        // Space key for panning
         if (e.code === 'Space' && !e.repeat && !isInput && !isEditingPageName) {
             e.preventDefault(); 
             setIsSpacePressed(true);
@@ -311,7 +331,18 @@ const MainEditor = () => {
         window.removeEventListener('keydown', handleKeyDown);
         window.removeEventListener('keyup', handleKeyUp);
     };
-  }, [isEditingPageName]);
+  }, [isEditingPageName, handleUndo, handleRedo]);
+
+  // Close Page Settings Menu when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (e) => {
+      if (showPageSettingsMenu && !e.target.closest('.page-settings-menu')) {
+        setShowPageSettingsMenu(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [showPageSettingsMenu]);
 
   const handleMouseDown = (e) => {
     // Check for middle click (button 1) or background click
@@ -397,22 +428,157 @@ const MainEditor = () => {
   }, [currentPage, templateHTML, pages]);
 
   const addNewPage = useCallback((index = null) => {
-    const targetIndex = index !== null ? index + 1 : pages.length;
-    const newPage = { id: Date.now(), name: `Page ${pages.length + 1}`, html: '', thumbnail: null };
+    // Generate unique ID before setPages so it's captured in closure
+    const newPageId = Date.now() + Math.random();
+    
     setPages(prev => {
+        let newName;
+        const insertAt = index !== null ? index + 1 : prev.length;
+
+        if (index !== null) {
+            // Smart Naming: "Insert After"
+            const sourcePage = prev[index];
+            // Extract root name by stripping any existing " (N)" suffix
+            // e.g. "Page 1 (2)" -> "Page 1", "My Page" -> "My Page"
+            const baseMatch = sourcePage.name.match(/^(.*?) \(\d+\)$/);
+            const rootName = baseMatch ? baseMatch[1] : sourcePage.name;
+
+            // Scan all existing names to find the next available counter
+            // We want "Root (1)", "Root (2)", etc.
+            const existingNames = new Set(prev.map(p => p.name));
+            let counter = 1;
+            while(true) {
+                const candidate = `${rootName} (${counter})`;
+                if (!existingNames.has(candidate)) {
+                    newName = candidate;
+                    break;
+                }
+                counter++;
+            }
+        } else {
+             // Appending to end (Main Add Button): "Page N+1"
+             const maxPageNum = prev.reduce((max, page) => {
+                  const match = page.name.match(/Page (\d+)/);
+                  return match ? Math.max(max, parseInt(match[1])) : max;
+             }, 0);
+             const nextPageNum = maxPageNum + 1;
+             newName = `Page ${nextPageNum}`;
+        }
+
+        // Create new page with the pre-generated ID
+        const newPage = { 
+            id: newPageId, 
+            name: newName, 
+            html: '', 
+            thumbnail: null 
+        };
+
         const newPages = [...prev];
-        newPages.splice(targetIndex, 0, newPage);
+        newPages.splice(insertAt, 0, newPage);
         return newPages;
     });
-    setCurrentPage(targetIndex);
-    setTemplateHTML('');
-  }, [pages.length]);
+
+    // Only switch page if explicitly inserting (Context Menu action)
+    if (index !== null) {
+        setCurrentPage(index + 1);
+        setTemplateHTML(''); 
+    }
+    
+    // Trigger rename mode for the newly added page
+    setTimeout(() => {
+      setEditingPageId(newPageId);
+    }, 100); // Small delay to ensure state is updated
+  }, []);
 
   const duplicatePage = useCallback((index) => {
+    // Need to access current state inside setPages or use dependency.
+    // To properly calculate unique copy name, we need the LATEST pages state.
+    // So we'll force the logic inside the setPages updater or rely on `pages` dependency being up to date.
+    // MainEditor re-renders on `pages` change, so `pages` variable here IS current.
+    
+    // BUT `duplicatePage` is memoized on `[pages, currentPage]`.
+    // It is safe to use `pages` array directly for name calculation.
+    
     const sourceIndex = index !== null ? index : currentPage;
     const sourcePage = pages[sourceIndex];
     if (!sourcePage) return;
-    const newPage = { id: Date.now(), name: `${sourcePage.name} (Copy)`, html: sourcePage.html, thumbnail: sourcePage.thumbnail };
+
+    // Calculate new name: "Page 1" -> "Page 1 (copy)", "Page 1 (copy)" -> "Page 1 (copy 1)"
+    let baseName = sourcePage.name;
+    let newName;
+
+    // Check if it already has (copy X) or (copy)
+    const copyMatch = baseName.match(/^(.*?) \(copy(?: (\d+))?\)$/); // Matches "Base (copy)" or "Base (copy 1)"
+    
+    if (copyMatch) {
+       // It's already a copy style name
+       const rootName = copyMatch[1];
+       // We want to find the next available index for this rootName
+       // But wait, user requirement: "duplicate page 1 (copy), (copy 1),...".
+       // If source is "Page 1", duplicates: "Page 1 (copy)", "Page 1 (copy 1)", "Page 1 (copy 2)"
+       // If source is "Page 1 (copy)", duplicate is "Page 1 (copy) (copy)" ?? OR "Page 1 (copy 1)"?
+       // Usually: Duplicate "Page 1" -> "Page 1 (copy)". Duplicate "Page 1" AGAIN -> "Page 1 (copy 1)".
+       // Duplicate "Page 1 (copy)" -> "Page 1 (copy) (copy)" is standard simple duplicate.
+       // User said: "duplicate page 1 (copy), (copy 1),...". implies incrementing.
+       
+       // Let's implement robust "unique name" generation.
+       // If I duplicate "Page 1", I want "Page 1 (copy)". If that exists, "Page 1 (copy 1)".
+       // This requires scanning ALL pages.
+       baseName = baseName; // use exact source name as base for now?
+       // Actually simpler: Just append (copy) first, then fix collisions?
+       // Let's assume user wants: Source="Name" -> New="Name (copy)" -> Collision? "Name (copy 1)"
+       
+        // Extract pure base without any (copy ...) suffix if we want to accept that behavior?
+        // No, usually Duplicate means "Copy of THIS specific object".
+        // Let's try: Target Name = `${sourcePage.name} (copy)`
+        // If that exists, try `${sourcePage.name} (copy 1)`, etc.
+    }
+
+    let targetNameBase = sourcePage.name;
+    // Check if source ends with " (copy N)" or " (copy)" to just increment?
+    // User request: "if click duplicate page 1 (copy), (copy 1),...".
+    // This implies if I duplicate "Page 1", I get "Page 1 (copy)".
+    // If I duplicate "Page 1" AGAIN, I get "Page 1 (copy 1)".
+    
+    // Logic:
+    // Base = sourcePage.name IF source does not match `(copy...)`.
+    // If source IS `(copy...)`, user might mean duplicate THAT.
+    // Let's strictly follow: New name should always be unique.
+    // Default Pattern: `[Original Name] (copy)` or `[Original Name] (copy N)`
+    
+    // Let's parse the source name to find a "Base". 
+    // If source is "Page 1", Base="Page 1".
+    // If source is "Page 1 (copy)", Base="Page 1".
+    // If source is "Page 1 (copy 2)", Base="Page 1".
+    
+    const baseMatch = sourcePage.name.match(/^(.*?) \(copy(?: \d+)?\)$/);
+    const rootName = baseMatch ? baseMatch[1] : sourcePage.name; 
+
+    // Find all names starting with rootName + " (copy"
+    const existingNames = pages.map(p => p.name);
+    
+    let counter = 0;
+    let proposedName = `${rootName} (copy)`;
+    
+    // Check if "Page 1 (copy)" exists
+    if (!existingNames.includes(proposedName)) {
+        newName = proposedName;
+    } else {
+        // "Page 1 (copy)" exists. Try "Page 1 (copy 1)", "Page 1 (copy 2)"...
+        counter = 1;
+        while (true) {
+            proposedName = `${rootName} (copy ${counter})`;
+            if (!existingNames.includes(proposedName)) {
+                newName = proposedName;
+                break;
+            }
+            counter++;
+        }
+    }
+
+    const newPageId = Date.now();
+    const newPage = { id: newPageId, name: newName, html: sourcePage.html, thumbnail: sourcePage.thumbnail };
+    
     setPages(prev => {
         const newPages = [...prev];
         newPages.splice(sourceIndex + 1, 0, newPage);
@@ -420,6 +586,11 @@ const MainEditor = () => {
     });
     setCurrentPage(sourceIndex + 1);
     setTemplateHTML(sourcePage.html);
+    
+    // Trigger rename mode for the duplicated page
+    setTimeout(() => {
+      setEditingPageId(newPageId);
+    }, 100); // Small delay to ensure state is updated
   }, [pages, currentPage]);
 
   const clearPage = useCallback((index) => {
@@ -570,6 +741,41 @@ const MainEditor = () => {
     }
   }, []);
 
+  // ==================== PAGE REORDERING ====================
+  const movePage = useCallback((fromIndex, toIndex) => {
+    if (toIndex < 0 || toIndex >= pages.length || fromIndex === toIndex) return;
+    
+    setPages(prev => {
+        const newPages = [...prev];
+        const [movedPage] = newPages.splice(fromIndex, 1);
+        newPages.splice(toIndex, 0, movedPage);
+        return newPages;
+    });
+
+    // Update current page selection if the current page was moved
+    if (currentPage === fromIndex) {
+        setCurrentPage(toIndex);
+    } else if (currentPage === toIndex) {
+        // If we moved something INTO the current slot (displacement), 
+        // the logic is complex depending on direction.
+        // Simplest: track the ID.
+        // But since we rely on index for currentPage, let's just stick to the simple case:
+        // If the moved page WAS active, follow it. 
+        // If another page was active, we might need to adjust index.
+        // Calculating valid new index for currentPage:
+        if (fromIndex < currentPage && toIndex >= currentPage) {
+             setCurrentPage(currentPage - 1);
+        } else if (fromIndex > currentPage && toIndex <= currentPage) {
+             setCurrentPage(currentPage + 1);
+        }
+    }
+  }, [pages.length, currentPage]);
+
+  const movePageUp = useCallback((index) => movePage(index, index - 1), [movePage]);
+  const movePageDown = useCallback((index) => movePage(index, index + 1), [movePage]);
+  const movePageToFirst = useCallback((index) => movePage(index, 0), [movePage]);
+  const movePageToLast = useCallback((index) => movePage(index, pages.length - 1), [movePage, pages.length]);
+
   return (
     <div className="flex flex-col h-screen overflow-hidden bg-gray-50 font-sans text-gray-700">
       <Navbar onExport={() => setShowExportModal(true)} />
@@ -589,6 +795,13 @@ const MainEditor = () => {
         duplicatePage={duplicatePage}
         clearPage={clearPage}
         renamePage={renamePage}
+        movePageUp={movePageUp}
+        movePageDown={movePageDown}
+        movePageToFirst={movePageToFirst}
+        movePageToLast={movePageToLast}
+        movePage={movePage}
+        editingPageIdProp={editingPageId}
+        onEditingPageIdChange={setEditingPageId}
         onOpenTemplateModal={() => setShowTemplateModal(true)}
       />
 
@@ -642,7 +855,7 @@ const MainEditor = () => {
                     onElementSelect={handleElementSelect}
                     onGlobalClick={() => setClosePanelsSignal(prev => prev + 1)}
                     onOpenTemplateModal={() => setShowTemplateModal(true)}
-                />
+                /> 
                 
                 {/* Overlay to capture mouse events during panning */}
                 {isPanning && (
@@ -659,6 +872,105 @@ const MainEditor = () => {
                     Page {currentPage + 1} / {pages.length}
                 </div>
             )}
+
+            {/* Previous Page Arrow - Left Side */}
+            {currentPage > 0 && (
+              <button
+                onClick={() => switchToPage(currentPage - 1)}
+                className="absolute left-4 top-1/2 -translate-y-1/2 z-10 bg-white/90 hover:bg-white text-gray-700 hover:text-gray-900 p-3 rounded-full shadow-lg border border-gray-200 backdrop-blur-sm transition-all hover:scale-110"
+                title="Previous Page"
+              >
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <polyline points="15 18 9 12 15 6"></polyline>
+                </svg>
+              </button>
+            )}
+
+            {/* Next Page Arrow - Right Side */}
+            {currentPage < pages.length - 1 && (
+              <button
+                onClick={() => switchToPage(currentPage + 1)}
+                className="absolute right-4 top-1/2 -translate-y-1/2 z-10 bg-white/90 hover:bg-white text-gray-700 hover:text-gray-900 p-3 rounded-full shadow-lg border border-gray-200 backdrop-blur-sm transition-all hover:scale-110"
+                title="Next Page"
+              >
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <polyline points="9 18 15 12 9 6"></polyline>
+                </svg>
+              </button>
+            )}
+
+            {/* Page Settings Menu - Top Right with Settings Icon */}
+            <div className="absolute top-4 right-4 z-10 page-settings-menu">
+              <div className="relative">
+                <button
+                  onClick={() => setShowPageSettingsMenu(prev => !prev)}
+                  className="bg-white hover:bg-gray-100 text-gray-700 p-2 rounded-lg shadow-md border border-gray-200 transition-all"
+                  title="Page Settings"
+                >
+                  <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-settings-icon lucide-settings"><path d="M9.671 4.136a2.34 2.34 0 0 1 4.659 0 2.34 2.34 0 0 0 3.319 1.915 2.34 2.34 0 0 1 2.33 4.033 2.34 2.34 0 0 0 0 3.831 2.34 2.34 0 0 1-2.33 4.033 2.34 2.34 0 0 0-3.319 1.915 2.34 2.34 0 0 1-4.659 0 2.34 2.34 0 0 0-3.32-1.915 2.34 2.34 0 0 1-2.33-4.033 2.34 2.34 0 0 0 0-3.831A2.34 2.34 0 0 1 6.35 6.051a2.34 2.34 0 0 0 3.319-1.915"/><circle cx="12" cy="12" r="3"/></svg>
+                </button>
+
+                {/* Dropdown Menu */}
+                {showPageSettingsMenu && (
+                  <div className="absolute top-full right-0 mt-2 w-48 bg-white rounded-xl shadow-xl border border-gray-100 p-2 z-[9999] flex flex-col gap-1">
+                    <button
+                      onClick={() => { addNewPage(currentPage); setShowPageSettingsMenu(false); }}
+                      className="flex items-center gap-2.5 px-3 py-2 text-xs font-medium text-gray-700 hover:bg-gray-50 rounded-lg text-left"
+                    >
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <line x1="12" y1="5" x2="12" y2="19"></line>
+                        <line x1="5" y1="12" x2="19" y2="12"></line>
+                      </svg>
+                      Add Page
+                    </button>
+                    <button
+                      onClick={() => { duplicatePage(currentPage); setShowPageSettingsMenu(false); }}
+                      className="flex items-center gap-2.5 px-3 py-2 text-xs font-medium text-gray-700 hover:bg-gray-50 rounded-lg text-left"
+                    >
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+                        <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+                      </svg>
+                      Duplicate
+                    </button>
+                    <button
+                      onClick={() => { setShowTemplateModal(true); setShowPageSettingsMenu(false); }}
+                      className="flex items-center gap-2.5 px-3 py-2 text-xs font-medium text-gray-700 hover:bg-gray-50 rounded-lg text-left"
+                    >
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
+                        <line x1="3" y1="9" x2="21" y2="9"></line>
+                        <line x1="9" y1="21" x2="9" y2="9"></line>
+                      </svg>
+                      Template
+                    </button>
+                    
+                    <div className="h-px bg-gray-100 my-1"></div>
+                    
+                    <button
+                      onClick={() => { clearPage(currentPage); setShowPageSettingsMenu(false); }}
+                      className="flex items-center gap-2.5 px-3 py-2 text-xs font-medium text-gray-700 hover:bg-gray-50 rounded-lg text-left"
+                    >
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <circle cx="12" cy="12" r="10"></circle>
+                        <line x1="4.93" y1="4.93" x2="19.07" y2="19.07"></line>
+                      </svg>
+                      Clear
+                    </button>
+                    <button
+                      onClick={() => { deletePage(currentPage); setShowPageSettingsMenu(false); }}
+                      className="flex items-center gap-2.5 px-3 py-2 text-xs font-medium text-red-500 hover:bg-red-50 rounded-lg text-left"
+                    >
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <polyline points="3 6 5 6 21 6"></polyline>
+                        <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+                      </svg>
+                      Delete
+                    </button>
+                  </div>
+                )}
+              </div>
+            </div>
 
             {popupPreview.isOpen && (
               <PopupPreview

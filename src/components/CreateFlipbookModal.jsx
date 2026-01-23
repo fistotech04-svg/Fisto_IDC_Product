@@ -344,7 +344,7 @@ const CreateFlipbookModal = ({ isOpen, onClose, onUpload, onTemplate }) => {
              <span className="text-sm font-medium text-gray-900">Number of Pages<span className="text-red-500">*</span> :</span>
              
              <button 
-                onClick={() => setPageCount(Math.max(1, pageCount - 1))}
+                onClick={() => setPageCount(Math.max(2, pageCount - 2))}
                 className="text-gray-400 hover:text-gray-600 active:scale-95 transition-transform"
              >
                  <Minus size={20} strokeWidth={1.5} />
@@ -356,9 +356,11 @@ const CreateFlipbookModal = ({ isOpen, onClose, onUpload, onTemplate }) => {
                     value={pageCount}
                     onChange={(e) => {
                         let val = parseInt(e.target.value);
-                        if (isNaN(val)) val = 1;
+                        if (isNaN(val)) val = 2;
                         if (val > 12) val = 12;
-                        if (val < 1) val = 1;
+                        if (val < 2) val = 2;
+                        if (val % 2 !== 0) val = val + 1;
+                        if (val > 12) val = 12; 
                         setPageCount(val);
                     }}
                     className="w-full h-full text-center focus:outline-none bg-transparent"
@@ -366,7 +368,7 @@ const CreateFlipbookModal = ({ isOpen, onClose, onUpload, onTemplate }) => {
              </div>
 
              <button 
-                onClick={() => setPageCount(Math.min(12, pageCount + 1))}
+                onClick={() => setPageCount(Math.min(12, pageCount + 2))}
                 className="text-gray-400 hover:text-gray-600 active:scale-95 transition-transform"
              >
                  <Plus size={20} strokeWidth={1.5} />

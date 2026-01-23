@@ -163,7 +163,7 @@ const HTMLTemplateEditor = forwardRef(({
         svgs.forEach(s => s.style.outline = 'none');
         textElements.forEach(t => t.style.outline = 'none');
         
-        img.style.outline = '2px dashed #6366f1';
+        img.style.outline = '2px solid #6366f1';
         img.style.outlineOffset = '2px';
         
         setSelectedElement(img);
@@ -173,19 +173,6 @@ const HTMLTemplateEditor = forwardRef(({
       };
       
       img.addEventListener('click', handleImageClick);
-      
-      img.addEventListener('mouseenter', () => {
-        if (selectedElement !== img) {
-          img.style.outline = '2px dashed rgba(99, 102, 241, 0.3)';
-          img.style.outlineOffset = '2px';
-        }
-      });
-      
-      img.addEventListener('mouseleave', () => {
-        if (selectedElement !== img) {
-          img.style.outline = 'none';
-        }
-      });
     });
 
     // Make Video Elements Clickable and Selectable
@@ -202,7 +189,7 @@ const HTMLTemplateEditor = forwardRef(({
             svgs.forEach(s => s.style.outline = 'none');
             textElements.forEach(t => t.style.outline = 'none');
 
-            video.style.outline = '2px dashed #ef4444';
+            video.style.outline = '2px solid #6366f1';
             video.style.outlineOffset = '2px';
 
             setSelectedElement(video);
@@ -212,19 +199,6 @@ const HTMLTemplateEditor = forwardRef(({
         };
 
         video.addEventListener('click', handleVideoClick);
-
-        video.addEventListener('mouseenter', () => {
-            if (selectedElement !== video) {
-                video.style.outline = '2px dashed rgba(239, 68, 68, 0.4)';
-                video.style.outlineOffset = '2px';
-            }
-        });
-
-        video.addEventListener('mouseleave', () => {
-            if (selectedElement !== video) {
-                video.style.outline = 'none';
-            }
-        });
     });
 
     // Make SVG Elements Clickable and Selectable
@@ -241,7 +215,7 @@ const HTMLTemplateEditor = forwardRef(({
             svgs.forEach(s => s.style.outline = 'none');
             textElements.forEach(t => t.style.outline = 'none');
 
-            svg.style.outline = '2px dashed #f97316';
+            svg.style.outline = '2px solid #6366f1';
             svg.style.outlineOffset = '2px';
 
             setSelectedElement(svg);
@@ -251,19 +225,6 @@ const HTMLTemplateEditor = forwardRef(({
         };
 
         svg.addEventListener('click', handleSvgClick);
-
-        svg.addEventListener('mouseenter', () => {
-            if (selectedElement !== svg) {
-                svg.style.outline = '2px dashed rgba(249, 115, 22, 0.4)';
-                svg.style.outlineOffset = '2px';
-            }
-        });
-
-        svg.addEventListener('mouseleave', () => {
-            if (selectedElement !== svg) {
-                svg.style.outline = 'none';
-            }
-        });
     });
 
     // Click outside to deselect - but ONLY outside the base area
@@ -280,14 +241,32 @@ const HTMLTemplateEditor = forwardRef(({
         outline: 2px solid #6366f1 !important;
         outline-offset: 2px !important;
       }
-      img:hover, svg:hover {
-        opacity: 0.95;
+      /* Hover effects for all editable elements */
+      [data-editable="true"]:hover {
+        background-color: rgba(99, 102, 241, 0.05);
       }
+      
+      /* Text elements - editable */
       [contenteditable]:hover {
         background-color: rgba(99, 102, 241, 0.05);
+        cursor: text;
       }
       [contenteditable]:focus {
         background-color: rgba(99, 102, 241, 0.08);
+      }
+      
+      /* Image, Video, SVG elements */
+      img[data-editable="true"], 
+      video[data-editable="true"], 
+      svg[data-editable="true"] {
+        transition: all 0.2s ease;
+      }
+      
+      img[data-editable="true"]:hover,
+      video[data-editable="true"]:hover,
+      svg[data-editable="true"]:hover {
+        opacity: 0.95;
+        background-color: rgba(99, 102, 241, 0.05);
       }
     `;
     
@@ -451,7 +430,7 @@ const HTMLTemplateEditor = forwardRef(({
         }}
     >
       {/* Template Preview Area */}
-      <div className="flex-1 overflow-auto flex items-center justify-center p-8">
+      <div className="flex-1 overflow-auto flex items-center justify-center">
         <div 
           className="bg-white shadow-2xl"
           style={{
