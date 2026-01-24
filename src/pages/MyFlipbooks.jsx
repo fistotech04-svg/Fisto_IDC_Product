@@ -28,7 +28,7 @@ export default function MyFlipbooks() {
     console.log("Use Template Clicked", templateData);
     setIsCreateModalOpen(false);
     if (templateData) {
-        navigate('/template_editor', { state: templateData });
+        navigate('/editor', { state: templateData });
     }
   };
 
@@ -570,7 +570,7 @@ export default function MyFlipbooks() {
                                             <button className="flex items-center gap-1.5 text-xs font-semibold text-[#4c5add] hover:text-[#3f4bc0] transition-colors">
                                                 <Wrench size={14} /> Customize
                                             </button>
-                                            <Link to="/template_editor" className="flex items-center gap-1.5 text-xs font-semibold text-gray-600 hover:text-blue-600 transition-colors">
+                                            <Link to="/editor" className="flex items-center gap-1.5 text-xs font-semibold text-gray-600 hover:text-blue-600 transition-colors">
                                                 <PenTool size={14} /> Open in Editor
                                             </Link>
                                             <button className="flex items-center gap-1.5 text-xs font-semibold text-gray-500 hover:text-gray-800 transition-colors">

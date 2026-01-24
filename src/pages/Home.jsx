@@ -53,7 +53,7 @@ export default function Home() {
     console.log("Use Template Clicked");
     setIsCreateModalOpen(false);
     if (templateData) {
-        navigate('/template_editor', { state: templateData });
+        navigate('/editor', { state: templateData });
     }
   };
 

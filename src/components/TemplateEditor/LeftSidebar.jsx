@@ -24,7 +24,8 @@ const LeftSidebar = ({
   movePage,
   onOpenTemplateModal,
   editingPageIdProp,
-  onEditingPageIdChange
+  onEditingPageIdChange,
+  isDoublePage
 }) => {
   // Menu State
   const [activeMenuPageId, setActiveMenuPageId] = useState(null);
@@ -38,6 +39,35 @@ const LeftSidebar = ({
   // Drag State
   const [draggedPageIndex, setDraggedPageIndex] = useState(null);
   const [dragOverIndex, setDragOverIndex] = useState(null);
+
+  // Helper to check if a page is currently selected (handling Double Page logic)
+  const isPageSelected = (index) => {
+     if (!isDoublePage) return index === currentPage;
+     
+     // Double Page Logic
+     if (index === 0) return currentPage === 0; // Cover page is always single/exclusive
+     
+     const totalPages = pages.length;
+     // If even total pages, last page is single back cover
+     if (totalPages % 2 === 0 && index === totalPages - 1) return currentPage === totalPages - 1;
+
+     // Calculate spread for the Current Page
+     let startSpread;
+     if (currentPage === 0 || (totalPages % 2 === 0 && currentPage === totalPages - 1)) {
+         return index === currentPage;
+     }
+
+     if (currentPage % 2 !== 0) {
+         // Current is Odd (Left side of spread)
+         startSpread = currentPage;
+     } else {
+         // Current is Even (Right side of spread)
+         startSpread = currentPage - 1;
+     }
+
+     // The spread covers [startSpread, startSpread + 1]
+     return index === startSpread || index === startSpread + 1;
+  };
 
   // Sync external editing state with internal state (for auto-rename after add/duplicate)
   useEffect(() => {
@@ -170,8 +200,8 @@ const LeftSidebar = ({
             <div 
               onClick={() => editingPageId !== page.id && switchToPage(idx)}
               className={`w-full py-3 px-4 rounded-lg cursor-pointer transition-all text-center text-sm font-medium relative flex items-center justify-center
-                ${currentPage === idx
-                  ? 'bg-gray-200 text-gray-900'
+                ${isPageSelected(idx)
+                  ? 'bg-gray-200 text-gray-900 border-gray-300'
                   : 'bg-white text-gray-700 hover:bg-gray-50 border border-gray-200 hover:border-gray-300'}`}
             >
               {/* Drag Handle - Left Side */}

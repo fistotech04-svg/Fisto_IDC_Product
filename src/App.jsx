@@ -7,8 +7,9 @@ import Signup from './pages/Signup';
 import Home from './pages/Home';
 import MyFlipbooks from './pages/MyFlipbooks';
 import Settings from './pages/Settings';
-import TemplateEditor from './Modules/Template_editer';
-
+import Editor from './Modules/Editer';
+import { MainEditor } from './components/TemplateEditor'; // Import MainEditor
+import ThreedEditor from './components/ThreedEditor/ThreedEditor';
 import { ToastProvider } from './components/CustomToast';
 
 function App() {
@@ -19,7 +20,12 @@ function App() {
           {/* Routes WITHOUT navbar */}
           <Route path="/" element={<Signin />} />
           <Route path="/signup" element={<Signup />} />
-          <Route path="/template_editor" element={<TemplateEditor />} />
+          
+          {/* Editor Layout */}
+          <Route path="/editor" element={<Editor />}>
+            <Route index element={<MainEditor />} />
+            <Route path="threed_editor" element={<ThreedEditor />} />
+          </Route>
 
           {/* Routes WITH navbar */}
           <Route element={<MainLayout />}>

@@ -89,7 +89,7 @@ const TopToolbar = ({
             </button>
             <div className="w-[1px] h-4 bg-gray-300 mx-1"></div>
             <button 
-                onClick={() => handleZoom && handleZoom(64)}
+                onClick={() => handleZoom && handleZoom(60)}
                 className="text-xs font-medium text-gray-600 hover:text-gray-900 px-1"
             >
                 Reset

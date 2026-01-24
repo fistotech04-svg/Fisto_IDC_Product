@@ -1,11 +1,11 @@
 // MainEditor.jsx - Updated Prop Passing for Double Page & Preview
 import React, { useState, useCallback, useRef, useEffect } from 'react';
-import { useLocation } from 'react-router-dom';
+import { useLocation, useOutletContext } from 'react-router-dom';
 import JSZip from 'jszip';
 import { jsPDF } from 'jspdf';
 import { saveAs } from 'file-saver';
 import html2canvas from 'html2canvas';
-import Navbar from '../Navbar';
+// Navbar removed
 import ExportModal from '../ExportModal';
 import LeftSidebar from './LeftSidebar';
 import TopToolbar from './TopToolbar';
@@ -33,146 +33,28 @@ const MainEditor = () => {
   // ==================== HOOKS ====================
   usePreventBrowserZoom(); // Block default browser zoom globally
   const deviceInfo = useDeviceDetection();
-  const { zoom, zoomIn, zoomOut, setZoomLevel, fitToScreen } = useZoom(100, editorContainerRef);
+  const { zoom, zoomIn, zoomOut, setZoomLevel, fitToScreen } = useZoom(60, editorContainerRef);
   const { generateThumbnail, getThumbnail } = useThumbnail();
   const { canUndo, canRedo, undo, redo, saveToHistory } = useHistory();
 
   // ==================== STATE ====================
-  const [showTemplateModal, setShowTemplateModal] = useState(true);
+  const [showTemplateModal, setShowTemplateModal] = useState(false);
   const [showPreview, setShowPreview] = useState(false);
   const [showExportModal, setShowExportModal] = useState(false);
   const [showPageSettingsMenu, setShowPageSettingsMenu] = useState(false);
 
-  // Export Logic
-  const handleDownloadPages = async (pagesToExport, format = 'png') => {
-      try {
-        const PAGE_WIDTH = 595;
-        const PAGE_HEIGHT = 842;
-        
-        // Helper to sanitize filenames
-        const sanitizeName = (name) => name.replace(/[^a-z0-9 _-]/gi, '_').replace(/\s+/g, '_');
-        const bookNameClean = sanitizeName(pageName) || 'Flipbook';
+  // Hook up to Layout Navbar Export button
+  const { setExportHandler } = useOutletContext() || {};
+  
+  useEffect(() => {
+    if (setExportHandler) {
+      setExportHandler(() => () => setShowExportModal(true));
+      // Cleanup
+      return () => setExportHandler(null); 
+    }
+  }, [setExportHandler]);
 
-        // Helper to render page to canvas
-        const renderPageToCanvas = async (html, scale = 4) => {
-             const hiddenFrame = document.createElement('iframe');
-             hiddenFrame.style.width = `${PAGE_WIDTH}px`;
-             hiddenFrame.style.height = `${PAGE_HEIGHT}px`;
-             hiddenFrame.style.position = 'fixed';
-             hiddenFrame.style.top = '0';
-             hiddenFrame.style.left = '0';
-             hiddenFrame.style.zIndex = '-9999';
-             hiddenFrame.style.border = 'none';
-             document.body.appendChild(hiddenFrame);
-             
-             const doc = hiddenFrame.contentDocument;
-             doc.open();
-             doc.write(html);
-             
-             // Inject styles to ensure full page capture and background printing
-             const style = doc.createElement('style');
-             style.innerHTML = `
-                html, body {
-                    width: 595px !important;
-                    height: 842px !important;
-                    margin: 0 !important;
-                    padding: 0 !important;
-                    overflow: hidden !important;
-                    -webkit-print-color-adjust: exact !important;
-                    print-color-adjust: exact !important;
-                    background: white !important;
-                }
-                * {
-                   -webkit-print-color-adjust: exact !important;
-                   print-color-adjust: exact !important;
-                }
-             `;
-             if (doc.head) doc.head.appendChild(style);
-             else doc.body.appendChild(style);
-
-             doc.close();
-             
-             // Wait for images/content to load (Extended delay for reliability)
-             await new Promise(resolve => setTimeout(resolve, 1500));
-             
-             const canvas = await html2canvas(doc.documentElement, {
-                scale: scale,
-                useCORS: true,
-                allowTaint: true,
-                logging: false,
-                width: PAGE_WIDTH,
-                height: PAGE_HEIGHT,
-                x: 0,
-                y: 0,
-                scrollX: 0,
-                scrollY: 0,
-                backgroundColor: '#ffffff'
-             });
-             
-             document.body.removeChild(hiddenFrame);
-             return canvas;
-        };
-
-        if (format === 'pdf') {
-             // Generate Single Merged PDF
-             // Using A4 size in mm (210 x 297) approx matches 595x842 pts
-             const pdf = new jsPDF('p', 'pt', [PAGE_WIDTH, PAGE_HEIGHT]);
-             
-             for (let i = 0; i < pagesToExport.length; i++) {
-                 const pageNum = pagesToExport[i];
-                 const page = pages.find((p, idx) => (idx + 1) === pageNum);
-                 const pageHTML = page?.html || '';
-                 
-                 const canvas = await renderPageToCanvas(pageHTML, 4);
-                 const imgData = canvas.toDataURL('image/jpeg', 0.95); // High quality JPEG for PDF
-                 
-                 if (i > 0) pdf.addPage([PAGE_WIDTH, PAGE_HEIGHT]);
-                 pdf.addImage(imgData, 'JPEG', 0, 0, PAGE_WIDTH, PAGE_HEIGHT);
-             }
-             
-             pdf.save(`${bookNameClean}.pdf`);
-             
-        } else {
-            // JPG or PNG Export
-            const mimeType = format === 'jpg' ? 'image/jpeg' : 'image/png';
-            const ext = format === 'jpg' ? 'jpg' : 'png';
-
-            if (pagesToExport.length === 1) {
-              // Single Image Download
-              const pageNum = pagesToExport[0];
-              const page = pages.find((p, i) => (i + 1) === pageNum);
-              const pageNameClean = sanitizeName(page?.name || `Page_${pageNum}`);
-              
-              const canvas = await renderPageToCanvas(page?.html || '', 4);
-              
-              canvas.toBlob((blob) => {
-                saveAs(blob, `${bookNameClean}_${pageNameClean}.${ext}`);
-              }, mimeType);
-              
-            } else {
-              // Multiple Images -> ZIP
-              const zip = new JSZip();
-              
-              for (const pageNum of pagesToExport) {
-                 const page = pages.find((p, i) => (i + 1) === pageNum);
-                 const pageNameClean = sanitizeName(page?.name || `Page_${pageNum}`);
-                 
-                 const canvas = await renderPageToCanvas(page?.html || '', 4);
-
-                 const blob = await new Promise(resolve => canvas.toBlob(resolve, mimeType));
-                 
-                 zip.file(`${pageNameClean}.${ext}`, blob);
-              }
-              
-              const content = await zip.generateAsync({ type: 'blob' });
-              saveAs(content, `${bookNameClean}.zip`);
-            }
-        }
-      } catch (err) {
-        console.error("Export failed:", err);
-        alert("Failed to export pages. Please try again.");
-      }
-    };
+  // Export logic moved below state declarations to ensure all variables are accessible
   
   // Template state
   // Template state
@@ -267,6 +149,150 @@ const MainEditor = () => {
   const closeAlert = useCallback(() => {
     setAlertState(prev => ({ ...prev, isOpen: false }));
   }, []);
+
+  // ==================== EXPORT LOGIC ====================
+  const handleDownloadPages = useCallback(async (pagesToExport, format = 'png') => {
+      try {
+        const PAGE_WIDTH = 595;
+        const PAGE_HEIGHT = 842;
+        
+        // Helper to sanitize filenames
+        const sanitizeName = (name) => (name || 'Untitled').replace(/[^a-z0-9 _-]/gi, '_').replace(/\s+/g, '_');
+        const bookNameClean = sanitizeName(pageName) || 'Flipbook';
+
+        // Helper to render page to canvas
+        const renderPageToCanvas = async (html, scale = 4) => {
+             const hiddenFrame = document.createElement('iframe');
+             hiddenFrame.style.width = `${PAGE_WIDTH}px`;
+             hiddenFrame.style.height = `${PAGE_HEIGHT}px`;
+             hiddenFrame.style.position = 'fixed';
+             hiddenFrame.style.top = '0';
+             hiddenFrame.style.left = '0';
+             hiddenFrame.style.zIndex = '-9999';
+             hiddenFrame.style.border = 'none';
+             document.body.appendChild(hiddenFrame);
+             
+             const doc = hiddenFrame.contentDocument;
+             if (!doc) throw new Error("Could not create iframe document");
+
+             // doc.open() is not strictly needed for iframe contentDocument and can cause issues if not handled perfectly
+             // Just writing to it is often safer, or ensuring we wait for load.
+             doc.write(html);
+             doc.close(); // Essential to finish document parsing
+             
+             // Inject styles to ensure full page capture and background printing
+             const style = doc.createElement('style');
+             style.innerHTML = `
+                html, body {
+                    width: 595px !important;
+                    height: 842px !important;
+                    margin: 0 !important;
+                    padding: 0 !important;
+                    overflow: hidden !important;
+                    -webkit-print-color-adjust: exact !important;
+                    print-color-adjust: exact !important;
+                    background: white !important;
+                }
+                * {
+                   -webkit-print-color-adjust: exact !important;
+                   print-color-adjust: exact !important;
+                }
+             `;
+             
+             // Safer append: ensure head or body exists, or make one.
+             // Writing raw HTML usually creates them.
+             if (doc.head) {
+                 doc.head.appendChild(style);
+             } else if (doc.body) {
+                 doc.body.appendChild(style);
+             } else {
+                 // Extreme fallback
+                 const head = doc.createElement('head');
+                 doc.documentElement.appendChild(head);
+                 head.appendChild(style);
+             }
+
+             // doc.close() removed (was duplicate)
+             
+             // Wait for images/content to load
+             await new Promise(resolve => setTimeout(resolve, 1500));
+             
+             const canvas = await html2canvas(doc.documentElement, {
+                scale: scale,
+                useCORS: true,
+                allowTaint: true,
+                logging: false,
+                width: PAGE_WIDTH,
+                height: PAGE_HEIGHT,
+                x: 0,
+                y: 0,
+                backgroundColor: '#ffffff'
+             });
+             
+             document.body.removeChild(hiddenFrame);
+             return canvas;
+        };
+
+        if (format === 'pdf') {
+             const pdf = new jsPDF('p', 'pt', [PAGE_WIDTH, PAGE_HEIGHT]);
+             
+             for (let i = 0; i < pagesToExport.length; i++) {
+                 const pageNum = pagesToExport[i];
+                 const page = pages.find((p, idx) => (idx + 1) === pageNum);
+                 const pageHTML = page?.html || '';
+                 
+                 const canvas = await renderPageToCanvas(pageHTML, 4);
+                 const imgData = canvas.toDataURL('image/jpeg', 0.95);
+                 
+                 if (i > 0) pdf.addPage([PAGE_WIDTH, PAGE_HEIGHT]);
+                 pdf.addImage(imgData, 'JPEG', 0, 0, PAGE_WIDTH, PAGE_HEIGHT);
+             }
+             
+             pdf.save(`${bookNameClean}.pdf`);
+             
+        } else {
+            const mimeType = format === 'jpg' ? 'image/jpeg' : 'image/png';
+            const ext = format === 'jpg' ? 'jpg' : 'png';
+
+            if (pagesToExport.length === 1) {
+              const pageNum = pagesToExport[0];
+              const page = pages.find((p, i) => (i + 1) === pageNum);
+              const pageNameClean = sanitizeName(page?.name || `Page_${pageNum}`);
+              
+              const canvas = await renderPageToCanvas(page?.html || '', 4);
+              
+              canvas.toBlob((blob) => {
+                if (blob) {
+                    saveAs(blob, `${bookNameClean}_${pageNameClean}.${ext}`);
+                } else {
+                    throw new Error("Failed to generate image blob");
+                }
+              }, mimeType);
+              
+            } else {
+              const zip = new JSZip();
+              
+              for (const pageNum of pagesToExport) {
+                 const page = pages.find((p, i) => (i + 1) === pageNum);
+                 const pageNameClean = sanitizeName(page?.name || `Page_${pageNum}`);
+                 
+                 const canvas = await renderPageToCanvas(page?.html || '', 4);
+
+                 const blob = await new Promise(resolve => canvas.toBlob(resolve, mimeType));
+                 if (blob) {
+                    zip.file(`${pageNameClean}.${ext}`, blob);
+                 }
+              }
+              
+              const content = await zip.generateAsync({ type: 'blob' });
+              saveAs(content, `${bookNameClean}.zip`);
+            }
+        }
+      } catch (err) {
+        console.error("Export failed:", err);
+        showAlert('error', 'Export Failed', `Failed to export pages. ${err.message}`);
+      }
+    }, [pages, pageName, showAlert]);
 
   // ==================== HISTORY TRACKING ====================
   useEffect(() => {
@@ -776,9 +802,111 @@ const MainEditor = () => {
   const movePageToFirst = useCallback((index) => movePage(index, 0), [movePage]);
   const movePageToLast = useCallback((index) => movePage(index, pages.length - 1), [movePage, pages.length]);
 
+  const handlePageUpdate = useCallback((index, newHTML) => {
+    setPages(prev => {
+        const updated = [...prev];
+        if (updated[index]) {
+            updated[index] = { ...updated[index], html: newHTML };
+        }
+        return updated;
+    });
+    if (index === currentPage) {
+        setTemplateHTML(newHTML);
+    }
+    if (pages[index]) {
+       generateThumbnail(newHTML, pages[index].id, 800);
+    }
+  }, [currentPage, generateThumbnail, pages]);
+
+  const handlePreviousPage = useCallback(() => {
+    if (!isDoublePage) {
+        if (currentPage > 0) switchToPage(currentPage - 1);
+        return;
+    }
+    
+    // Double Page Logic
+    if (currentPage === 0) return;
+
+    // If we are on first spread (Page 1 or 2), go to Cover (0)
+    // Spread 1 starts at 1. Spread 2 starts at 3.
+    const isOdd = currentPage % 2 !== 0;
+    const currentSpreadStart = isOdd ? currentPage : currentPage - 1;
+
+    // If current spread start is 1, previous is 0
+    if (currentSpreadStart <= 1) {
+        switchToPage(0);
+    } else {
+        // Go back one full spread (2 pages)
+        switchToPage(currentSpreadStart - 2);
+    }
+  }, [currentPage, isDoublePage, switchToPage]);
+
+  const handleNextPage = useCallback(() => {
+    if (!isDoublePage) {
+        if (currentPage < pages.length - 1) switchToPage(currentPage + 1);
+        return;
+    }
+
+    // Double Page Logic
+    if (currentPage === 0) {
+        // From Cover to first spread (Page 1)
+        if (pages.length > 1) switchToPage(1);
+        return;
+    }
+
+    const isOdd = currentPage % 2 !== 0;
+    const currentSpreadStart = isOdd ? currentPage : currentPage - 1;
+    const nextSpreadStart = currentSpreadStart + 2;
+
+    if (nextSpreadStart < pages.length) {
+        switchToPage(nextSpreadStart);
+    }
+  }, [currentPage, isDoublePage, switchToPage, pages.length]);
+
+  // Handle Zoom Changes (Persist to Page)
+  const handleZoomChange = useCallback((newZoom) => {
+      setZoomLevel(newZoom);
+      setPages(prev => {
+          const updated = [...prev];
+          
+          if (!isDoublePage) {
+             // Update current page zoom
+             if (updated[currentPage]) {
+                 updated[currentPage] = { ...updated[currentPage], zoom: newZoom };
+             }
+          } else {
+             // Double Page: Update both pages in spread to keep them consistent
+             // If cover (0)
+             if (currentPage === 0) {
+                 if (updated[0]) updated[0] = { ...updated[0], zoom: newZoom };
+             } else {
+                 const isOdd = currentPage % 2 !== 0;
+                 const leftIndex = isOdd ? currentPage : currentPage - 1;
+                 const rightIndex = leftIndex + 1;
+                 
+                 if (updated[leftIndex]) updated[leftIndex] = { ...updated[leftIndex], zoom: newZoom };
+                 if (updated[rightIndex]) updated[rightIndex] = { ...updated[rightIndex], zoom: newZoom };
+             }
+          }
+          return updated;
+      });
+  }, [currentPage, isDoublePage]);
+
+  // Restore Zoom on Page Change
+  useEffect(() => {
+     if (pages[currentPage]) {
+         const savedZoom = pages[currentPage].zoom || 60;
+         // Only update if different (prevent loop slightly, though react handles it)
+         setZoomLevel(savedZoom);
+     }
+  }, [currentPage]); // Re-run when page changes. (Dependency on pages omitted to avoid cycle with setPages in handleZoomChange, but we need initial values?)
+  // Actually if we omit pages, we might miss updates? No, we only care about LOADING when currentPage changes.
+  // If we change zoom, handleZoomChange updates state AND pages. UseEffect might run if we included pages.
+  // By omitting pages, we only load when switching. Perfect.
+
   return (
-    <div className="flex flex-col h-screen overflow-hidden bg-gray-50 font-sans text-gray-700">
-      <Navbar onExport={() => setShowExportModal(true)} />
+    <div className="flex flex-col h-full overflow-hidden bg-gray-50 font-sans text-gray-700">
+      {/* Navbar moved to Layout */}
       <div 
         className="flex flex-1 overflow-hidden"
         onMouseMove={handleMouseMove}
@@ -803,6 +931,7 @@ const MainEditor = () => {
         editingPageIdProp={editingPageId}
         onEditingPageIdChange={setEditingPageId}
         onOpenTemplateModal={() => setShowTemplateModal(true)}
+        isDoublePage={isDoublePage}
       />
 
       <main className="flex-1 flex flex-col min-w-0 bg-gray-50 border-r border-gray-200">
@@ -816,7 +945,7 @@ const MainEditor = () => {
           onUndo={handleUndo}
           onRedo={handleRedo}
           zoom={zoom}
-          handleZoom={setZoomLevel}
+          handleZoom={handleZoomChange}
         />
 
         <div className="flex-1 flex overflow-hidden relative">
@@ -846,15 +975,22 @@ const MainEditor = () => {
                     ref={htmlEditorRef}
                     templateHTML={templateHTML}
                     onTemplateChange={handleTemplateChange}
+                    onPageUpdate={handlePageUpdate}
                     pages={pages}
                     currentPage={currentPage}
                     onPageChange={switchToPage}
                     zoom={zoom}
-                    onZoomChange={setZoomLevel}
+                    onZoomChange={handleZoomChange}
                     onPanStart={handleIframePanStart}
                     onElementSelect={handleElementSelect}
                     onGlobalClick={() => setClosePanelsSignal(prev => prev + 1)}
-                    onOpenTemplateModal={() => setShowTemplateModal(true)}
+                    onOpenTemplateModal={(index) => {
+                        if (typeof index === 'number' && index !== currentPage) {
+                            switchToPage(index);
+                        }
+                        setShowTemplateModal(true);
+                    }}
+                    isDoublePage={isDoublePage}
                 /> 
                 
                 {/* Overlay to capture mouse events during panning */}
@@ -874,30 +1010,86 @@ const MainEditor = () => {
             )}
 
             {/* Previous Page Arrow - Left Side */}
-            {currentPage > 0 && (
-              <button
-                onClick={() => switchToPage(currentPage - 1)}
-                className="absolute left-4 top-1/2 -translate-y-1/2 z-10 bg-white/90 hover:bg-white text-gray-700 hover:text-gray-900 p-3 rounded-full shadow-lg border border-gray-200 backdrop-blur-sm transition-all hover:scale-110"
-                title="Previous Page"
-              >
-                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <polyline points="15 18 9 12 15 6"></polyline>
-                </svg>
-              </button>
-            )}
+            {(() => {
+                const canGoPrevious = isDoublePage 
+                    ? currentPage > 0 // Start (Cover) is 0. If > 0, we can go back.
+                    : currentPage > 0;
+                
+                if (!canGoPrevious) return null;
+
+                return (
+                  <button
+                    onClick={handlePreviousPage}
+                    className="absolute left-4 top-1/2 -translate-y-1/2 z-10 bg-white/90 hover:bg-white text-gray-700 hover:text-gray-900 p-3 rounded-full shadow-lg border border-gray-200 backdrop-blur-sm transition-all hover:scale-110"
+                    title="Previous Page"
+                  >
+                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <polyline points="15 18 9 12 15 6"></polyline>
+                    </svg>
+                  </button>
+                );
+            })()}
 
             {/* Next Page Arrow - Right Side */}
-            {currentPage < pages.length - 1 && (
-              <button
-                onClick={() => switchToPage(currentPage + 1)}
-                className="absolute right-4 top-1/2 -translate-y-1/2 z-10 bg-white/90 hover:bg-white text-gray-700 hover:text-gray-900 p-3 rounded-full shadow-lg border border-gray-200 backdrop-blur-sm transition-all hover:scale-110"
-                title="Next Page"
-              >
-                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <polyline points="9 18 15 12 9 6"></polyline>
-                </svg>
-              </button>
-            )}
+            {(() => {
+                let canGoNext = false;
+                if (!isDoublePage) {
+                    canGoNext = currentPage < pages.length - 1;
+                } else {
+                    if (currentPage === 0) {
+                        canGoNext = pages.length > 1;
+                    } else {
+                        const isOdd = currentPage % 2 !== 0; // True if 1, 3, 5
+                        const currentSpreadStart = isOdd ? currentPage : currentPage - 1;
+                        const nextSpreadStart = currentSpreadStart + 2; 
+                        
+                        // Check if we can technically advance
+                        // If next indices exist OR if we are advancing to the single last page
+                        if (nextSpreadStart < pages.length) {
+                             canGoNext = true;
+                        } else if (nextSpreadStart === pages.length && pages.length % 2 === 0) {
+                             // SPECIAL CASE: Even pages (e.g. 6). Last index is 5.
+                             // Spread 3,4 (start=3). NextSpread=5.
+                             // 5 < 6. It's covered by above check.
+                             
+                             // Wait, logic:
+                             // If indices 0..5. (Len 6).
+                             // Current: 3 (Spread 3,4).
+                             // NextSpread: 5.
+                             // 5 < 6. True.
+                             
+                             // Current: 5 (Back Cover).
+                             // NextSpread: 7.
+                             // 7 < 6. False.
+                             
+                             // Odd pages (0..4). (Len 5).
+                             // Current: 1 (Spread 1,2).
+                             // NextSpread: 3.
+                             // 3 < 5. True.
+                             
+                             // Current: 3 (Spread 3,4).
+                             // NextSpread: 5.
+                             // 5 < 5. False. (Correct, as 3,4 is last view).
+                             
+                             canGoNext = false; // It's covered above.
+                        }
+                    }
+                }
+                
+                if (!canGoNext) return null;
+
+                return (
+                  <button
+                    onClick={handleNextPage}
+                    className="absolute right-4 top-1/2 -translate-y-1/2 z-10 bg-white/90 hover:bg-white text-gray-700 hover:text-gray-900 p-3 rounded-full shadow-lg border border-gray-200 backdrop-blur-sm transition-all hover:scale-110"
+                    title="Next Page"
+                  >
+                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <polyline points="9 18 15 12 9 6"></polyline>
+                    </svg>
+                  </button>
+                );
+            })()}
 
             {/* Page Settings Menu - Top Right with Settings Icon */}
             <div className="absolute top-4 right-4 z-10 page-settings-menu">
