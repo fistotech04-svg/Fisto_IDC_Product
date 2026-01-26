@@ -22,12 +22,19 @@ import {
   Upload,
 } from 'lucide-react';
 
-const InteractionPanel = ({ selectedElement, onUpdate, onPopupPreviewUpdate }) => {
+const InteractionPanel = ({ selectedElement, onUpdate, onPopupPreviewUpdate, isOpen, onToggle }) => {
   const popupFileInputRef = React.useRef(null);
-  const [isInteractionsOpen, setIsInteractionsOpen] = useState(false);
+  const [internalIsOpen, setInternalIsOpen] = useState(false);
+  
+  // Determine if open based on prop or internal state
+  const isInteractionsOpen = isOpen !== undefined ? isOpen : internalIsOpen;
   const [interactionType, setInteractionType] = useState('none');
   const [interactionTrigger, setInteractionTrigger] = useState('click');
   const [zoomLevel, setZoomLevel] = useState(2);
+  const [showTypeDropdown, setShowTypeDropdown] = useState(false);
+  const [showTriggerDropdown, setShowTriggerDropdown] = useState(false);
+  const [showFitDropdown, setShowFitDropdown] = useState(false);
+  const dropdownRef = React.useRef(null);
 
   // Values for inputs
   const [linkUrl, setLinkUrl] = useState('');
@@ -91,7 +98,6 @@ const InteractionPanel = ({ selectedElement, onUpdate, onPopupPreviewUpdate }) =
         setTooltipFillColor(selectedElement.getAttribute('data-tooltip-fill-color') || '#000000');
       }
 
-      // Handle Editor Preview State
       if (onPopupPreviewUpdate) {
         if (type === 'popup' && showPopupPreview) {
           onPopupPreviewUpdate({
@@ -117,11 +123,21 @@ const InteractionPanel = ({ selectedElement, onUpdate, onPopupPreviewUpdate }) =
       if (onPopupPreviewUpdate) onPopupPreviewUpdate({ isOpen: false });
     }
 
+    const handleClickOutside = (event) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target)) {
+        setShowTypeDropdown(false);
+        setShowTriggerDropdown(false);
+        setShowFitDropdown(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+
     // Cleanup: Close preview on unmount
     return () => {
       if (onPopupPreviewUpdate) onPopupPreviewUpdate({ isOpen: false });
+      document.removeEventListener('mousedown', handleClickOutside);
     };
-  }, [selectedElement, onPopupPreviewUpdate]);
+  }, [selectedElement, onPopupPreviewUpdate, showPopupPreview]);
 
   if (!selectedElement) return null;
 
@@ -269,6 +285,13 @@ const InteractionPanel = ({ selectedElement, onUpdate, onPopupPreviewUpdate }) =
 
   const handleTypeChange = (newType) => {
     setInteractionType(newType);
+    let finalTrigger = interactionTrigger;
+
+    // Reset trigger if switching to link and currently on hover (as hover is not allowed for links)
+    if (newType === 'link' && interactionTrigger === 'hover') {
+      finalTrigger = 'click';
+      setInteractionTrigger('click');
+    }
     if (newType === 'none') {
       applyInteraction('none', null);
     } else {
@@ -341,7 +364,7 @@ const InteractionPanel = ({ selectedElement, onUpdate, onPopupPreviewUpdate }) =
         }
       }
 
-      applyInteraction(newType, currentValue, currentContent, newType === 'popup' ? 'immediate' : null, null, styleOverrides);
+      applyInteraction(newType, currentValue, currentContent, newType === 'popup' ? 'immediate' : finalTrigger, null, styleOverrides);
     }
   };
 
@@ -785,12 +808,14 @@ const InteractionPanel = ({ selectedElement, onUpdate, onPopupPreviewUpdate }) =
     switch (interactionType) {
       case 'none': return 'None';
       case 'link': return 'Open Link';
-      case 'navigation': return 'Navigate';
+      case 'navigation': return 'Navigate to';
       case 'call': return 'Call';
       case 'zoom': return 'Zoom';
-      case 'popup': return 'Popup';
-      case 'download': return 'Download';
+      case 'popup': return 'PopUp';
       case 'tooltip': return 'Tooltip';
+      case 'download': return 'Download';
+      case '3dviewer': return '3D Viewer';
+      case 'slideshow': return 'Slideshow';
       default: return 'None';
     }
   }
@@ -800,22 +825,25 @@ const InteractionPanel = ({ selectedElement, onUpdate, onPopupPreviewUpdate }) =
   }
 
   return (
-    <div className="bg-white border border-gray-200 rounded-lg shadow-sm overflow-hidden md:col-span-1">
+    <div className="bg-white border border-gray-200 rounded-[15px] shadow-sm relative">
 
       {/* ================= HEADER ================= */}
       <div
-        className="flex items-center justify-between px-4 py-3 cursor-pointer hover:bg-gray-50 transition-colors"
-        onClick={() => setIsInteractionsOpen(!isInteractionsOpen)}
+        className="flex items-center justify-between px-4 py-4 cursor-pointer hover:bg-gray-50 transition-colors border-b border-gray-50"
+        onClick={() => {
+          if (onToggle) onToggle();
+          else setInternalIsOpen(!internalIsOpen);
+        }}
       >
         <div className="flex items-center gap-2">
-          <Zap size={18} className="text-gray-600" />
-          <span className="font-medium text-gray-800 text-[15px]">
+          <MousePointerClick size={20} className="text-gray-600" />
+          <span className="font-medium text-gray-700 text-sm">
             Interaction
           </span>
         </div>
         <ChevronUp
           size={16}
-          className={`text-gray-500 transition-transform duration-200 ${isInteractionsOpen ? '' : 'rotate-180'}`}
+          className={`text-gray-400 transition-transform duration-200 ${isInteractionsOpen ? '' : 'rotate-180'}`}
         />
       </div>
 
@@ -823,63 +851,109 @@ const InteractionPanel = ({ selectedElement, onUpdate, onPopupPreviewUpdate }) =
         <div className="p-4 pt-0 animate-fadeIn space-y-4">
 
           {/* ================= TOP SELECTORS ================= */}
-          <div className="flex flex-wrap gap-3 mb-6 border-b border-gray-50 pb-2">
+          <div className="flex flex-wrap gap-3 mb-6 border-b border-gray-50 pb-2" ref={dropdownRef}>
             {/* Type Selector */}
-            <div className="relative group">
-              <div className="flex items-center gap-2 bg-gray-100 hover:bg-gray-200 px-3 py-1.5 rounded-lg cursor-pointer transition-colors text-sm text-gray-700 font-medium">
-                <span>{getInteractionLabel()}</span>
-                <ArrowRightLeft size={14} className="text-gray-500" />
-              </div>
-              <select
-                className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
-                value={interactionType}
-                onChange={(e) => handleTypeChange(e.target.value)}
+            <div className="relative">
+              <button
+                onClick={() => { setShowTypeDropdown(!showTypeDropdown); setShowTriggerDropdown(false); }}
+                className="flex items-center justify-between min-w-[115px] px-3 py-2 bg-white border border-gray-200 rounded-xl shadow-sm hover:bg-gray-50 transition-colors"
               >
-                <option value="none">None</option>
-                <option value="link">Open Link</option>
-                <option value="navigation">Go to Page</option>
-                <option value="call">Phone Call</option>
-                <option value="zoom">Zoom Image</option>
-                <option value="popup">Popup Message</option>
-                <option value="download">Download File</option>
-                <option value="tooltip">Tooltip</option>
-              </select>
+                <span className="text-[13px] font-bold text-gray-700">{getInteractionLabel()}</span>
+                <ChevronUp size={14} className={`text-gray-500 transition-transform ${showTypeDropdown ? '' : 'rotate-180'}`} />
+              </button>
+
+              {showTypeDropdown && (
+                <>
+                  <div className="fixed inset-0 z-[9998]" onClick={() => setShowTypeDropdown(false)} />
+                  <div className="absolute top-full left-0 mt-2 w-30 bg-white border border-gray-300 rounded-[15px] shadow-2xl overflow-hidden z-[9999] flex flex-col py-2 animate-in fade-in zoom-in-95 duration-150 no-scrollbar">
+                    <div className="flex flex-col">
+                      {[
+                        { id: 'link', label: 'Open Link' },
+                        { id: 'navigation', label: 'Navigate to' },
+                        { id: 'call', label: 'Call' },
+                        { id: 'zoom', label: 'Zoom' },
+                        { id: 'popup', label: 'Popup' },
+                        { id: 'tooltip', label: 'Tooltip' },
+                        { id: 'download', label: 'Download' },
+                        { id: '3dviewer', label: '3D Viewer' },
+                        { id: 'slideshow', label: 'Slideshow' }
+                      ].map((opt) => (
+                        <button
+                          key={opt.id}
+                          onClick={() => { handleTypeChange(opt.id); setShowTypeDropdown(false); }}
+                          className={`px-4 py-2.5 text-[15px] font-normal transition-colors text-center w-full ${interactionType === opt.id ? 'bg-gray-50 text-indigo-600 font-bold' : 'text-gray-600 hover:bg-gray-50 hover:text-indigo-600'}`}
+                        >
+                          {opt.label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                </>
+              )}
             </div>
 
             {/* Trigger Selector */}
-            <div className="relative group">
-              <div className="flex items-center gap-2 bg-gray-100 hover:bg-gray-200 px-3 py-1.5 rounded-lg cursor-pointer transition-colors text-sm text-gray-700 font-medium">
-                <span>{getTriggerLabel()}</span>
-                <ArrowRightLeft size={14} className="text-gray-500" />
-              </div>
-              <select
-                className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
-                value={interactionTrigger}
-                onChange={(e) => handleTriggerChange(e.target.value)}
+            <div className="relative">
+              <button
+                onClick={() => { setShowTriggerDropdown(!showTriggerDropdown); setShowTypeDropdown(false); }}
+                className="flex items-center justify-between min-w-[100px] px-3 py-2 bg-white border border-gray-200 rounded-xl shadow-sm hover:bg-gray-50 transition-colors"
               >
-                <option value="click">On Click</option>
-                <option value="hover">On Hover</option>
-              </select>
+                <span className="text-[13px] font-bold text-gray-700">{getTriggerLabel()}</span>
+                <ChevronUp size={14} className={`text-gray-500 transition-transform ${showTriggerDropdown ? '' : 'rotate-180'}`} />
+              </button>
+
+              {showTriggerDropdown && (
+                <>
+                  <div className="fixed inset-0 z-[9998]" onClick={() => setShowTriggerDropdown(false)} />
+                  <div className="absolute top-full left-0 mt-2 w-24 bg-white border border-gray-100 rounded-xl shadow-2xl overflow-hidden z-[9999] flex flex-col py-1 animate-in fade-in zoom-in-95 duration-150">
+                    {[
+                      { id: 'click', label: 'On Click' },
+                      { id: 'hover', label: 'On Hover' }
+                    ].filter(opt => !(interactionType === 'link' && opt.id === 'hover')).map((opt) => (
+                      <button
+                        key={opt.id}
+                        onClick={() => { handleTriggerChange(opt.id); setShowTriggerDropdown(false); }}
+                        className={`px-4 py-2 text-[13px] font-medium transition-colors text-center w-full ${interactionTrigger === opt.id ? 'bg-gray-50 text-indigo-600 font-bold' : 'text-gray-600 hover:bg-gray-50 hover:text-indigo-600'}`}
+                        >
+                        {opt.label}
+                      </button>
+                    ))}
+                  </div>
+                </>
+              )}
             </div>
 
             {/* Fit Selector (only for popup) */}
             {interactionType === 'popup' && (
               <div className="flex-grow flex justify-end">
-                <div className="relative border border-gray-400 rounded-lg px-3 py-1.5 bg-white flex items-center justify-between min-w-[80px]">
-                  <select
-                    value={popupFit}
-                    onChange={(e) => {
-                      const val = e.target.value;
-                      setPopupFit(val);
-                      applyInteraction('popup', null, popupText, null, null, { fit: val });
-                    }}
-                    className="text-sm text-gray-700 font-medium w-full outline-none appearance-none bg-transparent pr-4"
+                <div className="relative">
+                  <button
+                    onClick={() => { setShowFitDropdown(!showFitDropdown); setShowTypeDropdown(false); setShowTriggerDropdown(false); }}
+                    className="flex items-center justify-between w-24 px-3 py-2 bg-white border border-gray-200 rounded-xl shadow-sm hover:bg-gray-50 transition-colors"
                   >
-                    <option>Fit</option>
-                    <option>Fill</option>
-                    <option>Stretch</option>
-                  </select>
-                  <ChevronUp size={14} className="rotate-180 text-gray-500 absolute right-2" />
+                    <span className="text-[13px] font-bold text-gray-700 capitalize">{popupFit}</span>
+                    <ChevronUp size={14} className={`text-gray-500 transition-transform ${showFitDropdown ? '' : 'rotate-180'}`} />
+                  </button>
+                  {showFitDropdown && (
+                    <>
+                      <div className="fixed inset-0 z-[9998]" onClick={() => setShowFitDropdown(false)} />
+                      <div className="absolute right-0 top-full mt-2 w-24 bg-white border border-gray-100 rounded-xl shadow-2xl overflow-hidden z-[9999] flex flex-col py-1 animate-in fade-in zoom-in-95 duration-150">
+                        {['Fit', 'Fill', 'Stretch'].map((type) => (
+                          <button
+                            key={type}
+                            onClick={() => {
+                              setPopupFit(type);
+                              applyInteraction('popup', null, popupText, null, null, { fit: type });
+                              setShowFitDropdown(false);
+                            }}
+                            className={`px-4 py-2 text-[13px] font-medium transition-colors text-center w-full ${popupFit === type ? 'bg-gray-50 text-indigo-600 font-bold' : 'text-gray-600 hover:bg-gray-50 hover:text-indigo-600'}`}
+                          >
+                            {type}
+                          </button>
+                        ))}
+                      </div>
+                    </>
+                  )}
                 </div>
               </div>
             )}
@@ -893,10 +967,10 @@ const InteractionPanel = ({ selectedElement, onUpdate, onPopupPreviewUpdate }) =
             </div>
 
             {/* Connection Arrow */}
-            <div className="flex-grow mx-2 relative flex items-center justify-center">
-              <div className="w-full border-b border-gray-400 border-dashed"></div>
-              <div className="absolute right-0 top-1/2 -translate-y-1/2">
-                <ChevronRight size={16} className="text-gray-400" />
+            <div className="flex-grow flex items-center relative min-w-[3vw]">
+              <div className="flex-grow border-b border-gray-300 border-dashed mr-[-1px]"></div>
+              <div className="flex-shrink-0 -ml-[7px] text-gray-400">
+                <ChevronRight size={15} strokeWidth={2.5} />
               </div>
             </div>
 
@@ -958,10 +1032,11 @@ const InteractionPanel = ({ selectedElement, onUpdate, onPopupPreviewUpdate }) =
           {renderAdvancedEditor()}
 
           {/* ================= FOOTER ================= */}
-          <div className="pt-5 mt-4 border-t border-gray-100 flex items-center gap-3">
+          <div className="pt-4 mt-2 border-t border-gray-100 flex items-center justify-between">
+            <span className="text-[13px] text-gray-600 font-medium tracking-tight">
+              Highlight the Component
+            </span>
             <div
-              className={`w-5 h-5 rounded-full border-2 transition-colors cursor-pointer flex items-center justify-center p-0.5
-                ${isHighlighted ? 'border-indigo-600' : 'border-gray-300'}`}
               onClick={() => {
                 const newVal = !isHighlighted;
                 setIsHighlighted(newVal);
@@ -977,17 +1052,13 @@ const InteractionPanel = ({ selectedElement, onUpdate, onPopupPreviewUpdate }) =
                   interactionType === 'popup' ? popupText :
                     interactionType === 'tooltip' ? tooltipText : '';
 
-                // We use a temporary hack or just pass the value to applyInteraction
-                // But applyInteraction uses 'isHighlighted' state, which might not be updated yet
-                // if React state update is async. So we pass it or use a timeout.
+                // Apply immediately
                 setTimeout(() => applyInteraction(interactionType, currentValue, currentContent, null, newVal), 0);
               }}
+              className={`w-8 h-[18px] rounded-full p-0.5 cursor-pointer transition-colors duration-200 ease-in-out flex items-center ${isHighlighted ? 'bg-indigo-600' : 'bg-gray-200'}`}
             >
-              {isHighlighted && <div className="w-full h-full bg-indigo-600 rounded-full"></div>}
+              <div className={`w-3.5 h-3.5 bg-white rounded-full shadow-sm transition-transform duration-200 ease-in-out ${isHighlighted ? 'translate-x-[14px]' : 'translate-x-0'}`} />
             </div>
-            <span className="text-sm text-gray-600 font-normal">
-              Highlight the Component
-            </span>
           </div>
 
         </div>

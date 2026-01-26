@@ -5,7 +5,7 @@ import logo from '../assets/logo/Fisto_logo.png';
 import { User, Share2, Save, Download } from 'lucide-react';
 import ProfileModal from './ProfileModal';
 
-const Navbar = ({ onExport }) => {
+const Navbar = ({ onExport, onSave }) => {
   const [autoSaveTime, setAutoSaveTime] = useState('00:32');
   const [isProfileOpen, setIsProfileOpen] = useState(false);
   const location = useLocation();
@@ -114,6 +114,7 @@ const Navbar = ({ onExport }) => {
           
           {/* Save */}
           <button 
+            onClick={onSave}
             className="p-2.5 bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors text-gray-700"
             title="Save Project"
           >

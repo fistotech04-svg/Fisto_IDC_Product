@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
+import axios from 'axios';
 import { Link, useNavigate } from 'react-router-dom';
 import { BookOpen, Folder, Plus, ArrowLeft, Search, MoreVertical, Trash2, Edit2, Copy, Eye, Wrench, PenTool, BarChart2, Share2, Download, FolderInput, SlidersHorizontal, CheckSquare, Check } from 'lucide-react';
 import DashboardBg from '../assets/images/myflipbook.png';
@@ -9,15 +10,61 @@ import CreateFlipbookModal from '../components/CreateFlipbookModal';
 
 export default function MyFlipbooks() {
   const navigate = useNavigate();
-  const [activeFolder, setActiveFolder] = useState('Public Books');
-  const [folders, setFolders] = useState([
-    { name: 'Public Books', id: 'public' },
-    { name: 'Office Books', id: 'office' },
-    { name: 'Entertainment Books', id: 'entertainment' },
-    { name: 'Story Books', id: 'story' },
-  ]);
+  
+  // User Data
+  const storedUser = localStorage.getItem('user');
+  const user = storedUser ? JSON.parse(storedUser) : null;
+  const emailId = user?.emailId;
+  const backendUrl = import.meta.env.VITE_BACKEND_URL || 'http://localhost:5000';
+
+  const [activeFolder, setActiveFolder] = useState('Public Book');
+  const [folders, setFolders] = useState([]);
+  const [books, setBooks] = useState([]);
+
+  // Data Fetching
+  const fetchData = async () => {
+      if (!emailId) return;
+      try {
+          // Fetch Folders
+          const folderRes = await axios.get(`${backendUrl}/api/flipbook/folders`, { params: { emailId } });
+          const folderNames = folderRes.data.folders || [];
+          setFolders(folderNames.map(name => ({ id: name, name })));
+
+          // Fetch Books
+          const booksRes = await axios.get(`${backendUrl}/api/flipbook/list`, { params: { emailId } });
+          setBooks(booksRes.data.books || []);
+      } catch (error) {
+          console.error("Error fetching data:", error);
+      }
+  };
+
+  useEffect(() => {
+      fetchData();
+  }, [emailId]);
+
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
+
+  const [isLoading, setIsLoading] = useState(false);
+  const [alertState, setAlertState] = useState({
+      isOpen: false,
+      title: '',
+      message: '',
+      type: 'error',
+      showCancel: false,
+      onConfirm: null
+  });
+
+  const showAlert = (title, message, type = 'error') => {
+      setAlertState({
+          isOpen: true,
+          title,
+          message,
+          type,
+          showCancel: false,
+          onConfirm: () => setAlertState(prev => ({ ...prev, isOpen: false }))
+      });
+  };
 
   const handleUploadPDF = (files) => {
     console.log("Upload PDF Clicked", files);
@@ -44,11 +91,19 @@ export default function MyFlipbooks() {
     setIsModalOpen(true);
   };
 
-  // Logic to actually create the folder
-  const handleCreateFolder = (name) => {
-    const newId = Date.now().toString();
-    setFolders([...folders, { name: name, id: newId }]);
-    setActiveFolder(name);
+  // Create Folder
+  const handleCreateFolder = async (name) => {
+    setIsLoading(true);
+    try {
+        await axios.post(`${backendUrl}/api/flipbook/folder/create`, { emailId, folderName: name });
+        await fetchData();
+        setActiveFolder(name);
+    } catch (err) { 
+        console.error(err);
+        showAlert('Create Failed', err.response?.data?.message || err.message);
+    } finally {
+        setIsLoading(false);
+    }
   };
 
   const startEditing = (folder) => {
@@ -56,19 +111,40 @@ export default function MyFlipbooks() {
     setTempName(folder.name);
   };
 
-  const saveEdit = () => {
-    if (editingId && tempName.trim()) {
-      setFolders(folders.map(f => f.id === editingId ? { ...f, name: tempName.trim() } : f));
-      const folderBeingEdited = folders.find(f => f.id === editingId);
-      if (folderBeingEdited && activeFolder === folderBeingEdited.name) {
-          setActiveFolder(tempName.trim());
-      }
+  const saveEdit = async () => {
+    if (!editingId || !tempName.trim()) {
+        setEditingId(null);
+        return;
     }
-    setEditingId(null);
+
+    const folder = folders.find(f => f.id === editingId);
+    if (!folder || folder.name === tempName.trim()) {
+        setEditingId(null);
+        return;
+    }
+
+    setIsLoading(true);
+    try {
+        await axios.post(`${backendUrl}/api/flipbook/folder/rename`, { 
+            emailId, 
+            oldName: folder.name, 
+            newName: tempName.trim() 
+        });
+        if (activeFolder === folder.name) setActiveFolder(tempName.trim());
+        await fetchData();
+    } catch (err) { 
+        console.error(err);
+        const msg = err.response?.status === 409 ? 'Folder name already exists.' : (err.response?.data?.message || err.message);
+        showAlert('Rename Failed', msg);
+    } finally {
+        setIsLoading(false);
+        setEditingId(null);
+    }
   };
 
   const handleKeyDown = (e) => {
     if (e.key === 'Enter') {
+      e.preventDefault(); 
       saveEdit();
     }
   };
@@ -89,32 +165,46 @@ export default function MyFlipbooks() {
     });
   };
 
-  const confirmDelete = () => {
+  const confirmDelete = async () => {
     if (deleteConfirmation.folderId) {
-      setFolders(prev => prev.filter(f => f.id !== deleteConfirmation.folderId));
-      // If the deleted folder was active, switch to the first available folder (e.g., Public Books)
-      if (activeFolder === deleteConfirmation.folderName) {
-        setActiveFolder('Public Books');
-      }
+       setIsLoading(true);
+       try {
+             await axios.delete(`${backendUrl}/api/flipbook/folder`, { 
+                data: { emailId, folderName: deleteConfirmation.folderName } 
+             });
+             
+             if (activeFolder === deleteConfirmation.folderName) setActiveFolder('Public Book');
+             await fetchData();
+       } catch (err) { 
+           console.error(err);
+           showAlert('Delete Failed', err.response?.data?.message || err.message);
+       } finally {
+           setIsLoading(false);
+       }
     }
     setDeleteConfirmation({ isOpen: false, folderId: null, folderName: '' });
   };
 
-  const handleDuplicateFolder = (folder) => {
-    const newId = Date.now().toString();
-    const newName = `${folder.name} Copy`;
-    setFolders([...folders, { name: newName, id: newId }]);
+  const handleDuplicateFolder = async (folder) => {
     setActiveMenuId(null);
-  };
+    setIsLoading(true);
+    try {
+        const res = await axios.post(`${backendUrl}/api/flipbook/folder/duplicate`, {
+            emailId, folderName: folder.name
+        });
+        const newName = res.data.newFolderName;
+        
+        await fetchData(); 
 
-  // Mock Books Data
-  const [books, setBooks] = useState([
-    { id: 1, title: 'Kerala Explorer', pages: 12, created: '20-11-2025', views: 245, size: '24MB', folder: 'Public Books', image: 'https://images.unsplash.com/photo-1593693411515-c20261bcad6e?w=600&auto=format&fit=crop' },
-    { id: 2, title: 'Sirius Black Construction', pages: 30, created: '20-11-2025', views: 245, size: '24MB', folder: 'Public Books', image: 'https://images.unsplash.com/photo-1503387762-592deb58ef4e?q=80&w=260&auto=format&fit=crop' },
-    { id: 3, title: 'Alloy Flipbook', pages: 30, created: '20-11-2025', views: 245, size: '24MB', folder: 'Public Books', image: 'https://images.unsplash.com/photo-1544716278-ca5e3f4abd8c?q=80&w=260&auto=format&fit=crop' },
-    { id: 4, title: 'Financial Report Q1', pages: 45, created: '15-10-2025', views: 120, size: '15MB', folder: 'Office Books', image: 'https://images.unsplash.com/photo-1554224155-6726b3ff858f?q=80&w=260&auto=format&fit=crop' },
-    { id: 5, title: 'Employee Handbook', pages: 20, created: '10-09-2025', views: 500, size: '10MB', folder: 'Office Books', image: 'https://images.unsplash.com/photo-1521791136064-7986c2920216?q=80&w=260&auto=format&fit=crop' },
-  ]);
+        startEditing({ id: newName, name: newName });
+        
+    } catch(err) { 
+        console.error(err);
+        showAlert('Duplicate Failed', err.response?.data?.message || err.message);
+    } finally {
+        setIsLoading(false);
+    }
+  };
 
   /* Selection State */
   const [selectedBooks, setSelectedBooks] = useState([]);
@@ -176,16 +266,27 @@ export default function MyFlipbooks() {
 
   // --- Book Handlers ---
 
-  const handleDuplicateBook = (book) => {
+  const handleDuplicateBook = async (book) => {
     setActiveBookMenu(null);
-    const newId = Date.now().toString();
-    const newBook = { 
-        ...book, 
-        id: newId, 
-        title: `${book.title} Copy`,
-        created: new Date().toLocaleDateString('en-GB').replace(/\//g, '-') // Current date
-    };
-    setBooks(prev => [newBook, ...prev]);
+    setIsLoading(true);
+    try {
+        const res = await axios.post(`${backendUrl}/api/flipbook/duplicate`, {
+             emailId, 
+             folderName: book.folder, 
+             bookName: book.realName 
+        });
+        const newName = res.data.newBookName;
+        await fetchData();
+        
+        const newId = `${book.folder}_${newName}`;
+        startEditingBook({ id: newId, title: newName, folder: book.folder, realName: newName });
+
+    } catch(err) { 
+        console.error(err); 
+        showAlert('Duplicate Failed', err.response?.data?.message || err.message);
+    } finally {
+        setIsLoading(false);
+    }
   };
 
   const handleDeleteBookClick = (book) => {
@@ -197,15 +298,37 @@ export default function MyFlipbooks() {
     });
   };
 
-  const confirmDeleteBook = () => {
-    if (deleteBookConfirmation.bookId === 'BULK') {
-        setBooks(prev => prev.filter(b => !selectedBooks.includes(b.id)));
-        setSelectedBooks([]);
-    } else if (deleteBookConfirmation.bookId) {
-      setBooks(prev => prev.filter(b => b.id !== deleteBookConfirmation.bookId));
-      setSelectedBooks(prev => prev.filter(id => id !== deleteBookConfirmation.bookId));
+  const confirmDeleteBook = async () => {
+    setIsLoading(true);
+    try {
+        if (deleteBookConfirmation.bookId === 'BULK') {
+             await Promise.all(selectedBooks.map(bookId => {
+                 const book = books.find(b => b.id === bookId);
+                 if (book) {
+                     return axios.delete(`${backendUrl}/api/flipbook/delete`, {
+                         data: { emailId, folderName: book.folder, bookName: book.realName }
+                     });
+                 }
+                 return Promise.resolve();
+             }));
+             setSelectedBooks([]);
+        } else if (deleteBookConfirmation.bookId) {
+             const book = books.find(b => b.id === deleteBookConfirmation.bookId);
+             if (book) {
+                  await axios.delete(`${backendUrl}/api/flipbook/delete`, {
+                      data: { emailId, folderName: book.folder, bookName: book.realName }
+                  });
+             }
+             setSelectedBooks(prev => prev.filter(id => id !== deleteBookConfirmation.bookId));
+        }
+        await fetchData();
+    } catch(err) { 
+        console.error(err); 
+        showAlert('Delete Failed', err.response?.data?.message || err.message);
+    } finally {
+        setIsLoading(false);
+        setDeleteBookConfirmation({ isOpen: false, bookId: null, bookTitle: '' });
     }
-    setDeleteBookConfirmation({ isOpen: false, bookId: null, bookTitle: '' });
   };
 
   const startEditingBook = (book) => {
@@ -214,9 +337,27 @@ export default function MyFlipbooks() {
     setTempBookTitle(book.title);
   };
 
-  const saveBookEdit = () => {
+  const saveBookEdit = async () => {
     if (editingBookId && tempBookTitle.trim()) {
-      setBooks(books.map(b => b.id === editingBookId ? { ...b, title: tempBookTitle.trim() } : b));
+        const book = books.find(b => b.id === editingBookId);
+        if (book && book.title !== tempBookTitle.trim()) {
+             setIsLoading(true);
+             try {
+                   await axios.post(`${backendUrl}/api/flipbook/rename`, {
+                          emailId,
+                          folderName: book.folder,
+                          oldName: book.realName,
+                          newName: tempBookTitle.trim()
+                   });
+                   await fetchData();
+              } catch(err) { 
+                  console.error(err); 
+                  const msg = err.response?.status === 409 ? 'Flipbook name already exists.' : (err.response?.data?.message || err.message);
+                  showAlert('Rename Failed', msg);
+              } finally {
+                  setIsLoading(false);
+              }
+        }
     }
     setEditingBookId(null);
   };
@@ -235,15 +376,35 @@ export default function MyFlipbooks() {
     });
   };
 
-  const confirmMoveBook = (targetFolder) => {
-    if (moveBookModal.bookId === 'BULK') {
-        setBooks(books.map(b => selectedBooks.includes(b.id) ? { ...b, folder: targetFolder } : b));
-        setSelectedBooks([]);
-        setActiveFolder(targetFolder); 
-    } else if (moveBookModal.bookId) {
-        setBooks(books.map(b => b.id === moveBookModal.bookId ? { ...b, folder: targetFolder } : b));
-        setSelectedBooks(prev => prev.filter(id => id !== moveBookModal.bookId));
-    }
+  const confirmMoveBook = async (targetFolder) => {
+     try {
+          if (moveBookModal.bookId === 'BULK') {
+              for (const bookId of selectedBooks) {
+                  const book = books.find(b => b.id === bookId);
+                  if (book) {
+                      await axios.post(`${backendUrl}/api/flipbook/move`, {
+                          emailId,
+                          bookName: book.realName,
+                          currentFolder: book.folder,
+                          targetFolder
+                      });
+                  }
+              }
+              setSelectedBooks([]);
+              setActiveFolder(targetFolder); 
+          } else if (moveBookModal.bookId) {
+              const book = books.find(b => b.id === moveBookModal.bookId);
+               if (book) {
+                      await axios.post(`${backendUrl}/api/flipbook/move`, {
+                          emailId,
+                          bookName: book.realName,
+                          currentFolder: book.folder,
+                          targetFolder
+                      });
+               }
+          }
+          await fetchData();
+      } catch(err) { console.log(err); }
     setMoveBookModal({ isOpen: false, bookId: null, isBulk: false });
     setIsCreatingInMove(false); // Reset create mode
     setNewMoveFolderName('');
@@ -263,30 +424,15 @@ export default function MyFlipbooks() {
     }
   }, [isCreatingInMove]);
 
-  const handleCreateFolderAndMove = () => {
+  const handleCreateFolderAndMove = async () => {
     if (!newMoveFolderName.trim()) return;
     const name = newMoveFolderName.trim();
-    
-    // Create Folder Logic
-    const newId = Date.now().toString();
-    const newFolder = { name: name, id: newId };
-    setFolders(prev => [...prev, newFolder]);
-    
-    // Move Book(s) to new folder
-    if (moveBookModal.bookId === 'BULK') {
-        setBooks(prev => prev.map(b => selectedBooks.includes(b.id) ? { ...b, folder: name } : b));
-        setSelectedBooks([]);
-        setActiveFolder(name);
-    } else if (moveBookModal.bookId) {
-        setBooks(prev => prev.map(b => b.id === moveBookModal.bookId ? { ...b, folder: name } : b));
-        setSelectedBooks(prev => prev.filter(id => id !== moveBookModal.bookId));
-    }
-    
-    // Close Modal and Reset
-    setMoveBookModal({ isOpen: false, bookId: null, isBulk: false });
-    setIsCreatingInMove(false);
-    setNewMoveFolderName('');
+    try {
+          await axios.post(`${backendUrl}/api/flipbook/folder/create`, { emailId, folderName: name });
+          await confirmMoveBook(name);
+    } catch (err) { console.error(err); }
   };
+
 
 
   // Filter books by active folder
@@ -570,9 +716,12 @@ export default function MyFlipbooks() {
                                             <button className="flex items-center gap-1.5 text-xs font-semibold text-[#4c5add] hover:text-[#3f4bc0] transition-colors">
                                                 <Wrench size={14} /> Customize
                                             </button>
-                                            <Link to="/editor" className="flex items-center gap-1.5 text-xs font-semibold text-gray-600 hover:text-blue-600 transition-colors">
+                                            <button 
+                                                onClick={() => navigate('/editor', { state: { loadBook: { folder: book.folder, name: book.realName } } })}
+                                                className="flex items-center gap-1.5 text-xs font-semibold text-gray-600 hover:text-blue-600 transition-colors"
+                                            >
                                                 <PenTool size={14} /> Open in Editor
-                                            </Link>
+                                            </button>
                                             <button className="flex items-center gap-1.5 text-xs font-semibold text-gray-500 hover:text-gray-800 transition-colors">
                                                 <BarChart2 size={14} /> Statistic
                                             </button>
@@ -696,7 +845,7 @@ export default function MyFlipbooks() {
         onCreate={handleCreateFolder} 
       />
 
-      {/* Move Book Modal - Simple Implementation */}
+      {/* Move Book Modal */}
       {moveBookModal.isOpen && (
           <div className="fixed inset-0 z-[150] flex items-center justify-center bg-black/50 backdrop-blur-sm animate-in fade-in duration-200">
               <div className="bg-white rounded-2xl w-full max-w-sm p-6 shadow-2xl scale-100 animate-in zoom-in-95 duration-200">
@@ -712,59 +861,57 @@ export default function MyFlipbooks() {
                       )}
                   </div>
                   
-                  <div 
-                    ref={moveModalListRef}
-                    className="space-y-2 mb-6 max-h-60 overflow-y-auto custom-scrollbar p-1 scroll-smooth"
-                  >
-                        {folders.map(f => (
-                            <button
-                                key={f.id}
-                                onClick={() => confirmMoveBook(f.name)}
-                                disabled={f.name === activeFolder}
-                                className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl border text-sm font-medium transition-all
-                                    ${f.name === activeFolder 
-                                        ? 'bg-gray-50 border-gray-200 text-gray-400 cursor-not-allowed'
-                                        : 'bg-white border-gray-200 text-gray-700 hover:border-[#3b4190] hover:bg-blue-50 hover:text-[#3b4190]'
-                                    }
-                                `}
-                            >
-                                <Folder size={18} />
-                                {f.name}
-                            </button>
-                        ))}
+                  <div className="space-y-2 max-h-60 overflow-y-auto custom-scrollbar p-1 mb-4 scroll-smooth" ref={moveModalListRef}>
+                       {/* Create Folder Input */}
+                      {isCreatingInMove && (
+                          <div className="animate-in fade-in slide-in-from-top-2 duration-300">
+                              <label className="block text-xs font-medium text-gray-500 mb-1">New Folder Name</label>
+                              <div className="w-full flex items-center gap-2 p-1 rounded-xl border border-[#3b4190] bg-[#3b4190]/5 mb-2">
+                                  <input 
+                                      autoFocus
+                                      type="text" 
+                                      placeholder="Enter folder name..."
+                                      value={newMoveFolderName}
+                                      onChange={(e) => setNewMoveFolderName(e.target.value)}
+                                      className="flex-1 px-3 py-2 bg-transparent text-sm font-medium focus:outline-none text-[#343868] placeholder-gray-400"
+                                      onKeyDown={(e) => e.key === 'Enter' && handleCreateFolderAndMove()}
+                                  />
+                                  <button onClick={handleCreateFolderAndMove} className="p-2 bg-[#3b4190] text-white rounded-lg hover:bg-[#2f3575]">
+                                     <Check size={16} />
+                                  </button>
+                              </div>
+                          </div>
+                      )}
 
-                        {/* Input Field at Bottom */}
-                        {isCreatingInMove && (
-                            <div className="animate-in fade-in slide-in-from-bottom-2 duration-300">
-                                <div className="w-full flex items-center gap-2 p-1 rounded-xl border border-[#3b4190] bg-[#3b4190]/5">
-                                    <input 
-                                        autoFocus
-                                        type="text" 
-                                        placeholder="New folder name..."
-                                        value={newMoveFolderName}
-                                        onChange={(e) => setNewMoveFolderName(e.target.value)}
-                                        className="flex-1 px-3 py-2 bg-transparent text-sm font-medium focus:outline-none text-[#343868] placeholder-gray-400"
-                                        onKeyDown={(e) => e.key === 'Enter' && handleCreateFolderAndMove()}
-                                    />
-                                    <button 
-                                        onClick={handleCreateFolderAndMove}
-                                        disabled={!newMoveFolderName.trim()}
-                                        className="p-2 bg-[#3b4190] text-white rounded-lg hover:bg-[#2f3575] disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-                                    >
-                                        <Check size={16} />
-                                    </button>
-                                </div>
-                            </div>
-                        )}
+                       {folders.map(folder => {
+                           const isCurrent = (moveBookModal.bookId === 'BULK' ? false : books.find(b=>b.id === moveBookModal.bookId)?.folder === folder.name); 
+                           return (
+                               <button
+                                   key={folder.id}
+                                   onClick={() => confirmMoveBook(folder.name)}
+                                   disabled={isCurrent}
+                                   className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl border text-sm font-medium transition-all group text-left
+                                       ${isCurrent
+                                           ? 'bg-gray-50 border-gray-200 text-gray-400 cursor-not-allowed opacity-60'
+                                           : 'bg-white border-gray-200 text-gray-700 hover:border-[#3b4190] hover:bg-blue-50/50 hover:text-[#3b4190]'
+                                       }
+                                   `}
+                               >
+                                   <Folder size={18} className={isCurrent ? "text-gray-300" : "text-gray-400 group-hover:text-[#3b4190]"} />
+                                   <span className="truncate">{folder.name}</span>
+                                   {isCurrent && <span className="ml-auto text-xs text-gray-400">(Current)</span>}
+                               </button>
+                           );
+                       })}
                   </div>
 
                   <button 
-                    onClick={() => {
-                        setMoveBookModal({ isOpen: false, bookId: null });
-                        setIsCreatingInMove(false);
-                        setNewMoveFolderName('');
-                    }}
-                    className="w-full py-2.5 rounded-xl border border-gray-300 text-gray-600 font-semibold hover:bg-gray-50 transition-colors"
+                      onClick={() => {
+                          setMoveBookModal({ isOpen: false, bookId: null, isBulk: false });
+                          setIsCreatingInMove(false);
+                          setNewMoveFolderName('');
+                      }}
+                      className="w-full py-2.5 rounded-xl border border-gray-300 text-gray-600 font-semibold hover:bg-gray-50 transition-colors"
                   >
                       Cancel
                   </button>
@@ -804,6 +951,27 @@ export default function MyFlipbooks() {
         onClose={() => setIsCreateModalOpen(false)}
         onUpload={handleUploadPDF}
         onTemplate={handleUseTemplate}
+      />
+
+      {/* Loading Overlay */}
+      {isLoading && (
+        <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/50 backdrop-blur-sm animate-in fade-in duration-200">
+             <div className="flex flex-col items-center gap-3">
+                 <div className="w-12 h-12 border-4 border-white/30 border-t-white rounded-full animate-spin"></div>
+                 <p className="text-white font-medium text-lg">Processing...</p>
+             </div>
+        </div>
+      )}
+
+      {/* Generic Alert Modal */}
+      <AlertModal 
+        isOpen={alertState.isOpen}
+        onClose={() => setAlertState(prev => ({ ...prev, isOpen: false }))}
+        type={alertState.type}
+        title={alertState.title}
+        message={alertState.message}
+        showCancel={alertState.showCancel}
+        onConfirm={alertState.onConfirm}
       />
     </div>
   );

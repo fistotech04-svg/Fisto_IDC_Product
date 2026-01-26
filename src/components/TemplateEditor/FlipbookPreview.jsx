@@ -40,7 +40,12 @@ const FlipbookPreview = ({ pages, pageName = "Name of the Book", onClose, isMobi
     scale: 1,
     x: 0,
     y: 0,
-    elementId: null
+    elementId: null,
+    originalRect: null,
+    page: null,
+    centerOffset: 0,
+    isEntering: false,
+    isSingleView: false
   });
 
   const spreadZoomRef = useRef(spreadZoom);
@@ -340,7 +345,16 @@ const FlipbookPreview = ({ pages, pageName = "Name of the Book", onClose, isMobi
                   document.body.removeChild(a);
                 }
               } else if (type === 'call' && value) {
-                location.href = 'tel:' + value;
+                const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+                if (isMobile) {
+                  location.href = 'tel:' + value;
+                } else {
+                  // Desktop: Redirect to WhatsApp Web
+                  let cleanNumber = value.replace(/\D/g, '');
+                  // If number is 10 digits, assume +91 as per Interaction Panel UI context
+                  if (cleanNumber.length === 10) cleanNumber = '91' + cleanNumber;
+                  window.open('https://web.whatsapp.com/send?phone=' + cleanNumber, '_blank');
+                }
               } else if (type === 'navigation' && value) {
                 window.parent.postMessage({ type: 'flipbook-navigate', page: value }, '*');
               } else if (type === 'popup') {
@@ -405,6 +419,23 @@ const FlipbookPreview = ({ pages, pageName = "Name of the Book", onClose, isMobi
               }
             };
 
+            document.addEventListener('mousemove', (e) => {
+              const el = e.target.closest('[data-interaction="zoom"]');
+              if (!el) return;
+              if (document.body.classList.contains('page-is-zoomed')) {
+                const rect = el.getBoundingClientRect();
+                const mouseX = (e.clientX - rect.left) / rect.width;
+                const mouseY = (e.clientY - rect.top) / rect.height;
+                window.parent.postMessage({
+                  type: 'flipbook-zoom-move',
+                  data: {
+                    mouseX: Math.max(0, Math.min(1, mouseX)),
+                    mouseY: Math.max(0, Math.min(1, mouseY))
+                  }
+                }, '*');
+              }
+            });
+
             document.addEventListener('click', (e) => {
               const el = e.target.closest('[data-interaction]');
               if (el) {
@@ -428,6 +459,8 @@ const FlipbookPreview = ({ pages, pageName = "Name of the Book", onClose, isMobi
                 el.style.cursor = 'zoom-in';
                 if (!document.body.classList.contains('page-is-zoomed')) {
                   showTooltip(el, 'Click to zoom');
+                } else {
+                  showTooltip(el, 'Move to pan');
                 }
               }
               
@@ -495,8 +528,8 @@ const FlipbookPreview = ({ pages, pageName = "Name of the Book", onClose, isMobi
                   transition: all 0.2s ease;
               }
               [data-interaction-highlight="true"]:hover {
-                  box-shadow: 0 0 0 4px rgba(99, 102, 241, 0.2);
-                  transform: translateY(-2px);
+                  box-shadow: 0 0 0 6px rgba(99, 102, 241, 0.1);
+                  transform: scale(0.97);
               }
             </style>
             <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;600;700&family=Roboto:wght@400;500;700&family=Open+Sans:wght@400;600;700&display=swap" rel="stylesheet">
@@ -523,8 +556,8 @@ const FlipbookPreview = ({ pages, pageName = "Name of the Book", onClose, isMobi
                 transition: all 0.2s ease;
             }
             [data-interaction-highlight="true"]:hover {
-                box-shadow: 0 0 0 4px rgba(99, 102, 241, 0.2);
-                transform: translateY(-2px);
+                box-shadow: 0 0 0 6px rgba(99, 102, 241, 0.1);
+                transform: scale(0.97);
             }
         </style>
         ${interactionScript}
@@ -780,20 +813,15 @@ const FlipbookPreview = ({ pages, pageName = "Name of the Book", onClose, isMobi
         const current = spreadZoomRef.current;
 
         if (current.active && current.elementId === elementId) {
-          setSpreadZoom({ active: false, scale: 1, x: 0, y: 0, elementId: null });
+          setSpreadZoom({ active: false, scale: 1, x: 0, y: 0, elementId: null, originalRect: null, page: null, centerOffset: 0, isEntering: false, isSingleView: false });
         } else {
-          // Calculate centering using natural coordinates
-          // rect contains {top, left, width, height} in natural units (unscaled iframe pixels)
           const elementCenterX = rect.left + rect.width / 2;
           const elementCenterY = rect.top + rect.height / 2;
 
-          // Figure out the element's X position relative to the center of the flipbook spread (unscaled)
-          // If page is even (Left), it's on [-PAGE_WIDTH, 0], so subtract PAGE_WIDTH to get position relative to spread center
-          // If page is odd (Right), it's on [0, PAGE_WIDTH], so it's already relative to spread center
-          const relX = (page % 2 === 0) ? (elementCenterX - PAGE_WIDTH) : elementCenterX;
+          // In Single View, we subtract PAGE_WIDTH/2 because the iframe's left=0 starts half-width from viewport center 
+          const relX = isSingleView ? (elementCenterX - PAGE_WIDTH / 2) : ((page % 2 === 0) ? (elementCenterX - PAGE_WIDTH) : elementCenterX);
           const relY = elementCenterY - PAGE_HEIGHT / 2;
 
-          // dx, dy are required translations to bring (relX + centerOffset, relY) to (0,0) after scaling
           const dx = -(relX + centerOffset) * scale;
           const dy = -relY * scale;
 
@@ -802,8 +830,47 @@ const FlipbookPreview = ({ pages, pageName = "Name of the Book", onClose, isMobi
             scale: scale,
             x: dx,
             y: dy,
-            elementId
+            elementId,
+            originalRect: rect,
+            page,
+            centerOffset,
+            isEntering: true,
+            isSingleView: isSingleView
           });
+
+          // After initial transition, mark as no longer entering to enable fast hover follow
+          setTimeout(() => {
+            setSpreadZoom(prev => ({ ...prev, isEntering: false }));
+          }, 750);
+        }
+      }
+
+      if (event.data && event.data.type === 'flipbook-zoom-move') {
+        const { mouseX, mouseY } = event.data.data;
+        const current = spreadZoomRef.current;
+
+        if (current.active && current.originalRect) {
+          const { originalRect, page, scale, centerOffset, isSingleView: zoomIsSingle } = current;
+
+          // Amazon-style: Pan within the element based on cursor position
+          const panX = (mouseX - 0.5) * (originalRect.width * 0.8);
+          const panY = (mouseY - 0.5) * (originalRect.height * 0.8);
+
+          const elementCenterX = originalRect.left + originalRect.width / 2;
+          const elementCenterY = originalRect.top + originalRect.height / 2;
+
+          // Use stored view mode from when zoom started
+          const relX = zoomIsSingle ? (elementCenterX - PAGE_WIDTH / 2) : ((page % 2 === 0) ? (elementCenterX - PAGE_WIDTH) : elementCenterX);
+          const relY = elementCenterY - PAGE_HEIGHT / 2;
+
+          const dx = -(relX + centerOffset + panX) * scale;
+          const dy = -(relY + panY) * scale;
+
+          setSpreadZoom(prev => ({
+            ...prev,
+            x: dx,
+            y: dy
+          }));
         }
       }
     };
@@ -1248,12 +1315,15 @@ const FlipbookPreview = ({ pages, pageName = "Name of the Book", onClose, isMobi
 
         {/* Flipbook Wrapper with Smooth Centering */}
         <div
-          className="flex items-center justify-center transition-all duration-700 ease-out relative z-10"
+          className="flex items-center justify-center relative z-10 will-change-transform"
           style={{
             transform: spreadZoom.active
               ? `translate(${spreadZoom.x}px, ${spreadZoom.y}px) scale(${spreadZoom.scale})`
               : `scale(${zoom})`,
-            transformOrigin: 'center center'
+            transformOrigin: 'center center',
+            transition: spreadZoom.active
+              ? (spreadZoom.isEntering ? 'transform 0.7s ease-out' : 'transform 0.1s linear')
+              : 'transform 0.7s ease-out'
           }}
         >
           {/* Center wrapper - handles offset for single page centering */}

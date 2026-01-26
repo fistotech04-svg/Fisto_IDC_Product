@@ -1,10 +1,12 @@
 // MainEditor.jsx - Updated Prop Passing for Double Page & Preview
 import React, { useState, useCallback, useRef, useEffect } from 'react';
+import axios from 'axios';
 import { useLocation, useOutletContext } from 'react-router-dom';
 import JSZip from 'jszip';
 import { jsPDF } from 'jspdf';
 import { saveAs } from 'file-saver';
 import html2canvas from 'html2canvas';
+import { Folder, Plus, Check } from 'lucide-react';
 // Navbar removed
 import ExportModal from '../ExportModal';
 import LeftSidebar from './LeftSidebar';
@@ -29,6 +31,7 @@ const MainEditor = () => {
   const lastMousePosRef = useRef({ x: 0, y: 0 });
   const isPotentialDragRef = useRef(false);
   const panStartPosRef = useRef({ x: 0, y: 0 });
+  const modalListRef = useRef(null);
   
   // ==================== HOOKS ====================
   usePreventBrowserZoom(); // Block default browser zoom globally
@@ -42,27 +45,41 @@ const MainEditor = () => {
   const [showPreview, setShowPreview] = useState(false);
   const [showExportModal, setShowExportModal] = useState(false);
   const [showPageSettingsMenu, setShowPageSettingsMenu] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
+  const [loadingText, setLoadingText] = useState('Loading...');
 
   // Hook up to Layout Navbar Export button
-  const { setExportHandler } = useOutletContext() || {};
+  // Hook up to Layout Navbar Export and Save buttons
+  const { setExportHandler, setSaveHandler } = useOutletContext() || {};
   
-  useEffect(() => {
-    if (setExportHandler) {
-      setExportHandler(() => () => setShowExportModal(true));
-      // Cleanup
-      return () => setExportHandler(null); 
-    }
-  }, [setExportHandler]);
+
 
   // Export logic moved below state declarations to ensure all variables are accessible
   
   // Template state
   // Template state
   const location = useLocation();
-  const initialData = location.state || {};
+  const initialData = location.state || {}; // React Router state
+
+  // Restore state logic
+  const getRestoredState = (key, defaultValue) => {
+      // If we are loading a specific book or template via navigation, ignore autosave for initial render
+      // (The useEffect will handle loading the new content)
+      if (initialData.loadBook || initialData.templateData || initialData.pageCount) return defaultValue;
+
+      const autosave = localStorage.getItem('editor_autosave');
+      if (autosave) {
+          try {
+              const parsed = JSON.parse(autosave);
+              return parsed[key] !== undefined ? parsed[key] : defaultValue;
+          } catch (e) { return defaultValue; }
+      }
+      return defaultValue;
+  };
 
   const [templateHTML, setTemplateHTML] = useState('');
   const [pages, setPages] = useState(() => {
+     // If explicit new template creation
      if (initialData.pageCount) {
          return Array.from({ length: initialData.pageCount }, (_, i) => ({
              id: i + 1,
@@ -71,20 +88,36 @@ const MainEditor = () => {
              thumbnail: null
          }));
      }
-     return [{ 
+     // Handle Template Data
+     if (initialData.templateData) {
+         const tplPages = initialData.templateData.pages || (Array.isArray(initialData.templateData) ? initialData.templateData : []);
+         if (tplPages.length > 0) {
+             return tplPages.map((p, i) => ({
+                 id: i + 1,
+                 name: p.name || `Page ${i + 1}`,
+                 html: p.html || '',
+                 thumbnail: null
+             }));
+         }
+     }
+     return getRestoredState('pages', [{ 
        id: 1, 
        name: 'Page 1', 
        html: '',
        thumbnail: null 
-     }];
+     }]);
   });
-  const [currentPage, setCurrentPage] = useState(0);
+  const [currentPage, setCurrentPage] = useState(() => getRestoredState('currentPage', 0));
   
   // Editor state
-  const [pageName, setPageName] = useState("Untitled Document");
+  const [pageName, setPageName] = useState(() => getRestoredState('pageName', "Untitled Document"));
   const [isEditingPageName, setIsEditingPageName] = useState(false);
   const [isDoublePage, setIsDoublePage] = useState(false);
   
+  // Track the last successfully saved name
+  const [lastSavedName, setLastSavedName] = useState(() => getRestoredState('lastSavedName', null));
+  const [lastSavedFolder, setLastSavedFolder] = useState(() => getRestoredState('lastSavedFolder', 'Public Book'));
+
   // Panning State
   const [panOffset, setPanOffset] = useState({ x: 0, y: 0 });
   const [isSpacePressed, setIsSpacePressed] = useState(false);
@@ -97,6 +130,126 @@ const MainEditor = () => {
   // Page renaming state (for auto-rename after add/duplicate)
   const [editingPageId, setEditingPageId] = useState(null);
 
+  // Sync templateHTML with current page content on load/change/refresh
+  useEffect(() => {
+     if (pages[currentPage]) {
+         // Only update if different to avoid unnecessary re-renders
+         if (pages[currentPage].html !== templateHTML) {
+             setTemplateHTML(pages[currentPage].html || '');
+         }
+     }
+  }, [currentPage, pages]);
+
+  // Auto-save state on change
+  useEffect(() => {
+      if (pages.length > 0) {
+          const stateToSave = {
+              pages,
+              currentPage,
+              pageName,
+              lastSavedName,
+              lastSavedFolder,
+              timestamp: Date.now()
+          };
+          localStorage.setItem('editor_autosave', JSON.stringify(stateToSave));
+      }
+  }, [pages, currentPage, pageName, lastSavedName, lastSavedFolder]);
+
+  // Clear history for New Template / Page Count to allow autosave on refresh
+  useEffect(() => {
+     if (initialData.templateData || initialData.pageCount) {
+         window.history.replaceState({}, document.title);
+     }
+  }, [initialData]);
+
+  // Load Book Logic (Open in Editor)
+  useEffect(() => {
+      if (initialData.loadBook) {
+          const { folder, name } = initialData.loadBook;
+          const loadBook = async () => {
+              setLoadingText('Loading Book...');
+              setIsLoading(true);
+              try {
+                  const storedUser = localStorage.getItem('user');
+                  if (!storedUser) return;
+                  const user = JSON.parse(storedUser);
+                  const backendUrl = import.meta.env.VITE_BACKEND_URL || 'http://localhost:5000';
+                  
+                  const res = await axios.get(`${backendUrl}/api/flipbook/get`, {
+                      params: { emailId: user.emailId, folderName: folder, bookName: name }
+                  });
+                  
+                  if (res.data.pages && res.data.pages.length > 0) {
+                       const loadedPages = res.data.pages.map((p, i) => ({
+                           id: i + 1,
+                           name: p.name || `Page ${i + 1}`,
+                           html: p.html,
+                           thumbnail: null
+                       }));
+                       setPages(loadedPages);
+                       setPageName(name);
+                       setLastSavedName(name);
+                       setLastSavedFolder(folder);
+                       setCurrentPage(0);
+                       
+                       window.history.replaceState({}, document.title); 
+                  }
+              } catch (err) {
+                  console.error("Failed to load book", err);
+                  // showAlert('error', 'Load Failed', 'Could not load flipbook.');
+              } finally {
+                  setIsLoading(false);
+              }
+          };
+          loadBook();
+      }
+  }, [initialData.loadBook]);
+
+  // Save Modal State
+  const [showSaveModal, setShowSaveModal] = useState(false);
+  const [targetFolder, setTargetFolder] = useState(''); // Default empty to force selection
+  const [availableFolders, setAvailableFolders] = useState(['Public Book']);
+  const [isCreatingFolder, setIsCreatingFolder] = useState(false);
+  const [newFolderInput, setNewFolderInput] = useState('');
+
+  // Fetch folders when modal opens
+  useEffect(() => {
+    if (showSaveModal) {
+        setTargetFolder('Public Book'); // Default to Public Book
+        setIsCreatingFolder(false);
+        setNewFolderInput('');
+
+        const fetchFolders = async () => {
+            try {
+                const storedUser = localStorage.getItem('user');
+                if (storedUser) {
+                    const user = JSON.parse(storedUser);
+                    const backendUrl = import.meta.env.VITE_BACKEND_URL || 'http://localhost:5000';
+                    const res = await axios.get(`${backendUrl}/api/flipbook/folders`, {
+                        params: { emailId: user.emailId }
+                    });
+                    if (res.data.folders) {
+                        setAvailableFolders(res.data.folders);
+                    }
+                }
+            } catch (err) {
+                console.error("Failed to fetch folders", err);
+            }
+        };
+        fetchFolders();
+    }
+  }, [showSaveModal]);
+
+  // Scroll to bottom when creating folder
+  useEffect(() => {
+    if (isCreatingFolder && modalListRef.current) {
+        modalListRef.current.scrollTo({
+            top: modalListRef.current.scrollHeight,
+            behavior: 'smooth'
+        });
+    }
+  }, [isCreatingFolder]);
+
   // Alert State
   const [alertState, setAlertState] = useState({
     isOpen: false,
@@ -108,6 +261,8 @@ const MainEditor = () => {
     cancelText: 'Cancel',
     onConfirm: null
   });
+
+
 
   const [popupPreview, setPopupPreview] = useState({
     isOpen: false,
@@ -149,6 +304,127 @@ const MainEditor = () => {
   const closeAlert = useCallback(() => {
     setAlertState(prev => ({ ...prev, isOpen: false }));
   }, []);
+
+  // ==================== SAVE & EXPORT HANDLERS ====================
+  // Refs for handlers to avoid stale closures in context
+  const saveHandlerRef = useRef(null);
+  const exportHandlerRef = useRef(null);
+
+  const executeSave = useCallback(async (folderName, overwrite = false) => {
+    setShowSaveModal(false); // Close modal immediately for better UX
+    setLoadingText('Saving...');
+    setIsLoading(true);
+    try {
+      const storedUser = localStorage.getItem('user');
+      if (!storedUser) {
+         showAlert('error', 'Authentication Error', 'User not found. Please log in again.');
+         return;
+      }
+      const user = JSON.parse(storedUser);
+      const emailId = user.emailId;
+      const backendUrl = import.meta.env.VITE_BACKEND_URL || 'http://localhost:5000';
+
+      // If we are saving the same flipbook we just saved/confirmed, auto-overwrite
+      let shouldOverwrite = overwrite;
+      
+      // RENAME LOGIC: If saving exiting book to same folder with DIFFERENT name
+      // Normalize strings for comparison (handle simple mismatches)
+      const isSameFolder = lastSavedFolder && folderName && (lastSavedFolder.trim().toLowerCase() === folderName.trim().toLowerCase());
+      const isNameChanged = lastSavedName && (pageName.trim() !== lastSavedName.trim());
+
+      if (!overwrite && isSameFolder && isNameChanged) {
+           // Attempt to rename the directory first
+           try {
+               await axios.post(`${backendUrl}/api/flipbook/rename`, {
+                  emailId,
+                  folderName: lastSavedFolder, // Use original casing for reliability
+                  oldName: lastSavedName,
+                  newName: pageName.trim()
+               });
+               // If rename successful, the "new" name now exists (it's the renamed folder).
+               // We must overwrite it with the current content.
+               shouldOverwrite = true;
+           } catch (renameErr) {
+               // If rename fails (e.g. name exists), we fall through to normal save (which handles conflicts)
+               // But if it's a conflict, the Save call below will trigger the 409 flow.
+               console.warn("Rename attempt failed, falling back to standard save", renameErr);
+               // We do NOT set shouldOverwrite to true here, so Save will check existence.
+           }
+      }
+
+      if (lastSavedName && (pageName.trim() === lastSavedName.trim()) && isSameFolder) {
+          shouldOverwrite = true;
+      }
+
+      // Prepare pages
+      const pagesToSave = pages.map(p => ({
+          pageName: p.name,
+          content: p.html
+      }));
+      
+      await axios.post(`${backendUrl}/api/flipbook/save`, {
+          emailId,
+          flipbookName: pageName.trim(), 
+          pages: pagesToSave,
+          overwrite: shouldOverwrite,
+          folderName: folderName.trim()
+      });
+      
+      setLastSavedName(pageName);
+      setLastSavedFolder(folderName);
+      // setShowSaveModal(false); // Already closed at start
+      closeAlert(); 
+      showAlert('success', 'Saved Successfully', `Saved to ${folderName}/${pageName}`);
+    } catch (error) {
+      if (error.response && error.response.status === 409) {
+          showAlert('warning', 'Flipbook Exists', 'A flipbook with this name already exists in this folder. Do you want to overwrite it?', {
+              showCancel: true,
+              confirmText: 'Overwrite',
+              cancelText: 'Cancel',
+              onConfirm: () => executeSave(folderName, true)
+          });
+          return;
+      }
+      console.error("Save failed:", error);
+      showAlert('error', 'Save Failed', `Failed to save flipbook. ${error.response?.data?.message || error.message}`);
+    } finally {
+      setIsLoading(false);
+    }
+  }, [pages, pageName, showAlert, closeAlert, lastSavedName, lastSavedFolder]);
+
+  const handleSaveFlipbook = useCallback(() => {
+     // Quick Save condition: Name hasn't changed AND we have a last saved folder
+     if (pageName === lastSavedName && lastSavedFolder) {
+         executeSave(lastSavedFolder, true);
+     } else {
+         // Show options to select folder
+         setShowSaveModal(true);
+     }
+  }, [pageName, lastSavedName, lastSavedFolder, executeSave]);
+  
+  // Keep refs up to date
+  useEffect(() => {
+    saveHandlerRef.current = handleSaveFlipbook;
+  }, [handleSaveFlipbook]);
+
+  useEffect(() => {
+    exportHandlerRef.current = () => setShowExportModal(true);
+  }, []);
+
+  // Register Handlers Once
+  useEffect(() => {
+    if (setExportHandler) {
+      setExportHandler(() => () => exportHandlerRef.current?.());
+    }
+    if (setSaveHandler) {
+      setSaveHandler(() => () => saveHandlerRef.current?.());
+    }
+    // Cleanup
+    return () => {
+        if (setExportHandler) setExportHandler(null);
+        if (setSaveHandler) setSaveHandler(null);
+    };
+  }, [setExportHandler, setSaveHandler]);
 
   // ==================== EXPORT LOGIC ====================
   const handleDownloadPages = useCallback(async (pagesToExport, format = 'png') => {
@@ -686,10 +962,13 @@ const MainEditor = () => {
   const elementUpdateDebounceRef = useRef(null);
 
   const handleElementUpdate = useCallback((options = {}) => {
-    if (selectedElement || options?.newElement) {
-      const iframe = document.querySelector('iframe[title="Template Editor"]');
-      if (iframe && iframe.contentDocument && iframe.contentDocument.documentElement) {
-        const doc = iframe.contentDocument;
+    const targetElement = options?.newElement || selectedElement;
+    
+    if (targetElement) {
+      // Use the element's ownerDocument to ensure we get the correct page's HTML
+      const doc = targetElement.ownerDocument;
+      
+      if (doc && doc.documentElement) {
         const html = doc.documentElement.outerHTML;
         
         // Prevent re-render of iframe by syncing internal ref first
@@ -1223,6 +1502,134 @@ const MainEditor = () => {
         onExport={handleDownloadPages}
         pageName={pageName}
       />
+
+      {/* Save Modal */}
+      {/* Save Modal */}
+      {showSaveModal && (
+        <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/50 backdrop-blur-sm animate-in fade-in duration-200">
+           <div className="bg-white rounded-2xl w-full max-w-sm p-6 shadow-2xl scale-100 animate-in zoom-in-95 duration-200">
+               {/* Header */}
+               <div className="flex items-center justify-between mb-6">
+                   <h3 className="text-xl font-bold text-[#343868]">Save Flipbook</h3>
+                   <button 
+                       onClick={() => {
+                           setIsCreatingFolder(!isCreatingFolder);
+                           setNewFolderInput('');
+                           setTargetFolder(''); // Reset selection when toggling create
+                       }}
+                       className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full border shadow-sm font-medium text-xs transition-colors
+                           ${isCreatingFolder 
+                               ? 'bg-[#3b4190] text-white border-[#3b4190]' 
+                               : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'
+                           }
+                       `}
+                   >
+                       <Plus size={14} /> Folder
+                   </button>
+               </div>
+               
+
+
+               {/* Folder Selection Area */}
+               <div 
+                  ref={modalListRef}
+                  className="space-y-2 max-h-52 overflow-y-auto custom-scrollbar p-1 mb-4 scroll-smooth"
+               >
+                  {/* Folder List */}
+                  {(!isCreatingFolder ? (availableFolders && availableFolders.length > 0 ? availableFolders : ['Public Book']) : (availableFolders || ['Public Book'])).sort((a,b) => {
+                      if (a === 'Public Book') return -1;
+                      if (b === 'Public Book') return 1;
+                      return a.localeCompare(b);
+                  }).map(folder => {
+                      const isSelected = targetFolder === folder;
+                      
+                      return (
+                        <button
+                            key={folder}
+                            onClick={() => setTargetFolder(folder)}
+                            disabled={isCreatingFolder} 
+                            className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl border text-sm font-medium transition-all group text-left
+                                ${isCreatingFolder
+                                    ? 'bg-white border-gray-200 text-gray-400 opacity-50 cursor-not-allowed'
+                                    : isSelected 
+                                        ? 'bg-[#3b4190]/10 border-[#3b4190] text-[#343868] shadow-sm'
+                                        : 'bg-white border-gray-200 text-gray-700 hover:border-[#3b4190] hover:bg-blue-50/50 hover:text-[#3b4190]'
+                                }
+                            `}
+                        >
+                            <Folder size={18} className={isCreatingFolder ? "text-gray-300" : (isSelected ? "text-[#3b4190]" : "text-gray-400 group-hover:text-[#3b4190]")} />
+                            <span className="truncate">{folder}</span>
+                            {/* {isSelected && !isCreatingFolder && <div className="ml-auto w-2 h-2 rounded-full bg-[#3b4190]"></div>} */}
+                        </button>
+                      );
+                  })}
+
+                  {/* Create Folder Input - At Bottom */}
+                  {isCreatingFolder && (
+                      <div className="animate-in fade-in slide-in-from-bottom-2 duration-300 pt-2">
+                          <label className="block text-xs font-medium text-gray-500 mb-1 ml-1">New Folder Name</label>
+                          <div className="w-full flex items-center gap-2 p-1 rounded-xl border border-[#3b4190] bg-[#3b4190]/5">
+                              <input 
+                                  autoFocus
+                                  type="text" 
+                                  placeholder="Enter name..."
+                                  value={newFolderInput}
+                                  onChange={(e) => setNewFolderInput(e.target.value)}
+                                  className="flex-1 px-3 py-2 bg-transparent text-sm font-medium focus:outline-none text-[#343868] placeholder-gray-400"
+                                  onKeyDown={(e) => {
+                                      if (e.key === 'Enter' && newFolderInput.trim()) {
+                                          executeSave(newFolderInput.trim(), false);
+                                      }
+                                  }}
+                              />
+                          </div>
+                      </div>
+                  )}
+               </div>
+
+               {/* Footer Actions */}
+               <div className="flex gap-3 mt-4 pt-4 border-t border-gray-100">
+                  <button 
+                      onClick={() => {
+                          setShowSaveModal(false);
+                          setIsCreatingFolder(false);
+                          setNewFolderInput('');
+                          setTargetFolder('');
+                      }}
+                      className="flex-1 py-2.5 rounded-xl border border-gray-300 text-gray-600 font-semibold hover:bg-gray-50 transition-colors"
+                  >
+                      Cancel
+                  </button>
+                  <button 
+                      onClick={() => {
+                          const finalFolder = isCreatingFolder ? newFolderInput.trim() : targetFolder;
+                          if (finalFolder) {
+                              executeSave(finalFolder, false);
+                          }
+                      }}
+                      disabled={isCreatingFolder ? !newFolderInput.trim() : !targetFolder}
+                      className={`flex-1 py-2.5 rounded-xl text-white font-semibold transition-all shadow-lg
+                          ${(isCreatingFolder ? !newFolderInput.trim() : !targetFolder)
+                              ? 'bg-gray-300 cursor-not-allowed shadow-none'
+                              : 'bg-[#3b4190] hover:bg-[#2f3575] shadow-indigo-500/30'
+                          }
+                      `}
+                  >
+                      Save
+                  </button>
+               </div>
+           </div>
+        </div>
+      )}
+      {/* Loading Overlay */}
+      {isLoading && (
+        <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/50 backdrop-blur-sm animate-in fade-in duration-200">
+             <div className="flex flex-col items-center gap-3">
+                 <div className="w-12 h-12 border-4 border-white/30 border-t-white rounded-full animate-spin"></div>
+                 <p className="text-white font-medium text-lg">{loadingText}</p>
+             </div>
+        </div>
+      )}
       </div>
     </div>
   );

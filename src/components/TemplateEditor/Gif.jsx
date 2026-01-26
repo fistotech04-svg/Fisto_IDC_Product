@@ -18,17 +18,34 @@ const galleryPreviewImages = [
 
 const GifEditor = ({ selectedElement, onUpdate, onPopupPreviewUpdate }) => {
   const fileInputRef = useRef(null);
-  const [open, setOpen] = useState(true);
+  // Accordian State: 'main' or 'interaction' or null
+  const [activeSection, setActiveSection] = useState('main');
+  const open = activeSection === 'main';
   const [openGallery, setOpenGallery] = useState(false);
   const [opacity, setOpacity] = useState(100);
+  const [imageType, setImageType] = useState('Fill');
+  const [showImageTypeDropdown, setShowImageTypeDropdown] = useState(false);
 
-  // Sync opacity when element changes
+  // Sync opacity and object-fit when element changes
   useEffect(() => {
     if (selectedElement) {
       const currentOpacity = selectedElement.style.opacity;
       setOpacity(currentOpacity ? Math.round(Number(currentOpacity) * 100) : 100);
+
+      const fitMapRev = { 'contain': 'Fit', 'cover': 'Fill', 'none': 'Crop' };
+      const currentFit = selectedElement.style.objectFit || 'cover';
+      setImageType(fitMapRev[currentFit] || 'Fill');
     }
   }, [selectedElement]);
+  
+  const updateImageType = (type) => {
+    setImageType(type);
+    if (selectedElement) {
+      const fitMap = { 'Fit': 'contain', 'Fill': 'cover', 'Crop': 'cover' };
+      selectedElement.style.objectFit = fitMap[type] || 'cover';
+      onUpdate?.();
+    }
+  };
 
   const handleOpacityChange = (e) => {
     const value = Number(e.target.value);
@@ -86,28 +103,25 @@ const GifEditor = ({ selectedElement, onUpdate, onPopupPreviewUpdate }) => {
     <>
       <div className="bg-white border border-gray-200 rounded-lg shadow-sm overflow-hidden relative font-sans mb-3">
         {/* HEADER */}
-        <button
-          onClick={() => setOpen(!open)}
-          className="w-full flex justify-between items-center p-4 border-sm border-gray-50"
+        <div
+          onClick={() => setActiveSection(activeSection === 'main' ? null : 'main')}
+          className="flex items-center justify-between px-4 py-3 border-b border-gray-50 cursor-pointer hover:bg-gray-50 transition-colors"
         >
           <div className="flex items-center gap-2">
-            <div className="p-1.5 border border-gray-200 rounded-lg">
-              <Edit3 size={16} className="text-gray-600" />
-            </div>
-            <span className="text-sm font-bold text-gray-700">GIF</span>
+            <Edit3 size={16} className="text-gray-600" />
+            <span className="font-medium text-gray-800 text-[15px]">Gif</span>
           </div>
-          <ChevronUp size={18} className={`text-gray-400 transition-transform duration-200 ${open ? '' : 'rotate-180'}`} />
-        </button>
+          <ChevronUp size={16} className={`text-gray-500 transition-transform duration-200 ${open ? '' : 'rotate-180'}`} />
+        </div>
 
         {/* CONTENT */}
         {open && (
-          <div className="pr-5 pl-5 mb-5 space-y-6">
-
-            {/* 1. Upload Section */}
-            <div>
-              <h3 className="text-sm font-semibold text-gray-800 mb-3">
-                Upload your GIF
-              </h3>
+          <div className="pr-5 pl-5 mb-5 pt-4 space-y-6">
+            <div className="space-y-4">
+              <div className="flex items-center gap-2">
+                <span className="text-sm font-bold text-gray-900 whitespace-nowrap">Upload your Gif</span>
+                <div className="h-[2px] w-full bg-gray-200" />
+              </div>
 
               {/* FILE INPUT */}
               <input
@@ -128,7 +142,6 @@ const GifEditor = ({ selectedElement, onUpdate, onPopupPreviewUpdate }) => {
                       className="w-full h-full object-contain"
                     />
                   </div>
-                  <span className="text-[10px] text-gray-500 font-medium">Bulb GIF</span>
                 </div>
 
                 {/* Swap Icon */}
@@ -211,6 +224,8 @@ const GifEditor = ({ selectedElement, onUpdate, onPopupPreviewUpdate }) => {
         selectedElement={selectedElement}
         onUpdate={onUpdate}
         onPopupPreviewUpdate={onPopupPreviewUpdate}
+        isOpen={activeSection === 'interaction'}
+        onToggle={() => setActiveSection(activeSection === 'interaction' ? null : 'interaction')}
       />
 
       {/* GALLERY MODAL */}

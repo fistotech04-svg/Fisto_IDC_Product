@@ -8,7 +8,7 @@ import {
   Strikethrough, Type, ListOrdered, RotateCcw, X, Pipette,
   ChevronLeft, ChevronRight, Star, Zap, Eye,
   ArrowLeftRight, ArrowUpDown, SlidersHorizontal,
-  CaseUpper, CaseLower, Palette
+  CaseUpper, CaseLower, Palette, Edit3
 } from 'lucide-react';
 
 const fontFamilies = [
@@ -18,13 +18,11 @@ const fontFamilies = [
 ];
 
 const fontWeights = [
-  { name: 'Thin', value: '100' },
-  { name: 'Light', value: '300' },
-  { name: 'Regular', value: '400' },
-  { name: 'Medium', value: '500' },
-  { name: 'Semi Bold', value: '600' },
-  { name: 'Bold', value: '700' },
-  { name: 'Black', value: '900' }
+  { name: 'Thin', value: '200' },
+  { name: 'Light', value: '400' },
+  { name: 'Regular', value: '600' },
+  { name: 'Semi Bold', value: '800' },
+  { name: 'Bold', value: '1000' }
 ];
 
 // Color conversion helpers
@@ -166,10 +164,12 @@ const parseGradient = (bgStr) => {
 };
 
 const TextEditor = ({ selectedElement, selectedElementType, onUpdate, onPopupPreviewUpdate, closePanelsSignal, pages }) => {
-  const [isTextOpen, setIsTextOpen] = useState(true);
-  const [isInteractionOpen, setIsInteractionOpen] = useState(false);
+  // Accordian State: 'main' or 'interaction' or null
+  const [activeSection, setActiveSection] = useState('main');
+  const isTextOpen = activeSection === 'main';
+  const isInteractionOpen = activeSection === 'interaction';
   const [isAnimationOpen, setIsAnimationOpen] = useState(false);
-  const [isColorOpen, setIsColorOpen] = useState(true);
+  const [isColorOpen, setIsColorOpen] = useState(false);
   const [showFillPicker, setShowFillPicker] = useState(false);
   const [showStrokePicker, setShowStrokePicker] = useState(false);
   const [showDashedPopup, setShowDashedPopup] = useState(false);
@@ -177,6 +177,9 @@ const TextEditor = ({ selectedElement, selectedElementType, onUpdate, onPopupPre
   const [colorMode, setColorMode] = useState('fill'); // 'fill' or 'stroke'
   const [fillOpacity, setFillOpacity] = useState(100);
   const [strokeOpacity, setStrokeOpacity] = useState(100);
+  const [strokeType, setStrokeType] = useState('solid'); // 'solid' or 'dashed'
+  const [strokePosition, setStrokePosition] = useState('outside'); // 'outside', 'center', 'inside'
+  const [showStrokePositionDropdown, setShowStrokePositionDropdown] = useState(false);
 
   const [activePanel, setActivePanel] = useState(null);
   const [showFontDropdown, setShowFontDropdown] = useState(false);
@@ -192,9 +195,9 @@ const TextEditor = ({ selectedElement, selectedElementType, onUpdate, onPopupPre
     { color: '#4B3EFE', offset: 100, opacity: 100 }
   ]);
   const [editingGradientStopIndex, setEditingGradientStopIndex] = useState(null);
+  const [isSyncing, setIsSyncing] = useState(false);
 
-  // Redesigned Color State (for Fill)
-  // Redesigned Color State (for Fill)
+  // Color State (Fill)
   const [hsv, setHsv] = useState({ h: 0, s: 0, v: 0 });
   const [rgb, setRgb] = useState({ r: 0, g: 0, b: 0 });
   const [hex, setHex] = useState('#000000');
@@ -209,182 +212,237 @@ const TextEditor = ({ selectedElement, selectedElementType, onUpdate, onPopupPre
   const [gradientStopRgb, setGradientStopRgb] = useState({ r: 255, g: 0, b: 0 });
   const [gradientStopHex, setGradientStopHex] = useState('#FF0000');
 
-  // Guard refs to prevent unintended overwrites on mount
-  const isFirstFillEffect = useRef(true);
-  const isFirstStrokeEffect = useRef(true);
+  // Dashed / Border settings
+  const [dashLength, setDashLength] = useState(4);
+  const [dashGap, setDashGap] = useState(4);
+  const [isRoundCorners, setIsRoundCorners] = useState(false);
+  const [borderThickness, setBorderThickness] = useState(0);
+  const strokePositionRef = useRef(null);
+
+  // Guard ref to track current syncing status
+  const lastSelectedElementRef = useRef(null);
+  const isSyncingRef = useRef(false);
 
   // Refs
   const pipetteInputRef = useRef(null);
   const fillTypeRef = useRef(null);
+  const dropdownRef = useRef(null);
+  const weightRef = useRef(null);
+  const dashedRef = useRef(null);
+  const borderStyleRef = useRef(null);
 
-  // Load initial color from element
-  useEffect(() => {
-    if (selectedElement) {
-      const colorStyle = window.getComputedStyle(selectedElement).color || 'rgb(0, 0, 0)';
-      let r = 0, g = 0, b = 0, a = 1;
+  const alignmentRef = useRef(null);
+  const styleRef = useRef(null);
+  const caseRef = useRef(null);
+  const listRef = useRef(null);
+  const fillPickerRef = useRef(null);
+  const strokePickerRef = useRef(null);
+  const gradientStopPickerRef = useRef(null);
 
-      const rgbaMatch = colorStyle.match(/rgba?\((\d+),\s*(\d+),\s*(\d+)(?:,\s*([\d.]+))?\)/);
-      if (rgbaMatch) {
-        r = parseInt(rgbaMatch[1]);
-        g = parseInt(rgbaMatch[2]);
-        b = parseInt(rgbaMatch[3]);
-        if (rgbaMatch[4] !== undefined) a = parseFloat(rgbaMatch[4]);
+  // --- HELPER FUNCTIONS ---
+
+  const escapeSvg = (str) => {
+    return str.replace(/[&<>"']/g, (m) => {
+      switch (m) {
+        case '&': return '&amp;';
+        case '<': return '&lt;';
+        case '>': return '&gt;';
+        case '"': return '&quot;';
+        case "'": return '&apos;';
+        default: return m;
+      }
+    });
+  };
+
+  const applyDesign = useCallback(() => {
+    const el = selectedElement;
+    if (!el) return;
+
+    const styles = window.getComputedStyle(el);
+    const text = el.innerText || '';
+    const fontSize = styles.fontSize;
+    const fontFamily = styles.fontFamily;
+    const fontWeight = styles.fontWeight;
+    const textAlign = styles.textAlign;
+    const letterSpacing = styles.letterSpacing;
+    const lineHeight = styles.lineHeight === 'normal' ? parseFloat(fontSize) * 1.2 : parseFloat(styles.lineHeight);
+
+    const paddingTop = parseFloat(styles.paddingTop) || 0;
+    const paddingLeft = parseFloat(styles.paddingLeft) || 0;
+    const paddingRight = parseFloat(styles.paddingRight) || 0;
+    const width = el.offsetWidth;
+    const height = el.offsetHeight;
+
+    // --- Fill Prep ---
+    const fillRgb = hexToRgb(hex);
+    const rgbaFill = `rgba(${fillRgb.r}, ${fillRgb.g}, ${fillRgb.b}, ${fillOpacity / 100})`;
+
+    let gradStr = '';
+    if (fillType === 'gradient') {
+      const stopsStr = gradientStops.map(s => {
+        const rgb = hexToRgb(s.color);
+        const op = (s.opacity || 100) / 100;
+        return `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, ${op}) ${s.offset}%`;
+      }).join(', ');
+      gradStr = gradientType === 'Linear'
+        ? `linear-gradient(to right, ${stopsStr})`
+        : `radial-gradient(circle, ${stopsStr})`;
+    }
+
+    // --- Stroke Prep ---
+    const sRgb = hexToRgb(strokeColor);
+    const rgbaStroke = `rgba(${sRgb.r}, ${sRgb.g}, ${sRgb.b}, ${strokeOpacity / 100})`;
+
+    if (strokeType === 'dashed') {
+      // DASHED MODE: All-in-one SVG Background
+      if (width === 0 || height === 0) return;
+
+      const lineCap = isRoundCorners ? 'round' : 'square';
+      let textAnchor = 'start';
+      let x = paddingLeft;
+      if (textAlign === 'center') { textAnchor = 'middle'; x = width / 2; }
+      else if (textAlign === 'right') { textAnchor = 'end'; x = width - paddingRight; }
+
+      let finalStrokeWidth = borderThickness;
+      let paintOrder = 'fill stroke';
+      if (strokePosition === 'outside') {
+        finalStrokeWidth = borderThickness * 2;
+        paintOrder = 'stroke fill';
+      } else if (strokePosition === 'inside') {
+        finalStrokeWidth = borderThickness * 2;
+        paintOrder = 'fill stroke';
       }
 
-      const rgbObj = { r, g, b };
-      const hsvObj = rgbToHsv(r, g, b);
-      const hexVal = rgbToHex(r, g, b);
+      let svgFill = rgbaFill;
+      let gradDef = '';
+      if (fillType === 'gradient') {
+        const stopsXml = gradientStops.map(s => `<stop offset="${s.offset}%" stop-color="${s.color}" stop-opacity="${(s.opacity || 100) / 100}" />`).join('');
+        const id = `tg-${Math.random().toString(36).substr(2, 9)}`;
+        gradDef = gradientType === 'Linear'
+          ? `<linearGradient id="${id}" x1="0%" y1="0%" x2="100%" y2="0%">${stopsXml}</linearGradient>`
+          : `<radialGradient id="${id}" cx="50%" cy="50%" r="50%">${stopsXml}</radialGradient>`;
+        svgFill = `url(#${id})`;
+      }
 
-      setRgb(rgbObj);
-      setHsv(hsvObj);
-      setHex(hexVal);
-      setInitialColor(hexVal);
-      setFillOpacity(Math.round(a * 100));
+      // Helper to wrap text based on width
+      const getWrappedLines = (textContent, maxWidth, fontString) => {
+        const canvas = document.createElement('canvas');
+        const context = canvas.getContext('2d');
+        context.font = fontString;
 
-      // Check for gradient
-      const bgStyle = window.getComputedStyle(selectedElement).backgroundImage;
-      const parsedGrad = parseGradient(bgStyle);
-      if (parsedGrad) {
-        setFillType('gradient');
-        setGradientType(parsedGrad.type);
-        setGradientStops(parsedGrad.stops);
+        const lines = [];
+        const paragraphs = textContent.split('\n');
+
+        paragraphs.forEach(paragraph => {
+          const words = paragraph.split(' ');
+          let currentLine = words[0];
+
+          for (let i = 1; i < words.length; i++) {
+            const word = words[i];
+            const width = context.measureText(currentLine + " " + word).width;
+            if (width < maxWidth) {
+              currentLine += " " + word;
+            } else {
+              lines.push(currentLine);
+              currentLine = word;
+            }
+          }
+          lines.push(currentLine);
+        });
+        return lines;
+      };
+
+      const cleanFontFamily = fontFamily.replace(/['"]/g, "");
+      // Canvas font string requires quotes for multi-word font names (e.g. "Times New Roman")
+      const fontString = `${fontWeight} ${fontSize} "${cleanFontFamily}"`;
+
+      const availableWidth = width - paddingLeft - paddingRight;
+      const wrappedLines = getWrappedLines(text, availableWidth, fontString);
+
+      const tspans = wrappedLines.map((line, i) => {
+        const yLine = paddingTop + (i + 1) * lineHeight - (lineHeight * 0.15);
+        // Use clean font family for SVG attribute (attribute quotes handle the spaces)
+        return `<tspan x="${x}" y="${yLine}">${escapeSvg(line)}</tspan>`;
+      }).join('');
+
+      const svg = `
+        <svg width='${width}' height='${height}' viewBox='0 0 ${width} ${height}' xmlns='http://www.w3.org/2000/svg'>
+          <defs>${gradDef}</defs>
+          <text text-anchor='${textAnchor}' font-family='${cleanFontFamily}' font-size='${fontSize}' font-weight='${fontWeight}' letter-spacing='${letterSpacing}' fill='${svgFill}' stroke='${rgbaStroke}' stroke-width='${finalStrokeWidth}' stroke-dasharray='${dashLength},${dashGap}' stroke-linecap='${lineCap}' style="paint-order: ${paintOrder};">
+            ${tspans}
+          </text>
+        </svg>
+      `.replace(/\s+/g, ' ');
+
+      el.style.color = 'transparent';
+      el.style.webkitTextFillColor = 'transparent';
+      el.style.webkitTextStrokeWidth = '0px';
+      el.style.backgroundImage = `url("data:image/svg+xml,${encodeURIComponent(svg)}")`;
+      el.style.backgroundClip = 'initial';
+      el.style.webkitBackgroundClip = 'initial';
+      el.style.backgroundRepeat = 'no-repeat';
+    } else {
+      // SOLID MODE: Standard CSS Properties
+      el.style.color = rgbaFill;
+      el.style.webkitTextFillColor = fillType === 'gradient' ? 'transparent' : rgbaFill;
+
+      if (fillType === 'gradient') {
+        el.style.backgroundImage = gradStr;
+        el.style.backgroundClip = 'text';
+        el.style.webkitBackgroundClip = 'text';
       } else {
-        setFillType('solid');
+        el.style.backgroundImage = 'none';
+        el.style.backgroundClip = 'initial';
+        el.style.webkitBackgroundClip = 'initial';
       }
 
-      // Ensure we don't trigger the update effect for this initial load
-      isFirstFillEffect.current = true;
-    }
-  }, [selectedElement]);
-
-  // Load initial stroke color from element border
-  useEffect(() => {
-    if (selectedElement) {
-      const borderColorStyle = window.getComputedStyle(selectedElement).borderColor || 'rgb(0, 0, 0)';
-      let r = 0, g = 0, b = 0, a = 1;
-
-      const rgbaMatch = borderColorStyle.match(/rgba?\((\d+),\s*(\d+),\s*(\d+)(?:,\s*([\d.]+))?\)/);
-      if (rgbaMatch) {
-        r = parseInt(rgbaMatch[1]);
-        g = parseInt(rgbaMatch[2]);
-        b = parseInt(rgbaMatch[3]);
-        if (rgbaMatch[4] !== undefined) a = parseFloat(rgbaMatch[4]);
+      let finalWidth = borderThickness;
+      if (strokePosition === 'outside') {
+        finalWidth = borderThickness * 2;
+        el.style.paintOrder = 'stroke fill';
+      } else if (strokePosition === 'inside') {
+        finalWidth = borderThickness * 2;
+        el.style.paintOrder = 'fill stroke';
+      } else {
+        el.style.paintOrder = 'normal';
       }
 
-      const hexVal = rgbToHex(r, g, b);
-      setStrokeColor(hexVal);
-      setStrokeRgb({ r, g, b });
-      setStrokeHsv(rgbToHsv(r, g, b));
-      setStrokeOpacity(Math.round(a * 100));
-      // Ensure we don't trigger the update effect for this initial load
-      isFirstStrokeEffect.current = true;
+      el.style.webkitTextStrokeWidth = finalWidth + 'px';
+      el.style.webkitTextStrokeColor = rgbaStroke;
     }
-  }, [selectedElement]);
+    el.style.border = 'none';
 
-  // Reset panels when selectedElement or closePanelsSignal changes
-  useEffect(() => {
-    setActivePanel(null);
-    setShowFontDropdown(false);
-    setShowWeightDropdown(false);
-    setShowBorderStyleDropdown(false);
-    setShowFillTypeDropdown(false);
-    setShowGradientTypeDropdown(false);
-    setShowDashedPopup(false);
-    setShowFillPicker(false);
-    setShowStrokePicker(false);
-  }, [selectedElement, closePanelsSignal]);
+    // Save metadata for accurate retrieval on re-selection
+    el.setAttribute('data-fill-color', hex);
+    el.setAttribute('data-fill-opacity', fillOpacity);
+    el.setAttribute('data-fill-type', fillType);
+    el.setAttribute('data-stroke-color', strokeColor);
+    el.setAttribute('data-stroke-opacity', strokeOpacity);
+    el.setAttribute('data-dash-length', dashLength);
+    el.setAttribute('data-dash-gap', dashGap);
+    el.setAttribute('data-round-corners', isRoundCorners);
+    el.setAttribute('data-stroke-type', strokeType);
+    el.setAttribute('data-stroke-position', strokePosition);
+    el.setAttribute('data-border-thickness', borderThickness);
 
-  // Reapply fill color when opacity changes
-  useEffect(() => {
-    if (isFirstFillEffect.current) {
-      isFirstFillEffect.current = false;
-      return;
-    }
-    if (hex) {
-      applyFillColor(hex);
-    }
-  }, [fillOpacity, hex]);
+    if (onUpdate) onUpdate();
+  }, [selectedElement, hex, fillOpacity, fillType, gradientStops, gradientType, strokeColor, strokeOpacity, strokeType, strokePosition, borderThickness, dashLength, dashGap, isRoundCorners, onUpdate]);
 
-  // Reapply stroke color when opacity changes
-  useEffect(() => {
-    if (isFirstStrokeEffect.current) {
-      isFirstStrokeEffect.current = false;
-      return;
-    }
-    if (strokeColor) {
-      applyStrokeColor(strokeColor);
-    }
-  }, [strokeOpacity, strokeColor]);
-
-  const resetColor = () => {
-    updateColorFromHex(initialColor);
-  };
-
-  const handleEyeDropper = async () => {
-    if (!window.EyeDropper) {
-      console.warn('EyeDropper API not supported');
-      return;
-    }
-    try {
-      const eyeDropper = new window.EyeDropper();
-      const result = await eyeDropper.open();
-      updateColorFromHex(result.sRGBHex);
-    } catch (e) {
-      console.error(e);
-    }
-  };
+  const applyGradient = useCallback((stops, type = gradientType) => {
+    if (!selectedElement) return;
+    setGradientStops(stops);
+    setGradientType(type);
+  }, [selectedElement, gradientType]);
 
   const updateFillType = (type) => {
     setFillType(type);
     setShowFillTypeDropdown(false);
-    if (type === 'solid') {
-      if (elementRef.current) {
-        elementRef.current.style.backgroundImage = 'none';
-        elementRef.current.style.webkitBackgroundClip = 'initial';
-        elementRef.current.style.webkitTextFillColor = 'initial';
-        elementRef.current.style.backgroundClip = 'initial';
-        elementRef.current.style.color = hex;
-      }
-      if (onUpdate) onUpdate();
-    } else {
-      applyGradient();
-    }
-  };
-
-  const applyGradient = (stops = gradientStops, type = gradientType) => {
-    const sortedStops = [...stops].sort((a, b) => a.offset - b.offset);
-    // Convert hex to rgba with opacity
-    const stopsStr = sortedStops.map(s => {
-      const rgb = hexToRgb(s.color);
-      const opacity = (s.opacity || 100) / 100;
-      return `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, ${opacity}) ${s.offset}%`;
-    }).join(', ');
-    const gradStr = type === 'Linear'
-      ? `linear-gradient(to right, ${stopsStr})`
-      : `radial-gradient(circle, ${stopsStr})`;
-
-    if (elementRef.current) {
-      // Check if we have an existing dashed stroke to preserve
-      let existingStroke = '';
-      if (elementRef.current.style.backgroundImage && elementRef.current.style.backgroundImage.includes('svg')) {
-        // Extract the url("data:image/svg+xml...") part
-        // Simple crude extraction or regex match
-        const match = elementRef.current.style.backgroundImage.match(/url\("data:image\/svg\+xml,[^"]+"\)/);
-        if (match) existingStroke = `, ${match[0]}`;
-      }
-
-      elementRef.current.style.backgroundImage = `${gradStr}${existingStroke}`;
-      // Ensure clips are set correctly for multiple backgrounds
-      if (existingStroke) {
-        elementRef.current.style.webkitBackgroundClip = 'text, border-box';
-        elementRef.current.style.backgroundClip = 'text, border-box';
-      } else {
-        elementRef.current.style.webkitBackgroundClip = 'text';
-        elementRef.current.style.backgroundClip = 'text';
-      }
-
-      elementRef.current.style.webkitTextFillColor = 'transparent';
-
+    if (type === 'solid' && selectedElement) {
+      selectedElement.style.backgroundImage = 'none';
+      selectedElement.style.webkitBackgroundClip = 'initial';
+      selectedElement.style.webkitTextFillColor = 'initial';
+      selectedElement.style.backgroundClip = 'initial';
+      selectedElement.style.color = hex;
       if (onUpdate) onUpdate();
     }
   };
@@ -393,36 +451,26 @@ const TextEditor = ({ selectedElement, selectedElementType, onUpdate, onPopupPre
     const newStops = [...gradientStops];
     newStops[index] = { ...newStops[index], ...updates };
     setGradientStops(newStops);
-    applyGradient(newStops);
   };
 
   const removeGradientStop = (index) => {
     if (gradientStops.length <= 2) return;
     const newStops = gradientStops.filter((_, i) => i !== index);
     setGradientStops(newStops);
-    applyGradient(newStops);
   };
 
   const addGradientStop = (e) => {
     const rect = e.currentTarget.getBoundingClientRect();
     const x = e.clientX - rect.left;
     const offset = Math.min(100, Math.max(0, Math.round((x / rect.width) * 100)));
-
-    // Find closest stop colors to interpolate or just duplicate nearest
-    // Simpler approach: default to a nice color or the one at visual position
-    // For now, let's use a default white or copy the last color? 
-    // Let's copy the color of the stop that comes 'before' this new one, or default to #6366f1
-
     const newStop = { color: '#6366f1', offset, opacity: 100 };
     const newStops = [...gradientStops, newStop].sort((a, b) => a.offset - b.offset);
     setGradientStops(newStops);
-    applyGradient(newStops);
   };
 
   const reverseGradient = () => {
     const newStops = [...gradientStops].map(s => ({ ...s, offset: 100 - s.offset })).sort((a, b) => a.offset - b.offset);
     setGradientStops(newStops);
-    applyGradient(newStops);
   };
 
   const updateColorFromHsv = (newHsv) => {
@@ -431,7 +479,6 @@ const TextEditor = ({ selectedElement, selectedElementType, onUpdate, onPopupPre
     setHsv(newHsv);
     setRgb(newRgb);
     setHex(newHex);
-    updateStyle('color', newHex);
   };
 
   const updateColorFromRgb = (newRgb) => {
@@ -440,7 +487,6 @@ const TextEditor = ({ selectedElement, selectedElementType, onUpdate, onPopupPre
     setRgb(newRgb);
     setHsv(newHsv);
     setHex(newHex);
-    updateStyle('color', newHex);
   };
 
   const updateColorFromHex = (newHex) => {
@@ -452,27 +498,16 @@ const TextEditor = ({ selectedElement, selectedElementType, onUpdate, onPopupPre
       setHsv(newHsv);
       if (fillType === 'gradient') {
         updateFillType('solid');
-      } else {
-        applyFillColor(newHex);
       }
     }
   };
 
-  const applyFillColor = (hexColor) => {
-    const rgbColor = hexToRgb(hexColor);
-    const opacity = fillOpacity / 100;
-    const rgbaColor = `rgba(${rgbColor.r}, ${rgbColor.g}, ${rgbColor.b}, ${opacity})`;
-    updateStyle('color', rgbaColor);
-  };
-
-  // Stroke color update functions
   const updateStrokeColorFromHsv = (newHsv) => {
     const newRgb = hsvToRgb(newHsv.h, newHsv.s, newHsv.v);
     const newHex = rgbToHex(newRgb.r, newRgb.g, newRgb.b);
     setStrokeHsv(newHsv);
     setStrokeRgb(newRgb);
     setStrokeColor(newHex);
-    applyStrokeColor(newHex);
   };
 
   const updateStrokeColorFromRgb = (newRgb) => {
@@ -481,48 +516,20 @@ const TextEditor = ({ selectedElement, selectedElementType, onUpdate, onPopupPre
     setStrokeRgb(newRgb);
     setStrokeHsv(newHsv);
     setStrokeColor(newHex);
-    applyStrokeColor(newHex);
   };
 
   const updateStrokeColorFromHex = (newHex) => {
+    // Auto-apply thickness 1 if currently 0
+    if (borderThickness === 0) setBorderThickness(1);
     setStrokeColor(newHex);
     if (/^#[0-9A-F]{6}$/i.test(newHex)) {
       const newRgb = hexToRgb(newHex);
       const newHsv = rgbToHsv(newRgb.r, newRgb.g, newRgb.b);
       setStrokeRgb(newRgb);
       setStrokeHsv(newHsv);
-      applyStrokeColor(newHex);
     }
   };
 
-  const applyStrokeColor = (color) => {
-    const el = elementRef.current;
-    if (!el) return;
-
-    const rgbColor = hexToRgb(color);
-    const opacity = strokeOpacity / 100;
-    const rgbaColor = `rgba(${rgbColor.r}, ${rgbColor.g}, ${rgbColor.b}, ${opacity})`;
-
-    // Apply to border or SVG stroke depending on style
-    if (el.style.backgroundImage?.includes('svg')) {
-      // Update dashed stroke color by reapplying with new color
-      const lineCap = isRoundCorners ? 'round' : 'square';
-      const svg = `
-        <svg width='100%' height='100%' xmlns='http://www.w3.org/2000/svg'>
-          <rect width='100%' height='100%' fill='none' 
-          stroke='${rgbaColor}' stroke-width='${borderThickness}' 
-          stroke-dasharray='${dashLength},${dashGap}' stroke-dashoffset='0' stroke-linecap='${lineCap}'/>
-        </svg>
-      `.replace(/\s+/g, ' ');
-      el.style.backgroundImage = `url("data:image/svg+xml,${encodeURIComponent(svg)}")`;
-    } else {
-      // Update solid border color
-      el.style.borderColor = rgbaColor;
-    }
-    if (onUpdate) onUpdate();
-  };
-
-  // Gradient Stop color update functions
   const updateGradientStopColorFromHsv = (newHsv) => {
     const newRgb = hsvToRgb(newHsv.h, newHsv.s, newHsv.v);
     const newHex = rgbToHex(newRgb.r, newRgb.g, newRgb.b);
@@ -568,56 +575,38 @@ const TextEditor = ({ selectedElement, selectedElementType, onUpdate, onPopupPre
     setEditingGradientStopIndex(index);
   };
 
-  // Panel Refs
-  const alignmentRef = useRef(null);
-  const styleRef = useRef(null);
-  const caseRef = useRef(null);
-  const listRef = useRef(null);
+  const resetColor = () => {
+    updateColorFromHex(initialColor);
+  };
 
-  // Dashed / Border settings
-  const [dashLength, setDashLength] = useState(4);
-  const [dashGap, setDashGap] = useState(4);
-  const [isRoundCorners, setIsRoundCorners] = useState(false);
-  const [borderThickness, setBorderThickness] = useState(0);
-
-  const elementLabel = selectedElementType === 'image' ? 'Image' : 'Text';
-
-  const dropdownRef = useRef(null);
-  const weightRef = useRef(null);
-  const dashedRef = useRef(null);
-  const borderStyleRef = useRef(null);
-  const elementRef = useRef(null);
-
-  useEffect(() => {
-    elementRef.current = selectedElement;
-  }, [selectedElement]);
-
-  useEffect(() => {
-    if (!selectedElement) {
-      setBorderThickness(0);
+  const handleEyeDropper = async () => {
+    if (!window.EyeDropper) {
+      console.warn('EyeDropper API not supported');
       return;
     }
-    const el = selectedElement;
-    let initialThickness = 0;
-    if (el.style.backgroundImage?.includes('svg')) {
-      const match = el.style.backgroundImage.match(/stroke-width='([^']+)'/);
-      if (match) initialThickness = parseInt(match[1], 10) || 1;
-      else initialThickness = 1;
-    } else if (el.style.borderWidth) {
-      initialThickness = parseInt(el.style.borderWidth) || 0;
+    try {
+      const eyeDropper = new window.EyeDropper();
+      const result = await eyeDropper.open();
+      updateColorFromHex(result.sRGBHex);
+    } catch (e) {
+      console.error(e);
     }
-    setBorderThickness(initialThickness);
-  }, [selectedElement]);
+  };
 
   const updateStyle = useCallback((property, value) => {
-    const el = elementRef.current;
+    const el = selectedElement;
     if (!el) return;
     const currentVal = window.getComputedStyle(el)[property];
     let newValue = value;
 
     if (property === 'fontWeight') {
-      const isCurrentlyBold = currentVal === '700' || currentVal === 'bold';
-      newValue = isCurrentlyBold ? '400' : '700';
+      // If value is 'bold' (from B button), toggle. Otherwise (from dropdown), set specific value.
+      if (value === 'bold') {
+        const isCurrentlyBold = currentVal === '700' || currentVal === 'bold' || parseInt(currentVal) >= 700;
+        newValue = isCurrentlyBold ? '400' : '700';
+      } else {
+        newValue = value;
+      }
     } else if (property === 'fontStyle') {
       newValue = currentVal === 'italic' ? 'normal' : 'italic';
     } else if (property === 'textDecorationLine' || property === 'textDecoration') {
@@ -648,61 +637,21 @@ const TextEditor = ({ selectedElement, selectedElementType, onUpdate, onPopupPre
     }
 
     el.style[property] = newValue;
-    if (onUpdate) onUpdate();
-  }, [onUpdate]);
 
-  const applyDashedStyle = useCallback((thickness = borderThickness) => {
-    const el = elementRef.current;
-    if (!el) return;
-
-    const color = strokeColor;
-    const lineCap = isRoundCorners ? 'round' : 'square';
-
-    const svg = `
-      <svg width='100%' height='100%' xmlns='http://www.w3.org/2000/svg'>
-        <rect width='100%' height='100%' fill='none' 
-        stroke='${color}' stroke-width='${thickness}' 
-        stroke-dasharray='${dashLength},${dashGap}' stroke-dashoffset='0' stroke-linecap='${lineCap}'/>
-      </svg>
-    `.replace(/\s+/g, ' ');
-
-    el.style.border = 'none';
-
-    // Check if we need to preserve a gradient
-    if (fillType === 'gradient') {
-      // Re-construct gradient string from current state
-      const sortedStops = [...gradientStops].sort((a, b) => a.offset - b.offset);
-      const stopsStr = sortedStops.map(s => {
-        const rgb = hexToRgb(s.color);
-        const opacity = (s.opacity || 100) / 100;
-        return `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, ${opacity}) ${s.offset}%`;
-      }).join(', ');
-      const gradStr = gradientType === 'Linear'
-        ? `linear-gradient(to right, ${stopsStr})`
-        : `radial-gradient(circle, ${stopsStr})`;
-
-      // Combine gradient (drawn on text) and SVG (drawn on border box)
-      // Note: webkitTextFillColor transparent handles showing the gradient on text
-      el.style.backgroundImage = `${gradStr}, url("data:image/svg+xml,${encodeURIComponent(svg)}")`;
-      // background-clip needs to be set appropriately so gradient clips to text and SVG to border-box
-      // However, standardized 'background-clip' takes comma-separated values matching background-image
-      el.style.backgroundClip = 'text, border-box';
-      el.style.webkitBackgroundClip = 'text, border-box';
-    } else {
-      el.style.backgroundImage = `url("data:image/svg+xml,${encodeURIComponent(svg)}")`;
-      el.style.backgroundOrigin = 'border-box';
-      el.style.backgroundClip = 'border-box';
-      el.style.webkitBackgroundClip = 'border-box';
+    // If this is a typography change and the element has stroke/dashed styles,
+    // we need to regenerate the SVG background
+    const typographyProps = ['fontFamily', 'fontSize', 'fontWeight', 'fontStyle', 'letterSpacing', 'lineHeight', 'textAlign'];
+    if (typographyProps.includes(property) && (strokeType === 'dashed' || borderThickness > 0)) {
+      // Use double requestAnimationFrame to ensure the browser recalculates layout before regenerating SVG
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+          applyDesign();
+        });
+      });
     }
 
     if (onUpdate) onUpdate();
-  }, [dashLength, dashGap, isRoundCorners, borderThickness, strokeColor, fillType, gradientStops, gradientType, onUpdate]);
-
-  useEffect(() => {
-    if (elementRef.current && elementRef.current.style.backgroundImage.includes('svg')) {
-      applyDashedStyle();
-    }
-  }, [dashLength, dashGap, isRoundCorners, applyDashedStyle]);
+  }, [selectedElement, onUpdate, strokeType, borderThickness, applyDesign]);
 
   const togglePanel = (panelName) => {
     setActivePanel(activePanel === panelName ? null : panelName);
@@ -713,11 +662,216 @@ const TextEditor = ({ selectedElement, selectedElementType, onUpdate, onPopupPre
     return window.getComputedStyle(selectedElement)[prop] || '';
   };
 
+  // --- EFFECTS ---
+
+  useEffect(() => {
+    if (selectedElement !== lastSelectedElementRef.current) {
+      isSyncingRef.current = true;
+      setIsSyncing(true);
+      lastSelectedElementRef.current = selectedElement;
+    }
+  }, [selectedElement]);
+
+  // Consolidated style sync: Read ALL properties from element or reset to defaults
+  useEffect(() => {
+    if (selectedElement) {
+      // Batch all state updates together
+      const styles = window.getComputedStyle(selectedElement);
+
+      // --- 1. FILL SYNC ---
+      const attrFillColor = selectedElement.getAttribute('data-fill-color');
+      const attrFillOpacity = selectedElement.getAttribute('data-fill-opacity');
+      const attrFillType = selectedElement.getAttribute('data-fill-type');
+
+      let newHex = '#000000';
+      let newRgb = { r: 0, g: 0, b: 0 };
+      let newHsv = { h: 0, s: 0, v: 0 };
+      let newFillOpacity = 100;
+      let newFillType = 'solid';
+      let newGradientType = 'Linear';
+      let newGradientStops = [
+        { color: '#63D0CD', offset: 0, opacity: 100 },
+        { color: '#4B3EFE', offset: 100, opacity: 100 }
+      ];
+
+      if (attrFillColor) {
+        newHex = attrFillColor;
+        const rgbObj = hexToRgb(attrFillColor);
+        newRgb = rgbObj;
+        newHsv = rgbToHsv(rgbObj.r, rgbObj.g, rgbObj.b);
+      } else {
+        const colorStyle = styles.color || 'rgb(0, 0, 0)';
+        if (colorStyle !== 'transparent' && colorStyle !== 'rgba(0, 0, 0, 0)') {
+          let rf = 0, gf = 0, bf = 0;
+          const rgbaMatchF = colorStyle.match(/rgba?\((\d+),\s*(\d+),\s*(\d+)/);
+          if (rgbaMatchF) {
+            rf = parseInt(rgbaMatchF[1]); gf = parseInt(rgbaMatchF[2]); bf = parseInt(rgbaMatchF[3]);
+          }
+          newHex = rgbToHex(rf, gf, bf);
+          newRgb = { r: rf, g: gf, b: bf };
+          newHsv = rgbToHsv(rf, gf, bf);
+        }
+      }
+
+      if (attrFillOpacity) {
+        newFillOpacity = parseInt(attrFillOpacity);
+      } else {
+        const colorStyle = styles.color || 'rgb(0, 0, 0)';
+        if (colorStyle !== 'transparent' && colorStyle !== 'rgba(0, 0, 0, 0)') {
+          const rgbaMatchF = colorStyle.match(/rgba?\(\d+,\s*\d+,\s*\d+,\s*([\d.]+)\)/);
+          const af = rgbaMatchF ? parseFloat(rgbaMatchF[1]) : 1;
+          newFillOpacity = Math.round(af * 100);
+        }
+      }
+
+      const bgStyle = styles.backgroundImage;
+      const parsedGrad = parseGradient(bgStyle);
+      if (attrFillType === 'gradient' || parsedGrad) {
+        newFillType = 'gradient';
+        if (parsedGrad) {
+          newGradientType = parsedGrad.type;
+          newGradientStops = parsedGrad.stops;
+        }
+      }
+
+      // --- 2. STROKE SYNC ---
+      const attrStrokeColor = selectedElement.getAttribute('data-stroke-color');
+      const attrStrokeOpacity = selectedElement.getAttribute('data-stroke-opacity');
+
+      let newStrokeColor = '#000000';
+      let newStrokeRgb = { r: 0, g: 0, b: 0 };
+      let newStrokeHsv = { h: 0, s: 0, v: 0 };
+      let newStrokeOpacity = 100;
+
+      if (attrStrokeColor) {
+        newStrokeColor = attrStrokeColor;
+        const sRgb = hexToRgb(attrStrokeColor);
+        newStrokeRgb = sRgb;
+        newStrokeHsv = rgbToHsv(sRgb.r, sRgb.g, sRgb.b);
+      } else {
+        const sColorStyle = styles.webkitTextStrokeColor || styles.borderColor || 'rgb(0, 0, 0)';
+        let rs = 0, gs = 0, bs = 0;
+        const rgbaMatchS = sColorStyle.match(/rgba?\((\d+),\s*(\d+),\s*(\d+)/);
+        if (rgbaMatchS) {
+          rs = parseInt(rgbaMatchS[1]); gs = parseInt(rgbaMatchS[2]); bs = parseInt(rgbaMatchS[3]);
+        }
+        newStrokeColor = rgbToHex(rs, gs, bs);
+        newStrokeRgb = { r: rs, g: gs, b: bs };
+        newStrokeHsv = rgbToHsv(rs, gs, bs);
+      }
+
+      if (attrStrokeOpacity) {
+        newStrokeOpacity = parseInt(attrStrokeOpacity);
+      } else {
+        const sColorStyle = styles.webkitTextStrokeColor || styles.borderColor || 'rgb(0, 0, 0)';
+        if (sColorStyle !== 'transparent' && sColorStyle !== 'rgba(0, 0, 0, 0)') {
+          const rgbaMatchS = sColorStyle.match(/rgba?\(\d+,\s*\d+,\s*\d+,\s*([\d.]+)\)/);
+          const as = rgbaMatchS ? parseFloat(rgbaMatchS[1]) : 1;
+          newStrokeOpacity = Math.round(as * 100);
+        }
+      }
+
+      // --- 3. ADVANCED STROKE PROPERTIES ---
+      const hasSvgBg = bgStyle && bgStyle.includes('data:image/svg+xml');
+      const attrStrokeType = selectedElement.getAttribute('data-stroke-type');
+      const newStrokeType = attrStrokeType || (hasSvgBg ? 'dashed' : 'solid');
+
+      const strokeWidth = parseFloat(styles.webkitTextStrokeWidth) || parseFloat(styles.borderWidth) || 0;
+      const paintOrder = styles.paintOrder || 'normal';
+      const attrStrokePos = selectedElement.getAttribute('data-stroke-position');
+      const attrThickness = selectedElement.getAttribute('data-border-thickness');
+
+      let newStrokePosition = 'outside';
+      let newBorderThickness = 0;
+
+      if (attrStrokePos) {
+        newStrokePosition = attrStrokePos;
+        newBorderThickness = parseInt(attrThickness) || 0;
+      } else {
+        let bThick = strokeWidth;
+        if (paintOrder.includes('stroke fill')) { newStrokePosition = 'outside'; bThick = strokeWidth / 2; }
+        else if (paintOrder.includes('fill stroke')) { newStrokePosition = 'inside'; bThick = strokeWidth / 2; }
+        else { newStrokePosition = 'center'; bThick = strokeWidth; }
+        newBorderThickness = Math.round(bThick);
+      }
+
+      const newDashLength = parseInt(selectedElement.getAttribute('data-dash-length')) || 4;
+      const newDashGap = parseInt(selectedElement.getAttribute('data-dash-gap')) || 4;
+      const newIsRoundCorners = selectedElement.getAttribute('data-round-corners') === 'true';
+
+      // Apply all state updates in one batch
+      setHex(newHex);
+      setInitialColor(newHex);
+      setRgb(newRgb);
+      setHsv(newHsv);
+      setFillOpacity(newFillOpacity);
+      setFillType(newFillType);
+      setGradientType(newGradientType);
+      setGradientStops(newGradientStops);
+
+      setStrokeColor(newStrokeColor);
+      setStrokeRgb(newStrokeRgb);
+      setStrokeHsv(newStrokeHsv);
+      setStrokeOpacity(newStrokeOpacity);
+      setStrokeType(newStrokeType);
+      setStrokePosition(newStrokePosition);
+      setBorderThickness(newBorderThickness);
+      setDashLength(newDashLength);
+      setDashGap(newDashGap);
+      setIsRoundCorners(newIsRoundCorners);
+
+      // Use requestAnimationFrame to ensure all state updates are committed before ending sync
+      requestAnimationFrame(() => {
+        isSyncingRef.current = false;
+        setIsSyncing(false);
+      });
+    }
+  }, [selectedElement]);
+
+  // Reset panels when selectedElement or closePanelsSignal changes
+  useEffect(() => {
+    setActivePanel(null);
+    setShowFontDropdown(false);
+    setShowWeightDropdown(false);
+    setShowBorderStyleDropdown(false);
+    setShowFillTypeDropdown(false);
+    setShowGradientTypeDropdown(false);
+    setShowDashedPopup(false);
+    setShowFillPicker(false);
+    setShowStrokePicker(false);
+  }, [selectedElement, closePanelsSignal]);
+
+
+  // Master Design Update Effect - Only apply when style values change AND sync is complete
+  useEffect(() => {
+    if (!isSyncingRef.current && !isSyncing && selectedElement) {
+      applyDesign();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [
+    isSyncing,
+    selectedElement,
+    hex,
+    fillOpacity,
+    fillType,
+    gradientStops,
+    gradientType,
+    strokeColor,
+    strokeOpacity,
+    strokeType,
+    strokePosition,
+    borderThickness,
+    dashLength,
+    dashGap,
+    isRoundCorners
+  ]);
+
   useEffect(() => {
     const handleClickOutside = (event) => {
       if (dropdownRef.current && !dropdownRef.current.contains(event.target)) setShowFontDropdown(false);
       if (weightRef.current && !weightRef.current.contains(event.target)) setShowWeightDropdown(false);
       if (borderStyleRef.current && !borderStyleRef.current.contains(event.target)) setShowBorderStyleDropdown(false);
+      if (strokePositionRef.current && !strokePositionRef.current.contains(event.target)) setShowStrokePositionDropdown(false);
       if (dashedRef.current && !dashedRef.current.contains(event.target)) {
         if (!event.target.closest('.dashed-selector-trigger')) setShowDashedPopup(false);
       }
@@ -730,45 +884,117 @@ const TextEditor = ({ selectedElement, selectedElementType, onUpdate, onPopupPre
         if (activePanel === 'list' && listRef.current && !listRef.current.contains(event.target) && !event.target.closest('.list-trigger')) setActivePanel(null);
       }
       if (fillTypeRef.current && !fillTypeRef.current.contains(event.target)) setShowFillTypeDropdown(false);
+      if (fillPickerRef.current && !fillPickerRef.current.contains(event.target) && !event.target.closest('.fill-picker-trigger')) setShowFillPicker(false);
+      if (strokePickerRef.current && !strokePickerRef.current.contains(event.target) && !event.target.closest('.stroke-picker-trigger')) setShowStrokePicker(false);
+      if (gradientStopPickerRef.current && !gradientStopPickerRef.current.contains(event.target)) setEditingGradientStopIndex(null);
       if (event.target.closest('.gradient-type-trigger') === null) setShowGradientTypeDropdown(false);
     };
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, [activePanel, showFontDropdown, showWeightDropdown, showBorderStyleDropdown, showDashedPopup, showFillTypeDropdown, showGradientTypeDropdown]);
+  }, [activePanel, showFontDropdown, showWeightDropdown, showBorderStyleDropdown, showDashedPopup, showFillTypeDropdown, showGradientTypeDropdown, showStrokePositionDropdown]);
 
   if (!selectedElement) return null;
 
   return (
     <div className="relative flex items-start gap-4 justify-end font-sans">
 
-      {/* DASHED POPUP */}
-      <div ref={dashedRef} className={`fixed top-80 w-[18.75vw] bg-white border border-gray-100 rounded-[1.5vw] shadow-2xl transition-all duration-300 z-50 overflow-hidden ${showDashedPopup ? 'right-[30.5vw] opacity-100 scale-100' : 'right-[48.6vw] opacity-0 scale-95 pointer-events-none'}`}>
-        <div className="p-[1.5vw] space-y-[1.5vw]">
-          <div className="flex items-center gap-[0.75vw]">
-            <span className="font-bold text-[0.75vw] text-gray-800">Dashed Settings</span>
-            <div className="h-[1px] flex-grow bg-gray-100"></div>
-          </div>
-          <div className="space-y-[1vw]">
-            <div className="flex items-center justify-between">
-              <span className="text-[0.75vw] font-medium text-gray-700">Length</span>
-              <input type="range" min="1" max="20" value={dashLength} onChange={(e) => setDashLength(parseInt(e.target.value))} className="w-[6vw] accent-indigo-600" />
-              <span className="text-[0.75vw] font-bold w-[1.5vw] text-center">{dashLength}</span>
+      {/* DASHED POPUP (Redesigned per Screenshot 4) */}
+      {showDashedPopup && (
+        <div ref={dashedRef} className="fixed top-80 w-[18.75vw] right-[23.5vw] bg-white border border-gray-200 rounded-[1.5vw] shadow-2xl z-50 overflow-hidden">
+          <div className="p-[1.25vw] space-y-[1.25vw]">
+            <div className="flex items-center gap-[0.75vw]">
+              <span className="font-bold text-[0.9vw] text-gray-800">Dashed</span>
+              <div className="h-[1px] flex-grow bg-gray-200"></div>
             </div>
-            <div className="flex items-center justify-between">
-              <span className="text-[0.75vw] font-medium text-gray-700">Gap</span>
-              <input type="range" min="1" max="20" value={dashGap} onChange={(e) => setDashGap(parseInt(e.target.value))} className="w-[6vw] accent-indigo-600" />
-              <span className="text-[0.75vw] font-bold w-[1.5vw] text-center">{dashGap}</span>
-            </div>
-            <div className="flex items-center justify-between">
-              <span className="text-[0.75vw] font-medium text-gray-700">Round Corners</span>
-              <input type="checkbox" checked={isRoundCorners} onChange={(e) => setIsRoundCorners(e.target.checked)} className="w-[1.25vw] h-[1.25vw] accent-indigo-600" />
+
+            <div className="space-y-[1vw]">
+              {/* Position Dropdown */}
+              <div className="flex items-center justify-between">
+                <span className="text-[0.8vw] font-medium text-gray-700">Position :</span>
+                <div className="relative" ref={strokePositionRef}>
+                  <div
+                    onClick={() => setShowStrokePositionDropdown(!showStrokePositionDropdown)}
+                    className="w-[8vw] h-[2.5vw] px-[0.75vw] bg-gray-50 border border-gray-200 rounded-[0.75vw] flex items-center justify-between cursor-pointer hover:border-blue-400 transition-colors shadow-sm"
+                  >
+                    <span className="text-[0.75vw] font-bold text-gray-700 capitalize">{strokePosition}</span>
+                    <ChevronDown size={14} className="text-gray-500" />
+                  </div>
+                  {showStrokePositionDropdown && (
+                    <div className="absolute top-full left-0 w-full mt-1 bg-white border border-gray-200 rounded-[0.75vw] shadow-xl z-50 py-1">
+                      {['outside', 'center', 'inside'].map(pos => (
+                        <div
+                          key={pos}
+                          onClick={() => {
+                            setStrokePosition(pos);
+                            setShowStrokePositionDropdown(false);
+                          }}
+                          className="px-[0.75vw] py-[0.5vw] text-[0.75vw] hover:bg-blue-50 hover:text-blue-600 cursor-pointer capitalize font-medium"
+                        >
+                          {pos}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              <div className="h-[1px] w-full bg-gray-100"></div>
+
+              {/* Length Stepper */}
+              <div className="flex items-center justify-between">
+                <span className="text-[0.8vw] font-medium text-gray-700">Length :</span>
+                <div className="flex items-center gap-[0.25vw]">
+                  <button
+                    onClick={() => setDashLength(Math.max(1, dashLength - 1))}
+                    className="w-[1.5vw] h-[1.5vw] flex items-center justify-center hover:text-blue-600 transition-colors text-gray-400"
+                  ><ChevronLeft size={16} /></button>
+                  <div className="w-[3.2vw] h-[2.5vw] border border-gray-200 rounded-[0.5vw] flex items-center justify-center font-bold text-[0.85vw] text-gray-800 bg-white shadow-[inset_0_1px_2px_rgba(0,0,0,0.05)]">
+                    {dashLength}
+                  </div>
+                  <button
+                    onClick={() => setDashLength(dashLength + 1)}
+                    className="w-[1.5vw] h-[1.5vw] flex items-center justify-center hover:text-blue-600 transition-colors text-gray-400"
+                  ><ChevronRight size={16} /></button>
+                </div>
+              </div>
+
+              {/* Gap Stepper */}
+              <div className="flex items-center justify-between">
+                <span className="text-[0.8vw] font-medium text-gray-700">Gap :</span>
+                <div className="flex items-center gap-[0.25vw]">
+                  <button
+                    onClick={() => setDashGap(Math.max(1, dashGap - 1))}
+                    className="w-[1.5vw] h-[1.5vw] flex items-center justify-center hover:text-blue-600 transition-colors text-gray-400"
+                  ><ChevronLeft size={16} /></button>
+                  <div className="w-[3.2vw] h-[2.5vw] border border-gray-200 rounded-[0.5vw] flex items-center justify-center font-bold text-[0.85vw] text-gray-800 bg-white shadow-[inset_0_1px_2px_rgba(0,0,0,0.05)]">
+                    {dashGap}
+                  </div>
+                  <button
+                    onClick={() => setDashGap(dashGap + 1)}
+                    className="w-[1.5vw] h-[1.5vw] flex items-center justify-center hover:text-blue-600 transition-colors text-gray-400"
+                  ><ChevronRight size={16} /></button>
+                </div>
+              </div>
+
+              <div className="h-[1px] w-full bg-gray-100"></div>
+
+              {/* Round Corners Toggle */}
+              <div className="flex items-center justify-between">
+                <span className="text-[0.8vw] font-medium text-gray-700">Round Corners :</span>
+                <div
+                  onClick={() => setIsRoundCorners(!isRoundCorners)}
+                  className={`w-[2.8vw] h-[1.4vw] rounded-full p-[0.2vw] cursor-pointer transition-colors duration-200 ${isRoundCorners ? 'bg-blue-600' : 'bg-gray-200 border border-gray-300'}`}
+                >
+                  <div className={`w-[1vw] h-[1vw] bg-white rounded-full transition-transform duration-200 ${isRoundCorners ? 'translate-x-[1.3vw] shadow-sm' : 'translate-x-0 border border-gray-200'}`}></div>
+                </div>
+              </div>
             </div>
           </div>
         </div>
-      </div>
+      )}
 
       {/* SIMPLE STROKE COLOR PICKER */}
-      <div className={`fixed top-1/2 -translate-y-1/2 right-[22.9vw] w-[16.7vw] bg-white border border-gray-200 rounded-[1vw] shadow-xl transition-all duration-300 z-50 overflow-hidden ${showStrokePicker ? 'opacity-100 scale-100 pointer-events-auto' : 'opacity-0 scale-95 pointer-events-none'}`}>
+      <div ref={strokePickerRef} className={`fixed top-1/2 -translate-y-1/2 right-[22.9vw] w-[16.7vw] bg-white border border-gray-200 rounded-[1vw] shadow-xl transition-all duration-300 z-50 overflow-hidden ${showStrokePicker ? 'opacity-100 scale-100 pointer-events-auto' : 'opacity-0 scale-95 pointer-events-none'}`}>
         <div className="p-[1vw]">
           <div className="grid grid-cols-6 gap-[0.5vw]">
             {[
@@ -790,7 +1016,7 @@ const TextEditor = ({ selectedElement, selectedElementType, onUpdate, onPopupPre
       </div>
 
       {/* GRADIENT STOP COLOR PICKER */}
-      <div className={`fixed top-[50%] -translate-y-1/2 right-[3.5vw] w-[17.4vw] bg-white rounded-[1vw] shadow-[0_10px_40px_-10px_rgba(0,0,0,0.3)] border-2 border-blue-500 transition-all duration-300 z-[100] overflow-hidden ${editingGradientStopIndex !== null ? 'opacity-100 scale-100 pointer-events-auto' : 'opacity-0 scale-95 pointer-events-none'}`}>
+      <div ref={gradientStopPickerRef} className={`fixed top-[50%] -translate-y-1/2 right-[3.5vw] w-[17.4vw] bg-white rounded-[1vw] shadow-[0_10px_40px_-10px_rgba(0,0,0,0.3)] border-2 border-blue-500 transition-all duration-300 z-[100] overflow-hidden ${editingGradientStopIndex !== null ? 'opacity-100 scale-100 pointer-events-auto' : 'opacity-0 scale-95 pointer-events-none'}`}>
         {/* Close Icon */}
         <button
           onClick={() => setEditingGradientStopIndex(null)}
@@ -892,7 +1118,7 @@ const TextEditor = ({ selectedElement, selectedElementType, onUpdate, onPopupPre
       </div>
 
       {/* COLOR FILL CONTAINER (Only for Fill, not Stroke) */}
-      <div className={`fixed top-1/2 -translate-y-1/2 right-[22.2vw] w-[19.4vw] bg-white rounded-3xl shadow-[0_10px_40px_-10px_rgba(0,0,0,0.2)] transition-all duration-300 z-50 overflow-hidden flex flex-col max-h-[90vh] ${showFillPicker ? 'opacity-100 scale-100 pointer-events-auto' : 'opacity-0 scale-95 pointer-events-none'}`}>
+      <div ref={fillPickerRef} className={`fixed top-1/2 -translate-y-1/2 right-[22.2vw] w-[19.4vw] bg-white rounded-3xl shadow-[0_10px_40px_-10px_rgba(0,0,0,0.2)] transition-all duration-300 z-50 overflow-hidden flex flex-col max-h-[90vh] ${showFillPicker ? 'opacity-100 scale-100 pointer-events-auto' : 'opacity-0 scale-95 pointer-events-none'}`}>
 
         {/* Header */}
         <div className="flex items-center justify-between p-4 pb-0">
@@ -1210,25 +1436,23 @@ const TextEditor = ({ selectedElement, selectedElementType, onUpdate, onPopupPre
       <div className="w-full max-w-[25vw] space-y-4 z-10 text-[#333]">
 
         {/* TEXT SECTION */}
-        <div className="bg-white border border-gray-200 rounded-xl shadow-sm overflow-hidden">
-          <div className="flex items-center justify-between px-[1vw] py-[0.9vw] cursor-pointer hover:bg-gray-50 transition-colors" onClick={() => setIsTextOpen(!isTextOpen)}>
-            <div className="flex items-center gap-[0.65vw]">
-              <div className="w-[2vw] h-[2vw] rounded-[0.5vw] bg-gradient-to-br from-indigo-50 to-indigo-100 flex items-center justify-center">
-                <PencilLine size={16} className="text-indigo-600" />
-              </div>
-              <span className="font-semibold text-gray-800 text-[0.85vw]">Text</span>
+        <div className="bg-white border border-gray-200 rounded-[15px] shadow-sm">
+          <div className="flex items-center justify-between px-4 py-4 border-b border-gray-50 cursor-pointer hover:bg-gray-50 transition-colors" onClick={() => setActiveSection(activeSection === 'main' ? null : 'main')}>
+            <div className="flex items-center gap-2">
+              <Edit3 size={20} className="text-gray-600" />
+              <span className="font-bold text-gray-900 text-sm">Text</span>
             </div>
-            {isTextOpen ? <ChevronUp size={18} className="text-gray-400" /> : <ChevronDown size={18} className="text-gray-400" />}
+            <ChevronUp size={20} className={`text-gray-900 transition-transform duration-200 ${activeSection === 'main' ? '' : 'rotate-180'}`} strokeWidth={2.5} />
           </div>
 
-          {isTextOpen && (
-            <div className="p-[1.25vw] pt-0 space-y-[1.25vw]">
+          {activeSection === 'main' && (
+            <div className="p-[1.25vw] pt-0 space-y-[1.25vw] pt-4">
 
               {/* Text Area */}
               <div className="relative group">
                 <textarea
                   value={selectedElement?.textContent || ''}
-                  onChange={(e) => { if (elementRef.current) { elementRef.current.textContent = e.target.value; if (onUpdate) onUpdate(); } }}
+                  onChange={(e) => { if (selectedElement) { selectedElement.textContent = e.target.value; if (onUpdate) onUpdate(); } }}
                   placeholder="Enter your text here..."
                   className="w-full h-[6vw] p-[0.9vw] pr-[2.5vw] bg-white border-2 border-gray-200 rounded-[0.5vw] resize-none outline-none text-gray-700 text-[0.85vw] focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100 transition-all placeholder-gray-400"
                 />
@@ -1238,8 +1462,8 @@ const TextEditor = ({ selectedElement, selectedElementType, onUpdate, onPopupPre
               </div>
 
               {/* Typography Header */}
-              <div className="flex items-center gap-2.5 pt-1">
-                <span className="font-bold text-xs uppercase tracking-wide text-gray-700">Typography</span>
+              <div className="flex items-center gap-2.5">
+                <span className="font-bold text-sm tracking-wide text-gray-900">Typography</span>
                 <div className="h-px flex-grow bg-gradient-to-r from-gray-200 via-gray-100 to-transparent"></div>
               </div>
 
@@ -1270,16 +1494,25 @@ const TextEditor = ({ selectedElement, selectedElementType, onUpdate, onPopupPre
 
                 {/* Row 2: Weight, Spacing, LineHeight */}
                 <div className="flex items-center gap-[0.65vw]">
-                  <div className="relative flex-1 h-[2.5vw]" ref={weightRef}>
+                  <div className="relative w-[6.5vw] h-[2.5vw]" ref={weightRef}>
                     <button onClick={() => setShowWeightDropdown(!showWeightDropdown)} className="w-full h-full flex items-center justify-between px-[0.9vw] bg-white border-2 border-gray-200 rounded-[0.5vw] text-[0.85vw] font-medium hover:border-indigo-300 focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100 transition-all">
                       <span className="truncate text-gray-700">{fontWeights.find(w => w.value === getCurrentStyle('fontWeight'))?.name || 'Regular'}</span>
                       <ChevronDown size={14} className="text-gray-400 flex-shrink-0" />
                     </button>
                     {showWeightDropdown && (
-                      <div className="absolute z-50 mt-2 w-full bg-white border border-gray-200 rounded-xl shadow-2xl max-h-[220px] overflow-y-auto custom-scrollbar">
-                        {fontWeights.map((w) => (
-                          <div key={w.value} onClick={() => { updateStyle('fontWeight', w.value); setShowWeightDropdown(false); }} className="px-4 py-2.5 cursor-pointer text-sm font-medium hover:bg-indigo-50 text-gray-700 hover:text-indigo-600 transition-colors">{w.name}</div>
-                        ))}
+                      <div className="absolute z-50 mt-2 w-[9vw] bg-white border border-gray-200 rounded-xl shadow-2xl max-h-[220px] overflow-y-auto custom-scrollbar">
+                        {fontWeights.map((w) => {
+                          const isSelected = getCurrentStyle('fontWeight') === w.value || (w.value === '400' && getCurrentStyle('fontWeight') === 'normal');
+                          return (
+                            <div
+                              key={w.value}
+                              onClick={() => { updateStyle('fontWeight', w.value); setShowWeightDropdown(false); }}
+                              className={`px-4 py-2.5 cursor-pointer text-sm font-medium transition-colors ${isSelected ? 'bg-indigo-50 text-indigo-600' : 'text-gray-700 hover:bg-indigo-50 hover:text-indigo-600'}`}
+                            >
+                              {w.name}
+                            </div>
+                          );
+                        })}
                       </div>
                     )}
                   </div>
@@ -1326,10 +1559,10 @@ const TextEditor = ({ selectedElement, selectedElementType, onUpdate, onPopupPre
                     </button>
                     {activePanel === 'alignment' && (
                       <div className="absolute top-10 left-0 z-50 p-2 bg-[#1a1a1a] rounded-xl flex gap-2 shadow-xl whitespace-nowrap">
-                        <button onClick={() => updateStyle('textAlign', 'left')} className={`w-10 h-10 rounded-lg flex items-center justify-center text-gray-800 transition-colors ${elementRef.current?.style.textAlign === 'left' ? 'bg-gray-300' : 'bg-white hover:bg-gray-100'}`}><AlignLeft size={20} /></button>
-                        <button onClick={() => updateStyle('textAlign', 'center')} className={`w-10 h-10 rounded-lg flex items-center justify-center text-gray-800 transition-colors ${elementRef.current?.style.textAlign === 'center' ? 'bg-gray-300' : 'bg-white hover:bg-gray-100'}`}><AlignCenter size={20} /></button>
-                        <button onClick={() => updateStyle('textAlign', 'right')} className={`w-10 h-10 rounded-lg flex items-center justify-center text-gray-800 transition-colors ${elementRef.current?.style.textAlign === 'right' ? 'bg-gray-300' : 'bg-white hover:bg-gray-100'}`}><AlignRight size={20} /></button>
-                        <button onClick={() => updateStyle('textAlign', 'justify')} className={`w-10 h-10 rounded-lg flex items-center justify-center text-gray-800 transition-colors ${elementRef.current?.style.textAlign === 'justify' ? 'bg-gray-300' : 'bg-white hover:bg-gray-100'}`}><AlignJustify size={20} /></button>
+                        <button onClick={() => updateStyle('textAlign', 'left')} className={`w-10 h-10 rounded-lg flex items-center justify-center text-gray-800 transition-colors ${selectedElement?.style.textAlign === 'left' ? 'bg-gray-300' : 'bg-white hover:bg-gray-100'}`}><AlignLeft size={20} /></button>
+                        <button onClick={() => updateStyle('textAlign', 'center')} className={`w-10 h-10 rounded-lg flex items-center justify-center text-gray-800 transition-colors ${selectedElement?.style.textAlign === 'center' ? 'bg-gray-300' : 'bg-white hover:bg-gray-100'}`}><AlignCenter size={20} /></button>
+                        <button onClick={() => updateStyle('textAlign', 'right')} className={`w-10 h-10 rounded-lg flex items-center justify-center text-gray-800 transition-colors ${selectedElement?.style.textAlign === 'right' ? 'bg-gray-300' : 'bg-white hover:bg-gray-100'}`}><AlignRight size={20} /></button>
+                        <button onClick={() => updateStyle('textAlign', 'justify')} className={`w-10 h-10 rounded-lg flex items-center justify-center text-gray-800 transition-colors ${selectedElement?.style.textAlign === 'justify' ? 'bg-gray-300' : 'bg-white hover:bg-gray-100'}`}><AlignJustify size={20} /></button>
                       </div>
                     )}
                   </div>
@@ -1344,10 +1577,10 @@ const TextEditor = ({ selectedElement, selectedElementType, onUpdate, onPopupPre
                     </button>
                     {activePanel === 'style' && (
                       <div className="absolute top-10 left-[-50px] z-50 p-2 bg-[#1a1a1a] rounded-xl flex gap-2 shadow-xl whitespace-nowrap">
-                        <button onClick={() => updateStyle('fontWeight', 'bold')} className={`w-10 h-10 rounded-lg flex items-center justify-center text-lg font-bold text-gray-800 transition-colors ${elementRef.current?.style.fontWeight === '700' || elementRef.current?.style.fontWeight === 'bold' ? 'bg-gray-300' : 'bg-white hover:bg-gray-100'}`}>B</button>
-                        <button onClick={() => updateStyle('fontStyle', 'italic')} className={`w-10 h-10 rounded-lg flex items-center justify-center text-lg italic font-serif text-gray-800 transition-colors ${elementRef.current?.style.fontStyle === 'italic' ? 'bg-gray-300' : 'bg-white hover:bg-gray-100'}`}>I</button>
-                        <button onClick={() => updateStyle('textDecoration', 'underline')} className={`w-10 h-10 rounded-lg flex items-center justify-center text-lg underline text-gray-800 transition-colors ${elementRef.current?.style.textDecoration?.includes('underline') ? 'bg-gray-300' : 'bg-white hover:bg-gray-100'}`}>U</button>
-                        <button onClick={() => updateStyle('textDecoration', 'line-through')} className={`w-10 h-10 rounded-lg flex items-center justify-center text-lg line-through text-gray-800 transition-colors ${elementRef.current?.style.textDecoration?.includes('line-through') ? 'bg-gray-300' : 'bg-white hover:bg-gray-100'}`}><span className="line-through">S</span></button>
+                        <button onClick={() => updateStyle('fontWeight', 'bold')} className={`w-10 h-10 rounded-lg flex items-center justify-center text-lg font-bold text-gray-800 transition-colors ${selectedElement?.style.fontWeight === '700' || selectedElement?.style.fontWeight === 'bold' ? 'bg-gray-300' : 'bg-white hover:bg-gray-100'}`}>B</button>
+                        <button onClick={() => updateStyle('fontStyle', 'italic')} className={`w-10 h-10 rounded-lg flex items-center justify-center text-lg italic font-serif text-gray-800 transition-colors ${selectedElement?.style.fontStyle === 'italic' ? 'bg-gray-300' : 'bg-white hover:bg-gray-100'}`}>I</button>
+                        <button onClick={() => updateStyle('textDecoration', 'underline')} className={`w-10 h-10 rounded-lg flex items-center justify-center text-lg underline text-gray-800 transition-colors ${selectedElement?.style.textDecoration?.includes('underline') ? 'bg-gray-300' : 'bg-white hover:bg-gray-100'}`}>U</button>
+                        <button onClick={() => updateStyle('textDecoration', 'line-through')} className={`w-10 h-10 rounded-lg flex items-center justify-center text-lg line-through text-gray-800 transition-colors ${selectedElement?.style.textDecoration?.includes('line-through') ? 'bg-gray-300' : 'bg-white hover:bg-gray-100'}`}><span className="line-through">S</span></button>
                       </div>
                     )}
                   </div>
@@ -1362,10 +1595,10 @@ const TextEditor = ({ selectedElement, selectedElementType, onUpdate, onPopupPre
                     </button>
                     {activePanel === 'case' && (
                       <div className="absolute top-10 left-[-100px] z-50 p-2 bg-[#1a1a1a] rounded-xl flex gap-2 shadow-xl whitespace-nowrap">
-                        <button onClick={() => updateStyle('textTransform', 'none')} className={`w-10 h-10 rounded-lg flex items-center justify-center text-lg text-gray-800 transition-colors ${elementRef.current?.style.textTransform === 'none' || !elementRef.current?.style.textTransform ? 'bg-gray-300' : 'bg-white hover:bg-gray-100'}`}><Minus size={20} /></button>
-                        <button onClick={() => updateStyle('textTransform', 'capitalize')} className={`w-10 h-10 rounded-lg flex items-center justify-center text-lg font-medium text-gray-800 transition-colors ${elementRef.current?.style.textTransform === 'capitalize' ? 'bg-gray-300' : 'bg-white hover:bg-gray-100'}`}>Aa</button>
-                        <button onClick={() => updateStyle('textTransform', 'uppercase')} className={`w-10 h-10 rounded-lg flex items-center justify-center text-lg font-medium text-gray-800 transition-colors ${elementRef.current?.style.textTransform === 'uppercase' ? 'bg-gray-300' : 'bg-white hover:bg-gray-100'}`}>AB</button>
-                        <button onClick={() => updateStyle('textTransform', 'lowercase')} className={`w-10 h-10 rounded-lg flex items-center justify-center text-lg font-medium text-gray-800 transition-colors ${elementRef.current?.style.textTransform === 'lowercase' ? 'bg-gray-300' : 'bg-white hover:bg-gray-100'}`}>ab</button>
+                        <button onClick={() => updateStyle('textTransform', 'none')} className={`w-10 h-10 rounded-lg flex items-center justify-center text-lg text-gray-800 transition-colors ${selectedElement?.style.textTransform === 'none' || !selectedElement?.style.textTransform ? 'bg-gray-300' : 'bg-white hover:bg-gray-100'}`}><Minus size={20} /></button>
+                        <button onClick={() => updateStyle('textTransform', 'capitalize')} className={`w-10 h-10 rounded-lg flex items-center justify-center text-lg font-medium text-gray-800 transition-colors ${selectedElement?.style.textTransform === 'capitalize' ? 'bg-gray-300' : 'bg-white hover:bg-gray-100'}`}>Aa</button>
+                        <button onClick={() => updateStyle('textTransform', 'uppercase')} className={`w-10 h-10 rounded-lg flex items-center justify-center text-lg font-medium text-gray-800 transition-colors ${selectedElement?.style.textTransform === 'uppercase' ? 'bg-gray-300' : 'bg-white hover:bg-gray-100'}`}>AB</button>
+                        <button onClick={() => updateStyle('textTransform', 'lowercase')} className={`w-10 h-10 rounded-lg flex items-center justify-center text-lg font-medium text-gray-800 transition-colors ${selectedElement?.style.textTransform === 'lowercase' ? 'bg-gray-300' : 'bg-white hover:bg-gray-100'}`}>ab</button>
                       </div>
                     )}
                   </div>
@@ -1380,9 +1613,9 @@ const TextEditor = ({ selectedElement, selectedElementType, onUpdate, onPopupPre
                     </button>
                     {activePanel === 'list' && (
                       <div className="absolute top-10 right-0 z-50 p-2 bg-[#1a1a1a] rounded-xl flex gap-2 shadow-xl whitespace-nowrap">
-                        <button onClick={() => updateStyle('listStyleType', 'disc')} className={`w-10 h-10 rounded-lg flex items-center justify-center text-lg text-gray-800 transition-colors ${elementRef.current?.style.listStyleType === 'disc' ? 'bg-gray-300' : 'bg-white hover:bg-gray-100'}`}><List size={20} /></button>
-                        <button onClick={() => updateStyle('listStyleType', 'square')} className={`w-10 h-10 rounded-lg flex items-center justify-center text-lg text-gray-800 transition-colors ${elementRef.current?.style.listStyleType === 'square' ? 'bg-gray-300' : 'bg-white hover:bg-gray-100'}`}><List size={20} /></button>
-                        <button onClick={() => updateStyle('listStyleType', 'decimal')} className={`w-10 h-10 rounded-lg flex items-center justify-center text-lg text-gray-800 transition-colors ${elementRef.current?.style.listStyleType === 'decimal' ? 'bg-gray-300' : 'bg-white hover:bg-gray-100'}`}><ListOrdered size={20} /></button>
+                        <button onClick={() => updateStyle('listStyleType', 'disc')} className={`w-10 h-10 rounded-lg flex items-center justify-center text-lg text-gray-800 transition-colors ${selectedElement?.style.listStyleType === 'disc' ? 'bg-gray-300' : 'bg-white hover:bg-gray-100'}`}><List size={20} /></button>
+                        <button onClick={() => updateStyle('listStyleType', 'square')} className={`w-10 h-10 rounded-lg flex items-center justify-center text-lg text-gray-800 transition-colors ${selectedElement?.style.listStyleType === 'square' ? 'bg-gray-300' : 'bg-white hover:bg-gray-100'}`}><List size={20} /></button>
+                        <button onClick={() => updateStyle('listStyleType', 'decimal')} className={`w-10 h-10 rounded-lg flex items-center justify-center text-lg text-gray-800 transition-colors ${selectedElement?.style.listStyleType === 'decimal' ? 'bg-gray-300' : 'bg-white hover:bg-gray-100'}`}><ListOrdered size={20} /></button>
                       </div>
                     )}
                   </div>
@@ -1390,13 +1623,13 @@ const TextEditor = ({ selectedElement, selectedElementType, onUpdate, onPopupPre
               </div>
 
               {/* Color Section */}
-              <div className="border-2 border-gray-200 rounded-[0.75vw] overflow-hidden shadow-sm">
-                <div className="flex items-center justify-between px-[1vw] py-[0.75vw] bg-gradient-to-r from-white to-gray-50 cursor-pointer hover:from-gray-50 hover:to-gray-100 border-b border-gray-200 transition-all" onClick={() => setIsColorOpen(!isColorOpen)}>
-                  <div className="flex items-center gap-[0.5vw]">
-                    <Palette size={16} className="text-indigo-500" />
-                    <span className="font-bold text-[0.85vw] text-gray-800">Color</span>
-                  </div>
-                  {isColorOpen ? <ChevronUp size={16} className="text-gray-400" /> : <ChevronDown size={16} className="text-gray-400" />}
+              <div className="border border-gray-200 rounded-[15px] overflow-hidden bg-white shadow-sm font-sans mb-3">
+                <div 
+                  className="w-full flex items-center justify-between px-4 py-4 cursor-pointer hover:bg-gray-50 transition-colors border-b border-gray-50" 
+                  onClick={() => setIsColorOpen(!isColorOpen)}
+                >
+                  <span className="text-sm font-bold text-gray-900">Color</span>
+                  <ChevronUp size={20} className={`text-gray-900 transition-transform duration-200 ${isColorOpen ? '' : 'rotate-180'}`} strokeWidth={2.5} />
                 </div>
 
                 {isColorOpen && (
@@ -1404,7 +1637,7 @@ const TextEditor = ({ selectedElement, selectedElementType, onUpdate, onPopupPre
                     {/* Fill */}
                     <div className="flex items-center gap-[0.5vw]">
                       <span className="text-[0.7vw] font-bold text-gray-700 w-[3vw]">Fill</span>
-                      <div onClick={() => { setShowFillPicker(!showFillPicker); setShowStrokePicker(false); setColorMode('fill'); }} className="w-[2.5vw] h-[2.5vw] rounded-[0.5vw] border-2 border-gray-300 cursor-pointer flex-shrink-0 hover:scale-105 transition-transform shadow-sm" style={{ backgroundColor: hex }}></div>
+                      <div onClick={() => { setShowFillPicker(!showFillPicker); setShowStrokePicker(false); setColorMode('fill'); }} className="fill-picker-trigger w-[2.5vw] h-[2.5vw] rounded-[0.5vw] border-2 border-gray-300 cursor-pointer flex-shrink-0 hover:scale-105 transition-transform shadow-sm" style={{ backgroundColor: hex }}></div>
                       <div className="flex-grow flex items-center border-2 border-gray-200 rounded-[0.5vw] overflow-hidden h-[2.5vw] bg-white hover:border-indigo-300 transition-colors">
                         <input
                           type="text"
@@ -1432,8 +1665,13 @@ const TextEditor = ({ selectedElement, selectedElementType, onUpdate, onPopupPre
                     <div className="flex items-center gap-[0.5vw]">
                       <span className="text-[0.7vw] font-bold text-gray-700 w-[3vw]">Stroke</span>
                       <div
-                        onClick={() => { setShowStrokePicker(!showStrokePicker); setShowFillPicker(false); setColorMode('stroke'); }}
-                        className="w-[2.5vw] h-[2.5vw] rounded-[0.5vw] border-2 border-gray-300 cursor-pointer flex-shrink-0 hover:scale-105 transition-transform shadow-sm"
+                        onClick={() => {
+                          setShowStrokePicker(!showStrokePicker);
+                          setShowFillPicker(false);
+                          setColorMode('stroke');
+                          if (borderThickness === 0) setBorderThickness(1);
+                        }}
+                        className="stroke-picker-trigger w-[2.5vw] h-[2.5vw] rounded-[0.5vw] border-2 border-gray-300 cursor-pointer flex-shrink-0 hover:scale-105 transition-transform shadow-sm"
                         style={{ backgroundColor: strokeColor }}
                       ></div>
                       <div className="flex-grow flex items-center border-2 border-gray-200 rounded-[0.5vw] overflow-hidden h-[2.5vw] bg-white hover:border-indigo-300 transition-colors">
@@ -1462,63 +1700,31 @@ const TextEditor = ({ selectedElement, selectedElementType, onUpdate, onPopupPre
                     {/* Settings / Dashed */}
                     <div className="flex items-center justify-end gap-[0.65vw] pt-[0.25vw]">
                       <div className="p-[0.5vw] rounded-[0.5vw] hover:bg-indigo-50 transition-colors cursor-pointer group" onClick={() => setShowDashedPopup(!showDashedPopup)}>
-                        <SlidersHorizontal size={18} className="text-gray-500 group-hover:text-indigo-600 dashed-selector-trigger transition-colors" />
+                        <SlidersHorizontal size={18} className={`dashed-selector-trigger transition-colors ${showDashedPopup ? 'text-blue-600' : 'text-gray-500 group-hover:text-blue-600'}`} />
                       </div>
 
                       <div className="relative" ref={borderStyleRef}>
-                        <div className="h-[2vw] px-[0.5vw] border border-gray-300 rounded-[0.25vw] flex items-center gap-[0.5vw] cursor-pointer min-w-[4.6vw] justify-between" onClick={() => setShowBorderStyleDropdown(!showBorderStyleDropdown)}>
-                          <span className="text-[0.7vw] text-gray-700">{elementRef.current?.style.backgroundImage?.includes('svg') ? 'Dashed' : 'Solid'}</span>
-                          <ChevronDown size={12} className="text-gray-500" />
+                        <div className="h-[2vw] px-[0.5vw] border border-gray-300 rounded-[0.25vw] flex items-center gap-[0.5vw] cursor-pointer min-w-[4.6vw] justify-between group hover:border-blue-400 transition-all font-bold" onClick={() => setShowBorderStyleDropdown(!showBorderStyleDropdown)}>
+                          <span className="text-[0.7vw] text-gray-700 ">{strokeType}</span>
+                          <ChevronDown size={12} className="text-gray-500 group-hover:text-blue-600" />
                         </div>
                         {showBorderStyleDropdown && (
-                          <div className="absolute right-0 bottom-full mb-1 w-[6.9vw] bg-white border border-gray-200 rounded shadow-lg z-50">
+                          <div className="absolute right-0 bottom-full mb-1 w-[6.9vw] bg-white border border-gray-200 rounded-lg shadow-xl z-50 overflow-hidden py-1 animate-in fade-in slide-in-from-bottom-2">
                             <div onClick={() => {
-                              if (elementRef.current) {
-                                // If we have a gradient, we MUST preserve it and only remove the SVG
-                                if (fillType === 'gradient') {
-                                  // Re-construct just the gradient string
-                                  const sortedStops = [...gradientStops].sort((a, b) => a.offset - b.offset);
-                                  const stopsStr = sortedStops.map(s => {
-                                    const rgb = hexToRgb(s.color);
-                                    const opacity = (s.opacity || 100) / 100;
-                                    return `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, ${opacity}) ${s.offset}%`;
-                                  }).join(', ');
-                                  const gradStr = gradientType === 'Linear'
-                                    ? `linear-gradient(to right, ${stopsStr})`
-                                    : `radial-gradient(circle, ${stopsStr})`;
-
-                                  elementRef.current.style.backgroundImage = gradStr;
-                                  elementRef.current.style.webkitBackgroundClip = 'text';
-                                  elementRef.current.style.backgroundClip = 'text';
-                                } else {
-                                  elementRef.current.style.backgroundImage = 'none';
-                                }
-
-                                elementRef.current.style.borderStyle = 'solid';
-                                const currentThickness = borderThickness || 1;
-                                setBorderThickness(currentThickness);
-                                elementRef.current.style.borderWidth = currentThickness + 'px';
-                                const rgbColor = hexToRgb(strokeColor);
-                                const opacity = strokeOpacity / 100;
-                                elementRef.current.style.borderColor = `rgba(${rgbColor.r}, ${rgbColor.g}, ${rgbColor.b}, ${opacity})`;
-                              }
+                              setStrokeType('solid');
                               setShowBorderStyleDropdown(false);
-                            }} className="px-3 py-2 text-xs hover:bg-gray-50 cursor-pointer">Solid</div>
+                            }} className={`px-3 py-2 text-[0.7vw] font-bold transition-colors cursor-pointer ${strokeType === 'solid' ? 'bg-blue-50 text-blue-600' : 'text-gray-700 hover:bg-gray-50'}`}>Solid</div>
                             <div onClick={() => {
-                              if (elementRef.current) {
-                                const currentThickness = borderThickness || 1;
-                                setBorderThickness(currentThickness);
-                                applyDashedStyle(currentThickness);
-                              }
+                              setStrokeType('dashed');
                               setShowBorderStyleDropdown(false);
-                            }} className="px-3 py-2 text-xs hover:bg-gray-50 cursor-pointer">Dashed</div>
+                            }} className={`px-3 py-2 text-[0.7vw] font-bold transition-colors cursor-pointer ${strokeType === 'dashed' ? 'bg-blue-50 text-blue-600' : 'text-gray-700 hover:bg-gray-50'}`}>Dashed</div>
                           </div>
                         )}
                       </div>
 
                       {/* Figma-style Thickness Control with Drag */}
                       <div
-                        className="h-[2vw] min-w-[6vw] border border-gray-300 rounded-[0.25vw] flex items-center px-[0.25vw] gap-[0.25vw] bg-white hover:border-blue-500 transition-colors cursor-ew-resize select-none"
+                        className="h-[2vw] min-w-[6.5vw] border border-gray-300 rounded-[0.25vw] flex items-center px-[0.25vw] gap-[0.25vw] bg-white hover:border-blue-500 transition-colors cursor-ew-resize select-none shadow-sm"
                         onMouseDown={(e) => {
                           e.preventDefault();
                           const startX = e.clientX;
@@ -1527,13 +1733,7 @@ const TextEditor = ({ selectedElement, selectedElementType, onUpdate, onPopupPre
                           const handleMove = (moveEvent) => {
                             const diff = Math.round(moveEvent.clientX - startX);
                             const newVal = Math.max(0, startVal + diff);
-
                             setBorderThickness(newVal);
-                            if (elementRef.current?.style.backgroundImage?.includes('svg')) {
-                              applyDashedStyle(newVal);
-                            } else if (elementRef.current) {
-                              elementRef.current.style.borderWidth = newVal + 'px';
-                            }
                           };
 
                           const handleUp = () => {
@@ -1550,30 +1750,20 @@ const TextEditor = ({ selectedElement, selectedElementType, onUpdate, onPopupPre
 
                         <button
                           onMouseDown={(e) => e.stopPropagation()}
-                          onClick={() => {
-                            const val = Math.max(0, borderThickness - 1);
-                            setBorderThickness(val);
-                            if (elementRef.current?.style.backgroundImage?.includes('svg')) applyDashedStyle(val);
-                            else if (elementRef.current) elementRef.current.style.borderWidth = val + 'px';
-                          }}
+                          onClick={() => setBorderThickness(Math.max(0, borderThickness - 1))}
                           className="w-[1.25vw] h-[1.25vw] flex items-center justify-center text-gray-500 hover:bg-gray-100 rounded-[0.25vw] cursor-pointer"
-                        >-</button>
+                        >−</button>
 
                         <input
                           type="number"
                           readOnly
                           value={borderThickness}
-                          className="w-full text-[0.7vw] outline-none text-center bg-transparent cursor-ew-resize pointer-events-none"
+                          className="w-full text-[0.7vw] font-bold outline-none text-center bg-transparent cursor-ew-resize pointer-events-none text-gray-700"
                         />
 
                         <button
                           onMouseDown={(e) => e.stopPropagation()}
-                          onClick={() => {
-                            const val = borderThickness + 1;
-                            setBorderThickness(val);
-                            if (elementRef.current?.style.backgroundImage?.includes('svg')) applyDashedStyle(val);
-                            else if (elementRef.current) elementRef.current.style.borderWidth = val + 'px';
-                          }}
+                          onClick={() => setBorderThickness(borderThickness + 1)}
                           className="w-[1.25vw] h-[1.25vw] flex items-center justify-center text-gray-500 hover:bg-gray-100 rounded-[0.25vw] cursor-pointer"
                         >+</button>
                       </div>
@@ -1592,10 +1782,12 @@ const TextEditor = ({ selectedElement, selectedElementType, onUpdate, onPopupPre
           onUpdate={onUpdate}
           onPopupPreviewUpdate={onPopupPreviewUpdate}
           pages={pages}
+          isOpen={activeSection === 'interaction'}
+          onToggle={() => setActiveSection(activeSection === 'interaction' ? null : 'interaction')}
         />
 
       </div>
-    </div>
+    </div >
   );
 
 };
