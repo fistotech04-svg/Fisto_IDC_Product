@@ -151,7 +151,7 @@ const HTMLTemplateEditor = forwardRef(({
         el.style.outline = '2px solid #6366f1';
         el.style.outlineOffset = '2px';
         setSelectedElement(el);
-        if (onElementSelect) onElementSelect(el, 'text');
+        if (onElementSelect) onElementSelect(el, 'text', pageIndex);
       });
       
       el.addEventListener('blur', () => {
@@ -183,7 +183,7 @@ const HTMLTemplateEditor = forwardRef(({
                 el.style.outline = '2px solid #6366f1';
                 el.style.outlineOffset = '2px';
                 setSelectedElement(el);
-                if (onElementSelect) onElementSelect(el, type);
+                if (onElementSelect) onElementSelect(el, type, pageIndex);
             });
         });
     };

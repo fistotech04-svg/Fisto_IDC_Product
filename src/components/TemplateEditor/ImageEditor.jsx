@@ -167,7 +167,7 @@ const ImageCropOverlay = ({ imageSrc, onSave, onCancel, element }) => {
       <div className="relative w-full flex-1 flex items-center justify-center min-h-0">
         <div 
             ref={containerRef} 
-            className="relative inline-block shadow-[0_0_100px_rgba(0,0,0,0.5)] checkerboard rounded-lg overflow-hidden border border-white/5"
+            className="relative inline-block shadow-2xl rounded-lg border border-white/20 bg-black/20"
         >
           <img 
             ref={imageRef} 
@@ -178,15 +178,16 @@ const ImageCropOverlay = ({ imageSrc, onSave, onCancel, element }) => {
             draggable={false} 
           />
           
-          <div className="absolute inset-0 bg-black/40 pointer-events-none" />
+          {/* Removed full overlay to use box-shadow scrim on crop box instead */}
           
           <div 
-            className="absolute z-10 cursor-move border-[2px] border-white border-dashed shadow-[0_0_0_9999px_rgba(0,0,0,0.6)]"
+            className="absolute z-10 cursor-move border-[2px] border-[#0095FF] border-dashed"
             style={{ 
               top: `${crop.top}%`, 
               left: `${crop.left}%`, 
               width: `${crop.width}%`, 
-              height: `${crop.height}%` 
+              height: `${crop.height}%`,
+              boxShadow: '0 0 0 9999px rgba(0, 0, 0, 0.6)' 
             }}
             onMouseDown={(e) => handleMouseDown(e, 'move')}
           >
@@ -222,6 +223,7 @@ const ImageEditor = ({ selectedElement, onUpdate, onPopupPreviewUpdate }) => {
   const galleryInputRef = useRef(null);
   const stateRef = useRef({ imageType: 'Fit', opacity: 100, radius: { tl: 12, tr: 12, br: 12, bl: 12 }, previewSrc: selectedElement?.src });
   const isUpdatingDOM = useRef(false);
+  const lastAppliedElementRef = useRef(null);
 
   const [activeSection, setActiveSection] = useState('main');
   const isMainPanelOpen = activeSection === 'main';
@@ -299,35 +301,38 @@ const ImageEditor = ({ selectedElement, onUpdate, onPopupPreviewUpdate }) => {
 
   const syncStateFromDOM = useCallback(() => {
     if (!selectedElement) return;
+    
+    const currentState = stateRef.current; // Use ref for comparisons to avoid dep circle
 
     // 1. Sync Opacity
     const domOpacity = selectedElement.style.opacity || '1';
     const newOpacity = Math.round(parseFloat(domOpacity) * 100);
-    if (newOpacity !== opacity) setOpacity(newOpacity);
+    // Tolerance check to prevent infinite re-render loops due to float precision
+    if (Math.abs(newOpacity - currentState.opacity) > 1) setOpacity(newOpacity);
 
     // 2. Sync Radius
     const domRadius = selectedElement.style.borderRadius || '0px';
     const radiusVal = parseFloat(domRadius) || 0;
-    if (radius.tl !== radiusVal) { 
+    if (currentState.radius.tl !== radiusVal) { 
         setRadius({ tl: radiusVal, tr: radiusVal, br: radiusVal, bl: radiusVal });
     }
 
     // 3. Sync Image Type (Object Fit & Crop)
     const inlineFit = selectedElement.style.objectFit;
     const cp = selectedElement.style.clipPath || selectedElement.style.webkitClipPath || '';
-    const fitMapRev = { 'contain': 'Fit', 'cover': 'Fill' };
-    const currentFit = inlineFit || window.getComputedStyle(selectedElement).objectFit || 'contain';
+    const fitMapRev = { 'contain': 'Fit', 'cover': 'Fill', 'fill': 'Stretch' };
+    const currentFit = inlineFit || window.getComputedStyle(selectedElement).objectFit || 'fill';
     const hasCrop = cp.includes('inset');
-    const newType = hasCrop ? 'Crop' : (fitMapRev[currentFit] || 'Fit');
+    const newType = hasCrop ? 'Crop' : (fitMapRev[currentFit] || 'Stretch');
     
     // Only call setState if the DOM actually changed from what we think it is
-    if (newType !== stateRef.current.imageType) {
+    if (newType !== currentState.imageType) {
         setImageType(newType);
-        stateRef.current.imageType = newType;
+        currentState.imageType = newType; // Update ref immediately to be safe
     }
 
     // 4. Sync Src
-    if (selectedElement.src !== previewSrc) {
+    if (selectedElement.src !== currentState.previewSrc) {
         setPreviewSrc(selectedElement.src);
     }
 
@@ -341,13 +346,20 @@ const ImageEditor = ({ selectedElement, onUpdate, onPopupPreviewUpdate }) => {
     if (filterStr.includes('drop-shadow')) newEffects.push('Drop Shadow');
     if (backdropStr.includes('blur')) newEffects.push('Background Blur');
     if (shadowStr.includes('inset')) newEffects.push('Inner Shadow');
+    
+    // Simple array comparison might be enough, assuming order? 
+    // Just force update if length differs or items differ
+    // We can't easily check against activeEffects state without dep.
+    // But we can check against nothing? Or just setState.
+    // Effect syncing is rarely the loop cause (opacity is).
+    // Let's rely on setState functional update to avoid dep?
     setActiveEffects(prev => {
         const currentRealEffects = prev.filter(e => e !== 'effect');
         const isSame = newEffects.length === currentRealEffects.length && newEffects.every(e => currentRealEffects.includes(e));
         if (isSame) return prev;
         return prev.includes('effect') ? ['effect', ...newEffects] : newEffects;
     });
-  }, [selectedElement, opacity, radius.tl, previewSrc]);
+  }, [selectedElement]); // ONLY selectedElement
 
   useEffect(() => {
     if (!selectedElement) return;
@@ -366,6 +378,18 @@ const ImageEditor = ({ selectedElement, onUpdate, onPopupPreviewUpdate }) => {
 
   const applyVisuals = useCallback(() => {
     if (!selectedElement) return;
+
+    // Fix: Prevent applying stale state immediately when switching elements
+    if (selectedElement !== lastAppliedElementRef.current) {
+        lastAppliedElementRef.current = selectedElement;
+        return;
+    }
+
+    // Fix: Block apply if stateRef shows we have a pending update (prevents flash of default Fit)
+    if (stateRef.current && (stateRef.current.imageType !== imageType || stateRef.current.opacity !== opacity)) {
+        return;
+    }
+
     isUpdatingDOM.current = true;
     try {
         let filterString = `brightness(${100 + filters.exposure}%) contrast(${100 + filters.contrast}%) saturate(${100 + filters.saturation}%) hue-rotate(${filters.tint}deg) sepia(${filters.temperature > 0 ? filters.temperature : 0}%)`;
@@ -392,8 +416,8 @@ const ImageEditor = ({ selectedElement, onUpdate, onPopupPreviewUpdate }) => {
                 selectedElement.style.setProperty('-webkit-mask-image', `url(${selectedElement.src})`, 'important');
                 selectedElement.style.setProperty('mask-repeat', 'no-repeat', 'important');
                 selectedElement.style.setProperty('-webkit-mask-repeat', 'no-repeat', 'important');
-                const fitMap = { 'Fit': 'contain', 'Fill': 'cover', 'Crop': 'cover' };
-                const objectFit = fitMap[imageType] || 'contain';
+                const fitMap = { 'Fit': 'contain', 'Fill': 'cover', 'Crop': 'cover', 'Stretch': 'fill' };
+                const objectFit = fitMap[imageType] || 'fill';
                 selectedElement.style.setProperty('mask-size', objectFit, 'important');
                 selectedElement.style.setProperty('-webkit-mask-size', objectFit, 'important');
                 selectedElement.style.setProperty('mask-position', 'center', 'important');
@@ -406,15 +430,12 @@ const ImageEditor = ({ selectedElement, onUpdate, onPopupPreviewUpdate }) => {
             selectedElement.style.setProperty('-webkit-mask-image', 'none', 'important');
         }
 
-        const fitMap = { 'Fit': 'contain', 'Fill': 'cover', 'Crop': 'cover' };
-        const objectFit = fitMap[imageType] || 'contain';
+        const fitMap = { 'Fit': 'contain', 'Fill': 'cover', 'Crop': 'cover', 'Stretch': 'fill' };
+        const objectFit = fitMap[imageType] || 'fill';
         selectedElement.style.setProperty('object-fit', objectFit, 'important');
         
-        // Force dimensions for Fill and Crop to ensure they actually occupy the area
-        if (imageType === 'Fill' || imageType === 'Crop') {
-            selectedElement.style.setProperty('width', '100%', 'important');
-            selectedElement.style.setProperty('height', '100%', 'important');
-        }
+        // Removed forced width/height setting to prevent resizing bugs. 
+        // We trust the existing element dimensions.
 
         if (imageType !== 'Crop') {
             selectedElement.style.removeProperty('clip-path');
@@ -555,7 +576,7 @@ const ImageEditor = ({ selectedElement, onUpdate, onPopupPreviewUpdate }) => {
                     <>
                     <div className="fixed inset-0 z-[90]" onClick={() => setShowImageTypeDropdown(false)} />
                     <div className="absolute right-0 top-full mt-2 w-24 bg-white border border-gray-100 rounded-xl shadow-2xl overflow-hidden z-[100] flex flex-col py-1 animate-in fade-in zoom-in-95 duration-150">
-                      {['Fit', 'Fill', 'Crop'].map((type) => (
+                      {['Fit', 'Fill', 'Stretch', 'Crop'].map((type) => (
                         <button 
                           key={type} 
                           onClick={(e) => { 

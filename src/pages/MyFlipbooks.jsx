@@ -17,17 +17,31 @@ export default function MyFlipbooks() {
   const emailId = user?.emailId;
   const backendUrl = import.meta.env.VITE_BACKEND_URL || 'http://localhost:5000';
 
-  const [activeFolder, setActiveFolder] = useState('Public Book');
+  const [activeFolder, setActiveFolder] = useState(() => localStorage.getItem('last_active_folder') || 'Recent Book');
+  
+  // Persist Active Folder
+  useEffect(() => {
+    localStorage.setItem('last_active_folder', activeFolder);
+  }, [activeFolder]);
   const [folders, setFolders] = useState([]);
   const [books, setBooks] = useState([]);
 
   // Data Fetching
   const fetchData = async () => {
       if (!emailId) return;
+      setIsLoading(true);
       try {
           // Fetch Folders
           const folderRes = await axios.get(`${backendUrl}/api/flipbook/folders`, { params: { emailId } });
-          const folderNames = folderRes.data.folders || [];
+          let folderNames = folderRes.data.folders || [];
+          
+          // Ensure Recent Book is at the top
+          folderNames = folderNames.sort((a, b) => {
+              if (a === 'Recent Book') return -1;
+              if (b === 'Recent Book') return 1;
+              return a.localeCompare(b);
+          });
+          
           setFolders(folderNames.map(name => ({ id: name, name })));
 
           // Fetch Books
@@ -35,12 +49,18 @@ export default function MyFlipbooks() {
           setBooks(booksRes.data.books || []);
       } catch (error) {
           console.error("Error fetching data:", error);
+      } finally {
+          setIsLoading(false);
       }
   };
 
   useEffect(() => {
       fetchData();
   }, [emailId]);
+
+  useEffect(() => {
+      setSelectedBooks([]);
+  }, [activeFolder]);
 
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
@@ -173,7 +193,7 @@ export default function MyFlipbooks() {
                 data: { emailId, folderName: deleteConfirmation.folderName } 
              });
              
-             if (activeFolder === deleteConfirmation.folderName) setActiveFolder('Public Book');
+             if (activeFolder === deleteConfirmation.folderName) setActiveFolder('Recent Book');
              await fetchData();
        } catch (err) { 
            console.error(err);
@@ -289,6 +309,23 @@ export default function MyFlipbooks() {
     }
   };
 
+  const handleRemoveFromRecent = async (book) => {
+      setActiveBookMenu(null);
+      setIsLoading(true);
+      try {
+          await axios.post(`${backendUrl}/api/flipbook/remove-recent`, {
+              emailId,
+              bookName: book.realName
+          });
+          await fetchData();
+      } catch(err) {
+          console.error(err);
+          showAlert('Remove Failed', err.message);
+      } finally {
+          setIsLoading(false);
+      }
+  };
+
   const handleDeleteBookClick = (book) => {
     setActiveBookMenu(null);
     setDeleteBookConfirmation({
@@ -301,13 +338,23 @@ export default function MyFlipbooks() {
   const confirmDeleteBook = async () => {
     setIsLoading(true);
     try {
+        const isRecent = activeFolder === 'Recent Book';
+        const endpoint = isRecent ? `${backendUrl}/api/flipbook/remove-recent` : `${backendUrl}/api/flipbook/delete`;
+
         if (deleteBookConfirmation.bookId === 'BULK') {
              await Promise.all(selectedBooks.map(bookId => {
                  const book = books.find(b => b.id === bookId);
                  if (book) {
-                     return axios.delete(`${backendUrl}/api/flipbook/delete`, {
-                         data: { emailId, folderName: book.folder, bookName: book.realName }
-                     });
+                     if (isRecent) {
+                         return axios.post(endpoint, {
+                             emailId,
+                             bookName: book.realName
+                         });
+                     } else {
+                         return axios.delete(endpoint, {
+                             data: { emailId, folderName: book.folder, bookName: book.realName }
+                         });
+                     }
                  }
                  return Promise.resolve();
              }));
@@ -315,9 +362,13 @@ export default function MyFlipbooks() {
         } else if (deleteBookConfirmation.bookId) {
              const book = books.find(b => b.id === deleteBookConfirmation.bookId);
              if (book) {
-                  await axios.delete(`${backendUrl}/api/flipbook/delete`, {
-                      data: { emailId, folderName: book.folder, bookName: book.realName }
-                  });
+                  if (isRecent) {
+                       await axios.post(endpoint, { emailId, bookName: book.realName });
+                  } else {
+                       await axios.delete(endpoint, {
+                           data: { emailId, folderName: book.folder, bookName: book.realName }
+                       });
+                  }
              }
              setSelectedBooks(prev => prev.filter(id => id !== deleteBookConfirmation.bookId));
         }
@@ -505,19 +556,21 @@ export default function MyFlipbooks() {
                           <span className="truncate flex-1">{folder.name}</span>
 
                           {/* Options Menu Trigger */}
-                          <button
-                              onClick={(e) => {
-                                  e.stopPropagation();
-                                  setActiveMenuId(activeMenuId === folder.id ? null : folder.id);
-                              }}
-                              className={`p-1.5 rounded-lg transition-all rotate-90 ${
-                                isActive 
-                                    ? 'hover:bg-white/20 text-white' 
-                                    : 'hover:bg-gray-100 text-gray-500'
-                              } ${activeMenuId === folder.id ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'}`}
-                          >
-                              <MoreVertical size={16} />
-                          </button>
+                          {folder.name !== 'Recent Book' && (
+                            <button
+                                onClick={(e) => {
+                                    e.stopPropagation();
+                                    setActiveMenuId(activeMenuId === folder.id ? null : folder.id);
+                                }}
+                                className={`p-1.5 rounded-lg transition-all rotate-90 ${
+                                    isActive 
+                                        ? 'hover:bg-white/20 text-white' 
+                                        : 'hover:bg-gray-100 text-gray-500'
+                                } ${activeMenuId === folder.id ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'}`}
+                            >
+                                <MoreVertical size={16} />
+                            </button>
+                          )}
 
                           {/* Dropdown Menu */}
                           {activeMenuId === folder.id && (
@@ -594,14 +647,16 @@ export default function MyFlipbooks() {
                                     onClick={handleBulkDelete}
                                     className="flex items-center gap-2 px-4 py-2 bg-white text-red-500 border border-red-200 rounded-lg hover:bg-red-50 transition-colors shadow-sm text-sm font-semibold"
                                 >
-                                    <Trash2 size={16} /> Delete
+                                    <Trash2 size={16} /> {activeFolder === 'Recent Book' ? 'Remove' : 'Delete'}
                                 </button>
-                                <button 
-                                    onClick={handleBulkMove}
-                                    className="flex items-center gap-2 px-4 py-2 bg-[#4c5add] text-white rounded-lg hover:bg-[#3f4bc0] transition-colors shadow-sm text-sm font-semibold"
-                                >
-                                    <FolderInput size={16} /> Move to Folder
-                                </button>
+                                {activeFolder !== 'Recent Book' && (
+                                    <button 
+                                        onClick={handleBulkMove}
+                                        className="flex items-center gap-2 px-4 py-2 bg-[#4c5add] text-white rounded-lg hover:bg-[#3f4bc0] transition-colors shadow-sm text-sm font-semibold"
+                                    >
+                                        <FolderInput size={16} /> Move to Folder
+                                    </button>
+                                )}
                                 <div className="w-[1px] h-6 bg-gray-300 mx-2"></div>
                             </>
                         )}
@@ -640,7 +695,12 @@ export default function MyFlipbooks() {
                 </div>
 
                 {/* Content Area */}
-                {filteredBooks.length > 0 ? (
+                {isLoading ? (
+                    <div className="flex-1 flex flex-col items-center justify-center z-10">
+                        <div className="animate-spin rounded-full h-12 w-12 border-4 border-white/20 border-t-white"></div>
+                        <p className="text-white/80 mt-4 font-medium text-sm">Loading Flipbooks...</p>
+                    </div>
+                ) : filteredBooks.length > 0 ? (
                     <div 
                         className="flex-1 overflow-y-auto custom-scrollbar pr-2 z-10 space-y-4 min-h-0"
                         onScroll={() => setActiveBookMenu(null)} // Close menu on scroll
@@ -678,7 +738,7 @@ export default function MyFlipbooks() {
                                     >
                                     {/* Thumbnail */}
                                     <div className="w-32 h-24 bg-gray-100 rounded-lg overflow-hidden flex-shrink-0 border border-gray-100">
-                                        <img src={book.image} alt={book.title} className="w-full h-full object-cover" />
+                                        <img src={"https://plus.unsplash.com/premium_photo-1677567996070-68fa4181775a?w=600&auto=format&fit=crop&q=60&ixlib=rb-4.1.0&ixid=M3wxMjA3fDB8MHxzZWFyY2h8NXx8Ym9va3N8ZW58MHx8MHx8fDA%3D"} alt={book.title} className="w-full h-full object-cover" />
                                     </div>
 
                                     {/* Content */}
@@ -717,7 +777,14 @@ export default function MyFlipbooks() {
                                                 <Wrench size={14} /> Customize
                                             </button>
                                             <button 
-                                                onClick={() => navigate('/editor', { state: { loadBook: { folder: book.folder, name: book.realName } } })}
+                                                onClick={() => {
+                                                    let targetFolder = book.folder;
+                                                    if (targetFolder === 'Recent Book') {
+                                                        const physicalBook = books.find(b => b.realName === book.realName && b.folder !== 'Recent Book');
+                                                        if (physicalBook) targetFolder = physicalBook.folder;
+                                                    }
+                                                    navigate('/editor', { state: { loadBook: { folder: targetFolder, name: book.realName } } });
+                                                }}
                                                 className="flex items-center gap-1.5 text-xs font-semibold text-gray-600 hover:text-blue-600 transition-colors"
                                             >
                                                 <PenTool size={14} /> Open in Editor
@@ -770,14 +837,26 @@ export default function MyFlipbooks() {
                 ) : (
                     /* Empty State - Perfectly Centered */
                     <div className="flex-1 flex flex-col items-center justify-center text-center z-10 pb-12">
-                        <div 
-                            onClick={() => setIsCreateModalOpen(true)}
-                            className="w-16 h-16 rounded-full bg-white/10 flex items-center justify-center mb-4 backdrop-blur-sm border border-white/20 cursor-pointer hover:bg-white/20 transition-all"
-                        >
-                            <Plus size={32} className="text-white" />
-                        </div>
-                        <h3 className="text-xl font-medium text-white mb-1">Create Flipbook</h3>
-                        <p className="text-white/50 text-sm">There are No Recent Books in {activeFolder}</p>
+                        {activeFolder === 'Recent Book' ? (
+                            <>
+                                <div 
+                                    onClick={() => setIsCreateModalOpen(true)}
+                                    className="w-16 h-16 rounded-full bg-white/10 flex items-center justify-center mb-4 backdrop-blur-sm border border-white/20 cursor-pointer hover:bg-white/20 transition-all"
+                                >
+                                    <Plus size={32} className="text-white" />
+                                </div>
+                                <h3 className="text-xl font-medium text-white mb-1">Create Flipbook</h3>
+                                <p className="text-white/50 text-sm">There are no flipbooks in {activeFolder}</p>
+                            </>
+                        ) : (
+                            <>
+                                <div className="w-16 h-16 rounded-full bg-white/5 flex items-center justify-center mb-4 backdrop-blur-sm border border-white/10">
+                                    <Folder size={32} className="text-white/50" />
+                                </div>
+                                <h3 className="text-xl font-medium text-white mb-1">No Flipbooks Found</h3>
+                                <p className="text-white/50 text-sm">This folder is empty</p>
+                            </>
+                        )}
                     </div>
                 )}
 
@@ -818,19 +897,27 @@ export default function MyFlipbooks() {
                                 <FolderInput size={14} className="group-hover:text-white" />
                                 Move to folder
                             </button>
+                            {activeFolder !== 'Recent Book' && (
+                                <button 
+                                    onClick={() => handleDuplicateBook(book)}
+                                    className="w-full flex items-center gap-2 px-3 py-2.5 text-xs font-medium text-gray-600 hover:bg-black hover:text-white transition-colors border-b border-gray-50 group"
+                                >
+                                    <Plus size={14} className="border border-current rounded-[3px] p-[1px] group-hover:border-white" />
+                                    Duplicate
+                                </button>
+                            )}
                             <button 
-                                onClick={() => handleDuplicateBook(book)}
-                                className="w-full flex items-center gap-2 px-3 py-2.5 text-xs font-medium text-gray-600 hover:bg-black hover:text-white transition-colors border-b border-gray-50 group"
-                            >
-                                <Plus size={14} className="border border-current rounded-[3px] p-[1px] group-hover:border-white" />
-                                Duplicate
-                            </button>
-                            <button 
-                                onClick={() => handleDeleteBookClick(book)}
+                                onClick={() => {
+                                    if (activeFolder === 'Recent Book') {
+                                        handleRemoveFromRecent(book);
+                                    } else {
+                                        handleDeleteBookClick(book);
+                                    }
+                                }}
                                 className="w-full flex items-center gap-2 px-3 py-2.5 text-xs font-medium text-red-500 hover:bg-red-500 hover:text-white transition-colors group"
                             >
                                 <Trash2 size={14} className="group-hover:text-white" />
-                                Delete
+                                {activeFolder === 'Recent Book' ? 'Remove' : 'Delete'}
                             </button>
                         </>
                     );
@@ -883,8 +970,25 @@ export default function MyFlipbooks() {
                           </div>
                       )}
 
-                       {folders.map(folder => {
-                           const isCurrent = (moveBookModal.bookId === 'BULK' ? false : books.find(b=>b.id === moveBookModal.bookId)?.folder === folder.name); 
+                       {folders.filter(f => f.name !== 'Recent Book').map(folder => {
+                           let isCurrent = false;
+
+                           if (moveBookModal.bookId === 'BULK') {
+                               if (activeFolder !== 'Recent Book') {
+                                   isCurrent = folder.name === activeFolder;
+                               }
+                           } else {
+                               const book = books.find(b => b.id === moveBookModal.bookId);
+                               if (book) {
+                                   let currentRealFolder = book.folder;
+                                   if (book.folder === 'Recent Book') {
+                                       const physicalBook = books.find(b => b.realName === book.realName && b.folder !== 'Recent Book');
+                                       if (physicalBook) currentRealFolder = physicalBook.folder;
+                                   }
+                                   isCurrent = folder.name === currentRealFolder;
+                               }
+                           }
+
                            return (
                                <button
                                    key={folder.id}

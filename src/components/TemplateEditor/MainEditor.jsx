@@ -48,7 +48,6 @@ const MainEditor = () => {
   const [isLoading, setIsLoading] = useState(false);
   const [loadingText, setLoadingText] = useState('Loading...');
 
-  // Hook up to Layout Navbar Export button
   // Hook up to Layout Navbar Export and Save buttons
   const { setExportHandler, setSaveHandler } = useOutletContext() || {};
   
@@ -112,11 +111,11 @@ const MainEditor = () => {
   // Editor state
   const [pageName, setPageName] = useState(() => getRestoredState('pageName', "Untitled Document"));
   const [isEditingPageName, setIsEditingPageName] = useState(false);
-  const [isDoublePage, setIsDoublePage] = useState(false);
+  const [isDoublePage, setIsDoublePage] = useState(() => getRestoredState('isDoublePage', false));
   
   // Track the last successfully saved name
   const [lastSavedName, setLastSavedName] = useState(() => getRestoredState('lastSavedName', null));
-  const [lastSavedFolder, setLastSavedFolder] = useState(() => getRestoredState('lastSavedFolder', 'Public Book'));
+  const [lastSavedFolder, setLastSavedFolder] = useState(() => getRestoredState('lastSavedFolder', 'Recent Book'));
 
   // Panning State
   const [panOffset, setPanOffset] = useState({ x: 0, y: 0 });
@@ -126,9 +125,13 @@ const MainEditor = () => {
   // Element selection state
   const [selectedElement, setSelectedElement] = useState(null);
   const [selectedElementType, setSelectedElementType] = useState(null);
+  const [selectedPageIndex, setSelectedPageIndex] = useState(null);
 
   // Page renaming state (for auto-rename after add/duplicate)
   const [editingPageId, setEditingPageId] = useState(null);
+  
+  // Menu expansion state for Double Page view
+  const [expandedMenuAction, setExpandedMenuAction] = useState(null);
 
   // Sync templateHTML with current page content on load/change/refresh
   useEffect(() => {
@@ -147,13 +150,14 @@ const MainEditor = () => {
               pages,
               currentPage,
               pageName,
+              isDoublePage,
               lastSavedName,
               lastSavedFolder,
               timestamp: Date.now()
           };
           localStorage.setItem('editor_autosave', JSON.stringify(stateToSave));
       }
-  }, [pages, currentPage, pageName, lastSavedName, lastSavedFolder]);
+  }, [pages, currentPage, pageName, isDoublePage, lastSavedName, lastSavedFolder]);
 
   // Clear history for New Template / Page Count to allow autosave on refresh
   useEffect(() => {
@@ -215,7 +219,7 @@ const MainEditor = () => {
   // Fetch folders when modal opens
   useEffect(() => {
     if (showSaveModal) {
-        setTargetFolder('Public Book'); // Default to Public Book
+        setTargetFolder(''); // Reset selection
         setIsCreatingFolder(false);
         setNewFolderInput('');
 
@@ -646,6 +650,13 @@ const MainEditor = () => {
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, [showPageSettingsMenu]);
 
+  // Reset expanded menu action when menu closes
+  useEffect(() => {
+    if (!showPageSettingsMenu) {
+        setExpandedMenuAction(null);
+    }
+  }, [showPageSettingsMenu]);
+
   const handleMouseDown = (e) => {
     // Check for middle click (button 1) or background click
     const isMiddleClick = e.button === 1;
@@ -953,10 +964,27 @@ const MainEditor = () => {
     generateThumbnail(newHTML, pages[currentPage].id, 800);
   }, [currentPage, generateThumbnail, pages]);
 
-  const handleElementSelect = useCallback((element, type) => {
+  const handlePageUpdate = useCallback((index, newHTML) => {
+    setPages(prev => {
+        const updated = [...prev];
+        if (updated[index]) {
+            updated[index] = { ...updated[index], html: newHTML };
+        }
+        return updated;
+    });
+    if (index === currentPage) {
+        setTemplateHTML(newHTML);
+    }
+    if (pages[index]) {
+       generateThumbnail(newHTML, pages[index].id, 800);
+    }
+  }, [currentPage, generateThumbnail, pages]);
+
+  const handleElementSelect = useCallback((element, type, pageIndex) => {
     setSelectedElement(element);
     setSelectedElementType(type);
-  }, []);
+    setSelectedPageIndex(pageIndex !== undefined ? pageIndex : currentPage);
+  }, [currentPage]);
 
   // Debounce ref for element updates
   const elementUpdateDebounceRef = useRef(null);
@@ -970,6 +998,7 @@ const MainEditor = () => {
       
       if (doc && doc.documentElement) {
         const html = doc.documentElement.outerHTML;
+        const targetIndex = selectedPageIndex !== null ? selectedPageIndex : currentPage;
         
         // Prevent re-render of iframe by syncing internal ref first
         if (!options?.shouldRefresh && htmlEditorRef.current) {
@@ -979,7 +1008,7 @@ const MainEditor = () => {
         // If it's a structural refresh (like icon replacement), update immediately
         if (options?.shouldRefresh) {
             if (elementUpdateDebounceRef.current) clearTimeout(elementUpdateDebounceRef.current);
-            handleTemplateChange(html);
+            handlePageUpdate(targetIndex, html);
             
             // If a new element was created (icon replacement), re-select it after refresh
             if (options?.newElement) {
@@ -1011,11 +1040,11 @@ const MainEditor = () => {
         // Otherwise, debounce the heavy state update (Sidebar re-render)
         if (elementUpdateDebounceRef.current) clearTimeout(elementUpdateDebounceRef.current);
         elementUpdateDebounceRef.current = setTimeout(() => {
-            handleTemplateChange(html);
+            handlePageUpdate(targetIndex, html);
         }, 500);
       }
     }
-  }, [selectedElement, handleTemplateChange]);
+  }, [selectedElement, selectedPageIndex, currentPage, handlePageUpdate]);
 
   const openPreview = useCallback(() => {
     setPages(pages.map((page, idx) => idx === currentPage ? { ...page, html: templateHTML } : page));
@@ -1081,21 +1110,7 @@ const MainEditor = () => {
   const movePageToFirst = useCallback((index) => movePage(index, 0), [movePage]);
   const movePageToLast = useCallback((index) => movePage(index, pages.length - 1), [movePage, pages.length]);
 
-  const handlePageUpdate = useCallback((index, newHTML) => {
-    setPages(prev => {
-        const updated = [...prev];
-        if (updated[index]) {
-            updated[index] = { ...updated[index], html: newHTML };
-        }
-        return updated;
-    });
-    if (index === currentPage) {
-        setTemplateHTML(newHTML);
-    }
-    if (pages[index]) {
-       generateThumbnail(newHTML, pages[index].id, 800);
-    }
-  }, [currentPage, generateThumbnail, pages]);
+
 
   const handlePreviousPage = useCallback(() => {
     if (!isDoublePage) {
@@ -1378,66 +1393,180 @@ const MainEditor = () => {
                   className="bg-white hover:bg-gray-100 text-gray-700 p-2 rounded-lg shadow-md border border-gray-200 transition-all"
                   title="Page Settings"
                 >
-                  <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-settings-icon lucide-settings"><path d="M9.671 4.136a2.34 2.34 0 0 1 4.659 0 2.34 2.34 0 0 0 3.319 1.915 2.34 2.34 0 0 1 2.33 4.033 2.34 2.34 0 0 0 0 3.831 2.34 2.34 0 0 1-2.33 4.033 2.34 2.34 0 0 0-3.319 1.915 2.34 2.34 0 0 1-4.659 0 2.34 2.34 0 0 0-3.32-1.915 2.34 2.34 0 0 1-2.33-4.033 2.34 2.34 0 0 0 0-3.831A2.34 2.34 0 0 1 6.35 6.051a2.34 2.34 0 0 0 3.319-1.915"/><circle cx="12" cy="12" r="3"/></svg>
+                  <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="lucide lucide-settings-icon lucide-settings"><path d="M9.671 4.136a2.34 2.34 0 0 1 4.659 0 2.34 2.34 0 0 0 3.319 1.915 2.34 2.34 0 0 1 2.33 4.033 2.34 2.34 0 0 0 0 3.831 2.34 2.34 0 0 1-2.33 4.033 2.34 2.34 0 0 0-3.319 1.915 2.34 2.34 0 0 1-4.659 0 2.34 2.34 0 0 0-3.32-1.915 2.34 2.34 0 0 1-2.33-4.033 2.34 2.34 0 0 0 0-3.831A2.34 2.34 0 0 1 6.35 6.051a2.34 2.34 0 0 0 3.319-1.915"/><circle cx="12" cy="12" r="3"/></svg>
                 </button>
 
                 {/* Dropdown Menu */}
                 {showPageSettingsMenu && (
                   <div className="absolute top-full right-0 mt-2 w-48 bg-white rounded-xl shadow-xl border border-gray-100 p-2 z-[9999] flex flex-col gap-1">
-                    <button
-                      onClick={() => { addNewPage(currentPage); setShowPageSettingsMenu(false); }}
-                      className="flex items-center gap-2.5 px-3 py-2 text-xs font-medium text-gray-700 hover:bg-gray-50 rounded-lg text-left"
-                    >
-                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                        <line x1="12" y1="5" x2="12" y2="19"></line>
-                        <line x1="5" y1="12" x2="19" y2="12"></line>
-                      </svg>
-                      Add Page
-                    </button>
-                    <button
-                      onClick={() => { duplicatePage(currentPage); setShowPageSettingsMenu(false); }}
-                      className="flex items-center gap-2.5 px-3 py-2 text-xs font-medium text-gray-700 hover:bg-gray-50 rounded-lg text-left"
-                    >
-                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                        <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
-                        <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
-                      </svg>
-                      Duplicate
-                    </button>
-                    <button
-                      onClick={() => { setShowTemplateModal(true); setShowPageSettingsMenu(false); }}
-                      className="flex items-center gap-2.5 px-3 py-2 text-xs font-medium text-gray-700 hover:bg-gray-50 rounded-lg text-left"
-                    >
-                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                        <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
-                        <line x1="3" y1="9" x2="21" y2="9"></line>
-                        <line x1="9" y1="21" x2="9" y2="9"></line>
-                      </svg>
-                      Template
-                    </button>
-                    
-                    <div className="h-px bg-gray-100 my-1"></div>
-                    
-                    <button
-                      onClick={() => { clearPage(currentPage); setShowPageSettingsMenu(false); }}
-                      className="flex items-center gap-2.5 px-3 py-2 text-xs font-medium text-gray-700 hover:bg-gray-50 rounded-lg text-left"
-                    >
-                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                        <circle cx="12" cy="12" r="10"></circle>
-                        <line x1="4.93" y1="4.93" x2="19.07" y2="19.07"></line>
-                      </svg>
-                      Clear
-                    </button>
-                    <button
-                      onClick={() => { deletePage(currentPage); setShowPageSettingsMenu(false); }}
-                      className="flex items-center gap-2.5 px-3 py-2 text-xs font-medium text-red-500 hover:bg-red-50 rounded-lg text-left"
-                    >
-                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                        <polyline points="3 6 5 6 21 6"></polyline>
-                        <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
-                      </svg>
-                      Delete
-                    </button>
+                    {isDoublePage && currentPage !== 0 ? (
+                      // Double Page Menu Layout
+                      <>
+                        <div className="px-2 py-1.5 text-sm font-bold text-gray-900 border-b border-gray-100 mb-1 flex items-center justify-between">
+                            Page Settings
+                            <div className="h-px bg-gray-200 w-8"></div>
+                        </div>
+
+                        {/* Helper vars for indices */}
+                        {(() => {
+                            const leftIdx = (currentPage % 2 !== 0) ? currentPage : currentPage - 1;
+                            const rightIdx = leftIdx + 1;
+                            const hasRight = rightIdx < pages.length;
+
+                            const ButtonRow = ({ onLeft, onRight }) => (
+                                <div className="flex gap-2 px-1 mb-2 animate-in slide-in-from-top-1 fade-in duration-200">
+                                    <button onClick={(e) => { e.stopPropagation(); onLeft(); setShowPageSettingsMenu(false); }} className="flex-1 bg-gray-100 hover:bg-gray-200 text-[#3b4190] font-bold py-1.5 rounded text-sm transition-colors">L</button>
+                                    <button onClick={(e) => { e.stopPropagation(); onRight(); setShowPageSettingsMenu(false); }} disabled={!hasRight} className="flex-1 bg-gray-100 hover:bg-gray-200 text-[#3b4190] font-bold py-1.5 rounded text-sm transition-colors disabled:opacity-40 disabled:cursor-not-allowed">R</button>
+                                </div>
+                            );
+                            
+                            const ExpandableMenuItem = ({ id, label, icon, onLeft, onRight }) => {
+                                const isExpanded = expandedMenuAction === id;
+                                return (
+                                    <>
+                                        <button
+                                            onClick={(e) => { 
+                                                e.stopPropagation(); 
+                                                setExpandedMenuAction(isExpanded ? null : id);
+                                            }}
+                                            className={`flex items-center justify-between w-full px-3 py-2 text-xs font-medium rounded-lg text-left transition-colors
+                                                ${isExpanded ? 'bg-gray-100 text-gray-900' : 'text-gray-700 hover:bg-gray-50'}
+                                            `}
+                                        >
+                                            <div className="flex items-center gap-2.5">
+                                                {icon}
+                                                {label}
+                                            </div>
+                                            <svg 
+                                                width="12" 
+                                                height="12" 
+                                                viewBox="0 0 24 24" 
+                                                fill="none" 
+                                                stroke="currentColor" 
+                                                strokeWidth="2" 
+                                                strokeLinecap="round" 
+                                                strokeLinejoin="round"
+                                                className={`transition-transform duration-200 ${isExpanded ? 'rotate-180' : ''}`}
+                                            >
+                                                <polyline points="6 9 12 15 18 9"></polyline>
+                                            </svg>
+                                        </button>
+                                        {isExpanded && <ButtonRow onLeft={onLeft} onRight={onRight} />}
+                                    </>
+                                );
+                            };
+
+                            return (
+                             <>
+                                {/* Add Page */}
+                                <ExpandableMenuItem 
+                                    id="add"
+                                    label="Add Page"
+                                    icon={<Plus size={14} />}
+                                    onLeft={() => addNewPage(leftIdx)}
+                                    onRight={() => addNewPage(rightIdx)}
+                                />
+
+                                {/* Duplicate */}
+                                <ExpandableMenuItem 
+                                    id="duplicate"
+                                    label="Duplicate"
+                                    icon={<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>}
+                                    onLeft={() => duplicatePage(leftIdx)}
+                                    onRight={() => duplicatePage(rightIdx)}
+                                />
+
+                                {/* Template */}
+                                <ExpandableMenuItem 
+                                    id="template"
+                                    label="Template"
+                                    icon={<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><line x1="3" y1="9" x2="21" y2="9"></line><line x1="9" y1="21" x2="9" y2="9"></line></svg>}
+                                    onLeft={() => { switchToPage(leftIdx); setShowTemplateModal(true); }}
+                                    onRight={() => { switchToPage(rightIdx); setShowTemplateModal(true); }}
+                                />
+
+                                <div className="h-px bg-gray-100 my-1"></div>
+
+                                {/* Clear */}
+                                <ExpandableMenuItem 
+                                    id="clear"
+                                    label="Clear"
+                                    icon={<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="4.93" y1="4.93" x2="19.07" y2="19.07"></line></svg>}
+                                    onLeft={() => clearPage(leftIdx)}
+                                    onRight={() => clearPage(rightIdx)}
+                                />
+
+                                {/* Delete */}
+                                <ExpandableMenuItem 
+                                    id="delete"
+                                    label="Delete"
+                                    icon={<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>}
+                                    onLeft={() => deletePage(leftIdx)}
+                                    onRight={() => deletePage(rightIdx)}
+                                />
+                             </>
+                            );
+                        })()}
+                      </>
+                    ) : (
+                      // Single Page Layout (Original)
+                      <>
+                        <button
+                          onClick={() => { addNewPage(currentPage); setShowPageSettingsMenu(false); }}
+                          className="flex items-center gap-2.5 px-3 py-2 text-xs font-medium text-gray-700 hover:bg-gray-50 rounded-lg text-left"
+                        >
+                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                            <line x1="12" y1="5" x2="12" y2="19"></line>
+                            <line x1="5" y1="12" x2="19" y2="12"></line>
+                          </svg>
+                          Add Page
+                        </button>
+                        <button
+                          onClick={() => { duplicatePage(currentPage); setShowPageSettingsMenu(false); }}
+                          className="flex items-center gap-2.5 px-3 py-2 text-xs font-medium text-gray-700 hover:bg-gray-50 rounded-lg text-left"
+                        >
+                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                            <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+                            <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+                          </svg>
+                          Duplicate
+                        </button>
+                        <button
+                          onClick={() => { setShowTemplateModal(true); setShowPageSettingsMenu(false); }}
+                          className="flex items-center gap-2.5 px-3 py-2 text-xs font-medium text-gray-700 hover:bg-gray-50 rounded-lg text-left"
+                        >
+                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                            <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
+                            <line x1="3" y1="9" x2="21" y2="9"></line>
+                            <line x1="9" y1="21" x2="9" y2="9"></line>
+                          </svg>
+                          Template
+                        </button>
+                        
+                        <div className="h-px bg-gray-100 my-1"></div>
+                        
+                        <button
+                          onClick={() => { clearPage(currentPage); setShowPageSettingsMenu(false); }}
+                          className="flex items-center gap-2.5 px-3 py-2 text-xs font-medium text-gray-700 hover:bg-gray-50 rounded-lg text-left"
+                        >
+                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                            <circle cx="12" cy="12" r="10"></circle>
+                            <line x1="4.93" y1="4.93" x2="19.07" y2="19.07"></line>
+                          </svg>
+                          Clear
+                        </button>
+                        <button
+                          onClick={() => { deletePage(currentPage); setShowPageSettingsMenu(false); }}
+                          className="flex items-center gap-2.5 px-3 py-2 text-xs font-medium text-red-500 hover:bg-red-50 rounded-lg text-left"
+                        >
+                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                            <polyline points="3 6 5 6 21 6"></polyline>
+                            <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+                          </svg>
+                          Delete
+                        </button>
+                      </>
+                    )}
                   </div>
                 )}
               </div>
@@ -1536,9 +1665,7 @@ const MainEditor = () => {
                   className="space-y-2 max-h-52 overflow-y-auto custom-scrollbar p-1 mb-4 scroll-smooth"
                >
                   {/* Folder List */}
-                  {(!isCreatingFolder ? (availableFolders && availableFolders.length > 0 ? availableFolders : ['Public Book']) : (availableFolders || ['Public Book'])).sort((a,b) => {
-                      if (a === 'Public Book') return -1;
-                      if (b === 'Public Book') return 1;
+                  {(!isCreatingFolder ? (availableFolders && availableFolders.length > 0 ? availableFolders : []) : (availableFolders || [])).filter(f => f !== 'Recent Book').sort((a,b) => {
                       return a.localeCompare(b);
                   }).map(folder => {
                       const isSelected = targetFolder === folder;
