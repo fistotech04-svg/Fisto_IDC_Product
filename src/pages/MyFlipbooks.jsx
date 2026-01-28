@@ -91,11 +91,57 @@ export default function MyFlipbooks() {
     setIsCreateModalOpen(false);
   };
 
-  const handleUseTemplate = (templateData) => {
-    console.log("Use Template Clicked", templateData);
+  const handleUseTemplate = async (templateData) => {
     setIsCreateModalOpen(false);
-    if (templateData) {
+    if (!templateData) return;
+
+    // Check Auto-Save Preference
+    let isAutoSave = true;
+    try {
+        const storedSetting = localStorage.getItem('isAutoSaveEnabled');
+        if (storedSetting !== null) isAutoSave = JSON.parse(storedSetting);
+    } catch (e) { console.warn("Error reading auto-save setting", e); }
+
+    // If Auto-Save is DISABLED, do not create on backend yet. Just open Editor.
+    if (!isAutoSave) {
         navigate('/editor', { state: templateData });
+        return;
+    }
+
+    // Pre-create flipbook to get v_id and avoid "redirect" effect
+    setIsLoading(true);
+    try {
+        const pageCount = templateData.pageCount || 12;
+        const pages = Array.from({ length: pageCount }, (_, i) => ({
+             pageName: `Page ${i + 1}`,
+             content: '' 
+        }));
+
+        const now = new Date();
+        const timeString = now.toISOString().replace(/[-:T.]/g, '').slice(0, 14);
+        const uniqueName = `Flipbook_${timeString}`;
+        const folderName = 'My Flipbooks';
+
+        const res = await axios.post(`${backendUrl}/api/flipbook/save`, {
+            emailId,
+            flipbookName: uniqueName,
+            pages: pages,
+            overwrite: true,
+            folderName: folderName
+        });
+
+        if (res.data && res.data.v_id) {
+            navigate(`/editor/${encodeURIComponent(folderName)}/${res.data.v_id}`);
+        } else {
+            // Fallback
+            navigate('/editor', { state: templateData });
+        }
+    } catch (e) {
+        console.error("Creation failed", e);
+        // Fallback to old behavior
+        navigate('/editor', { state: templateData });
+    } finally {
+        setIsLoading(false);
     }
   };
 
@@ -773,7 +819,18 @@ export default function MyFlipbooks() {
                                             <button className="flex items-center gap-1.5 text-xs font-semibold text-gray-600 hover:text-blue-600 transition-colors">
                                                 <Eye size={14} /> View Book
                                             </button>
-                                            <button className="flex items-center gap-1.5 text-xs font-semibold text-[#4c5add] hover:text-[#3f4bc0] transition-colors">
+                                            <button 
+                                                onClick={() => {
+                                                    let targetFolder = book.folder;
+                                                    if (targetFolder === 'Recent Book') {
+                                                        const physicalBook = books.find(b => b.realName === book.realName && b.folder !== 'Recent Book');
+                                                        if (physicalBook) targetFolder = physicalBook.folder;
+                                                    }
+                                                    const identifier = book.v_id || encodeURIComponent(book.realName);
+                                                    navigate(`/editor/${encodeURIComponent(targetFolder)}/${identifier}`);
+                                                }}
+                                                className="flex items-center gap-1.5 text-xs font-semibold text-[#4c5add] hover:text-[#3f4bc0] transition-colors"
+                                            >
                                                 <Wrench size={14} /> Customize
                                             </button>
                                             <button 
@@ -783,7 +840,9 @@ export default function MyFlipbooks() {
                                                         const physicalBook = books.find(b => b.realName === book.realName && b.folder !== 'Recent Book');
                                                         if (physicalBook) targetFolder = physicalBook.folder;
                                                     }
-                                                    navigate('/editor', { state: { loadBook: { folder: targetFolder, name: book.realName } } });
+                                                    // Use v_id if available for stable URL, otherwise fallback to name
+                                                    const identifier = book.v_id || encodeURIComponent(book.realName);
+                                                    navigate(`/editor/${encodeURIComponent(targetFolder)}/${identifier}`);
                                                 }}
                                                 className="flex items-center gap-1.5 text-xs font-semibold text-gray-600 hover:text-blue-600 transition-colors"
                                             >

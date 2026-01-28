@@ -43,14 +43,13 @@ export default function Home() {
     setIsCreateModalOpen(true);
   };
 
-  const handleUploadPDF = () => {
-    console.log("Upload PDF Clicked");
-    // navigate('/upload-pdf'); // Example
+  const handleUploadPDF = (files) => {
+    console.log("Upload PDF Clicked", files);
     setIsCreateModalOpen(false);
   };
 
   const handleUseTemplate = (templateData) => {
-    console.log("Use Template Clicked");
+    console.log("Use Template Clicked", templateData);
     setIsCreateModalOpen(false);
     if (templateData) {
         navigate('/editor', { state: templateData });

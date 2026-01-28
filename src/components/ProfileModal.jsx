@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { X, Crown } from 'lucide-react';
 
-export default function ProfileModal({ isOpen, onClose }) {
+export default function ProfileModal({ isOpen, onClose, isAutoSaveEnabled, onToggleAutoSave }) {
   const [user, setUser] = useState({ name: 'Guest', email: 'guest@example.com' });
 
   useEffect(() => {
@@ -71,6 +71,18 @@ export default function ProfileModal({ isOpen, onClose }) {
             <div className="px-3 py-1 rounded bg-gradient-to-r from-green-500 to-green-600 text-white text-[10px] font-bold uppercase tracking-wider shadow-sm">
                 Free
             </div>
+        </div>
+
+        {/* Auto Save Toggle */}
+        <div className="flex items-center justify-between mb-6 px-1">
+            <span className="text-sm font-semibold text-gray-700">Auto Save</span>
+            <button 
+                onClick={() => onToggleAutoSave(!isAutoSaveEnabled)}
+                className={`w-11 h-6 flex items-center rounded-full p-1 transition-colors duration-200 ease-in-out ${isAutoSaveEnabled ? 'bg-green-500' : 'bg-gray-300'}`}
+                title={isAutoSaveEnabled ? "Disable Auto Save" : "Enable Auto Save"}
+            >
+                <div className={`bg-white w-4 h-4 rounded-full shadow-md transform transition-transform duration-200 ease-in-out ${isAutoSaveEnabled ? 'translate-x-5' : 'translate-x-0'}`}></div>
+            </button>
         </div>
 
         {/* Subscribe Button */}

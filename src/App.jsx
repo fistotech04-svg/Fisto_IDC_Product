@@ -25,6 +25,8 @@ function App() {
           <Route path="/editor" element={<Editor />}>
             <Route index element={<MainEditor />} />
             <Route path="threed_editor" element={<ThreedEditor />} />
+            <Route path=":folder/:v_id" element={<MainEditor />} />
+            <Route path=":id" element={<MainEditor />} />
           </Route>
 
           {/* Routes WITH navbar */}
