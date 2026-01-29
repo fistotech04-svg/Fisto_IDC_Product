@@ -1,4 +1,6 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
+import axios from "axios";
+import { useParams } from "react-router-dom";
 import {
   Image as ImageIcon,
   Upload,
@@ -218,7 +220,8 @@ const ImageCropOverlay = ({ imageSrc, onSave, onCancel, element }) => {
   );
 };
 
-const ImageEditor = ({ selectedElement, onUpdate, onPopupPreviewUpdate }) => {
+const ImageEditor = ({ selectedElement, onUpdate, onPopupPreviewUpdate, currentPageVId }) => {
+  const { v_id } = useParams();
   const fileInputRef = useRef(null);
   const galleryInputRef = useRef(null);
   const stateRef = useRef({ imageType: 'Fit', opacity: 100, radius: { tl: 12, tr: 12, br: 12, bl: 12 }, previewSrc: selectedElement?.src });
@@ -265,7 +268,37 @@ const ImageEditor = ({ selectedElement, onUpdate, onPopupPreviewUpdate }) => {
     stateRef.current = { ...stateRef.current, imageType, opacity, radius, previewSrc };
   });
 
-  const handleModalFileUpload = (e) => {
+  const uploadImageToBackend = async (file, replacing_file_v_id) => {
+    const storedUser = localStorage.getItem('user');
+    if (!storedUser || !v_id) return null;
+    
+    const user = JSON.parse(storedUser);
+    const formData = new FormData();
+    formData.append('emailId', user.emailId);
+    formData.append('v_id', v_id);
+    formData.append('type', 'image');
+    formData.append('page_v_id', currentPageVId || 'global');
+    if (replacing_file_v_id) {
+        formData.append('replacing_file_v_id', replacing_file_v_id);
+    }
+    // Append file LAST
+    formData.append('file', file);
+
+    try {
+        const backendUrl = import.meta.env.VITE_BACKEND_URL || 'http://localhost:5000';
+        const res = await axios.post(`${backendUrl}/api/flipbook/upload-asset`, formData, {
+            headers: { 'Content-Type': 'multipart/form-data' }
+        });
+        if (res.data.url) {
+            return { url: `${backendUrl}${res.data.url}`, file_v_id: res.data.file_v_id };
+        }
+    } catch (err) {
+        console.error("Image upload failed", err);
+    }
+    return null;
+  };
+
+  const handleModalFileUpload = async (e) => {
     const file = e.target.files[0];
     if (!file) return;
     if (!file.type.startsWith('image/')) {
@@ -276,14 +309,32 @@ const ImageEditor = ({ selectedElement, onUpdate, onPopupPreviewUpdate }) => {
     const imageUrl = URL.createObjectURL(file);
     const newImageData = { id: Date.now(), name: file.name, url: imageUrl };
     setUploadedImages((prev) => [newImageData, ...prev]);
+    
     if (selectedElement) {
+      const existingFileVid = selectedElement.dataset.fileVid; // Get ID of file we are replacing
       selectedElement.src = imageUrl;
-      if (onUpdate) onUpdate();
+      if (onUpdate) onUpdate({ newElement: selectedElement });
+      
+      const result = await uploadImageToBackend(file, existingFileVid);
+      if (result && result.url) {
+          selectedElement.src = result.url;
+          selectedElement.dataset.fileVid = result.file_v_id; // Store new File ID
+          
+          // Update the uploaded image URL in the gallery as well so reusing it uses the server URL
+          setUploadedImages((prev) => prev.map(img => img.id === newImageData.id ? { ...img, url: result.url } : img));
+          if (onUpdate) onUpdate({ newElement: selectedElement });
+      }
+    } else {
+       // Just upload to gallery without replacement context
+       const result = await uploadImageToBackend(file);
+       if (result && result.url) {
+          setUploadedImages((prev) => prev.map(img => img.id === newImageData.id ? { ...img, url: result.url } : img));
+       }
     }
     e.target.value = '';
   };
 
-  const handleFileUpload = (e) => {
+  const handleFileUpload = async (e) => {
     const file = e.target.files[0];
     if (!file) return;
     if (!file.type.startsWith('image/')) {
@@ -293,8 +344,16 @@ const ImageEditor = ({ selectedElement, onUpdate, onPopupPreviewUpdate }) => {
     }
     const imageUrl = URL.createObjectURL(file);
     if (selectedElement) {
+      const existingFileVid = selectedElement.dataset.fileVid;
       selectedElement.src = imageUrl;
-      if (onUpdate) onUpdate();
+      if (onUpdate) onUpdate({ newElement: selectedElement });
+      
+      const result = await uploadImageToBackend(file, existingFileVid);
+      if (result && result.url) {
+          selectedElement.src = result.url;
+          selectedElement.dataset.fileVid = result.file_v_id; // Store new file ID
+          if (onUpdate) onUpdate({ newElement: selectedElement });
+      }
     }
     e.target.value = '';
   };
@@ -479,7 +538,7 @@ const ImageEditor = ({ selectedElement, onUpdate, onPopupPreviewUpdate }) => {
         if (activeEffects.includes('Drop Shadow') || activeEffects.includes('Blur')) {
             if (selectedElement.parentElement) selectedElement.parentElement.style.setProperty('overflow', 'visible', 'important');
         }
-        if (onUpdate) onUpdate();
+        if (onUpdate) onUpdate({ newElement: selectedElement });
     } finally {
         // Increase delay to ensure all browser style mutations are processed
         setTimeout(() => { isUpdatingDOM.current = false; }, 250);
@@ -493,7 +552,7 @@ const ImageEditor = ({ selectedElement, onUpdate, onPopupPreviewUpdate }) => {
     const next = isRadiusLinked ? { tl: val, tr: val, br: val, bl: val } : { ...radius, [corner]: val };
     setRadius(next);
     selectedElement.style.borderRadius = `${next.tl}px ${next.tr}px ${next.br}px ${next.bl}px`;
-    if (onUpdate) onUpdate();
+    if (onUpdate) onUpdate({ newElement: selectedElement });
   };
 
   const updateEffectSetting = (effect, key, value) => {
@@ -735,7 +794,7 @@ const ImageEditor = ({ selectedElement, onUpdate, onPopupPreviewUpdate }) => {
           ) : (
             <div className="text-center py-8 text-gray-400"><p className="text-sm">No uploaded images yet</p><p className="text-xs mt-1">Upload an image to get started</p></div>
           )}</div>
-          <div className="p-3 border-t flex justify-end gap-2 bg-white"><button onClick={() => setShowGallery(false)} className="flex-1 h-8 border border-gray-300 rounded-lg text-[11px] font-semibold flex items-center justify-center gap-1 hover:bg-gray-50"><X size={12} /> Close</button><button disabled={!tempSelectedImage} onClick={() => { if (!tempSelectedImage) return; selectedElement.src = tempSelectedImage.url; if (onUpdate) onUpdate(); setShowGallery(false); }} className="flex-1 h-8 bg-black text-white rounded-lg text-[11px] font-semibold flex items-center justify-center gap-1 hover:bg-zinc-800 disabled:opacity-50"><Replace size={12} /> Replace</button></div>
+          <div className="p-3 border-t flex justify-end gap-2 bg-white"><button onClick={() => setShowGallery(false)} className="flex-1 h-8 border border-gray-300 rounded-lg text-[11px] font-semibold flex items-center justify-center gap-1 hover:bg-gray-50"><X size={12} /> Close</button><button disabled={!tempSelectedImage} onClick={() => { if (!tempSelectedImage) return; selectedElement.src = tempSelectedImage.url; if (onUpdate) onUpdate({ newElement: selectedElement }); setShowGallery(false); }} className="flex-1 h-8 bg-black text-white rounded-lg text-[11px] font-semibold flex items-center justify-center gap-1 hover:bg-zinc-800 disabled:opacity-50"><Replace size={12} /> Replace</button></div>
         </div>
       )}
 
@@ -753,7 +812,7 @@ const ImageEditor = ({ selectedElement, onUpdate, onPopupPreviewUpdate }) => {
                 selectedElement.style.setProperty('transform-origin', 'center', 'important');
 
                 setIsCropping(false);
-                if (onUpdate) onUpdate();
+                if (onUpdate) onUpdate({ newElement: selectedElement });
             }}
             onCancel={() => setIsCropping(false)}
         />

@@ -1,4 +1,6 @@
 import { useRef, useState, useEffect } from "react";
+import axios from "axios";
+import { useParams } from "react-router-dom";
 import {
   Image as ImageIcon,
   Upload,
@@ -16,7 +18,8 @@ const galleryPreviewImages = [
   "https://psdgang.com//wp-content/uploads/2017/04/009.gif"
 ];
 
-const GifEditor = ({ selectedElement, onUpdate, onPopupPreviewUpdate }) => {
+const GifEditor = ({ selectedElement, onUpdate, onPopupPreviewUpdate, currentPageVId }) => {
+  const { v_id } = useParams();
   const fileInputRef = useRef(null);
   // Accordian State: 'main' or 'interaction' or null
   const [activeSection, setActiveSection] = useState('main');
@@ -68,7 +71,7 @@ const GifEditor = ({ selectedElement, onUpdate, onPopupPreviewUpdate }) => {
   }, [selectedElement]);
 
   // ✅ Direct GIF upload
-  const handleGifUpload = (e) => {
+  const handleGifUpload = async (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
@@ -84,9 +87,43 @@ const GifEditor = ({ selectedElement, onUpdate, onPopupPreviewUpdate }) => {
         URL.revokeObjectURL(selectedElement.src);
       }
 
+      const existingFileVid = selectedElement.dataset.fileVid;
       selectedElement.src = url;
       selectedElement.dataset.mediaType = "gif";
-      onUpdate?.();
+      onUpdate?.({ newElement: selectedElement });
+
+      // Upload to Backend
+      const storedUser = localStorage.getItem('user');
+      if (storedUser && v_id) {
+          const user = JSON.parse(storedUser);
+          const formData = new FormData();
+          formData.append('emailId', user.emailId);
+          formData.append('v_id', v_id);
+          formData.append('type', 'gif');
+          formData.append('page_v_id', currentPageVId || 'global');
+
+          if (existingFileVid) {
+              formData.append('replacing_file_v_id', existingFileVid);
+          }
+          // Append file LAST
+          formData.append('file', file);
+
+          try {
+              const backendUrl = import.meta.env.VITE_BACKEND_URL || 'http://localhost:5000';
+              const res = await axios.post(`${backendUrl}/api/flipbook/upload-asset`, formData, {
+                  headers: { 'Content-Type': 'multipart/form-data' }
+              });
+
+              if (res.data.url) {
+                  const serverUrl = `${backendUrl}${res.data.url}`;
+                  selectedElement.src = serverUrl;
+                  selectedElement.dataset.fileVid = res.data.file_v_id;
+                  onUpdate?.({ newElement: selectedElement });
+              }
+          } catch (err) {
+              console.error("GIF upload failed", err);
+          }
+      }
     }
   };
 

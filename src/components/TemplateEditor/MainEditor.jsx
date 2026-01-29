@@ -124,6 +124,7 @@ const MainEditor = () => {
   // Track the last successfully saved name
   const [lastSavedName, setLastSavedName] = useState(() => getRestoredState('lastSavedName', null));
   const [lastSavedFolder, setLastSavedFolder] = useState(() => getRestoredState('lastSavedFolder', 'Recent Book'));
+  const [currentVId, setCurrentVId] = useState(() => getRestoredState('currentVId', null));
 
   // Panning State
   const [panOffset, setPanOffset] = useState({ x: 0, y: 0 });
@@ -209,11 +210,12 @@ const MainEditor = () => {
               isDoublePage,
               lastSavedName,
               lastSavedFolder,
+              currentVId,
               timestamp: Date.now()
           };
           localStorage.setItem('editor_autosave', JSON.stringify(stateToSave));
       }
-  }, [pages, currentPage, pageName, isDoublePage, lastSavedName, lastSavedFolder]);
+  }, [pages, currentPage, pageName, isDoublePage, lastSavedName, lastSavedFolder, currentVId]);
 
  
 
@@ -290,6 +292,7 @@ const MainEditor = () => {
                       setPageName(resolvedName);
                       setLastSavedName(resolvedName);
                       setLastSavedFolder(resolvedFolder);
+                      setCurrentVId(meta.v_id || null);
                       setCurrentPage(0);
                       
                       // Clear dirty state
@@ -455,7 +458,8 @@ const MainEditor = () => {
                   emailId,
                   folderName: lastSavedFolder, // Use original casing for reliability
                   oldName: lastSavedName,
-                  newName: nameToSave.trim()
+                  newName: nameToSave.trim(),
+                  v_id: currentVId
                });
                // If rename successful, the "new" name now exists (it's the renamed folder).
                // We must overwrite it with the current content.
@@ -478,6 +482,9 @@ const MainEditor = () => {
           content: p.html
       }));
       
+      // Reset dirty ref BEFORE async operation to capture any changes made DURING save
+      isDirtyRef.current = false;
+
       const saveRes = await axios.post(`${backendUrl}/api/flipbook/save`, {
           emailId,
           flipbookName: nameToSave.trim(), 
@@ -490,8 +497,8 @@ const MainEditor = () => {
       
       setLastSavedName(nameToSave);
       setLastSavedFolder(folderName);
+      setCurrentVId(savedVId);
       if (setHasUnsavedChanges) setHasUnsavedChanges(false);
-      isDirtyRef.current = false; // Reset dirty ref
       
       // If we used an override name, ensure state matches (though caller usually sets it too)
       if (overrideName && pageName !== overrideName) {
@@ -517,6 +524,9 @@ const MainEditor = () => {
       return savedVId;
 
     } catch (error) {
+      // Restore dirty state on failure so we retry
+      isDirtyRef.current = true;
+      
       if (!silent && error.response && error.response.status === 409) {
           showAlert('warning', 'Flipbook Exists', 'A flipbook with this name already exists in this folder. Do you want to overwrite it?', {
               showCancel: true,
@@ -944,6 +954,7 @@ const MainEditor = () => {
         // Create new page with the pre-generated ID
         const newPage = { 
             id: newPageId, 
+            v_id: Date.now().toString(36) + Math.random().toString(36).substr(2),
             name: newName, 
             html: '', 
             thumbnail: null 
@@ -1055,7 +1066,13 @@ const MainEditor = () => {
     }
 
     const newPageId = Date.now();
-    const newPage = { id: newPageId, name: newName, html: sourcePage.html, thumbnail: sourcePage.thumbnail };
+    const newPage = { 
+        id: newPageId, 
+        v_id: Date.now().toString(36) + Math.random().toString(36).substr(2),
+        name: newName, 
+        html: sourcePage.html, 
+        thumbnail: sourcePage.thumbnail 
+    };
     
     setPages(prev => {
         const newPages = [...prev];
@@ -1134,7 +1151,7 @@ const MainEditor = () => {
     generateThumbnail(newHTML, pages[currentPage].id, 800);
   }, [currentPage, generateThumbnail, pages]);
 
-  const handlePageUpdate = useCallback((index, newHTML) => {
+  const handlePageUpdate = useCallback((index, newHTML, shouldRefresh = false) => {
     setPages(prev => {
         const updated = [...prev];
         if (updated[index]) {
@@ -1179,7 +1196,7 @@ const MainEditor = () => {
         // If it's a structural refresh (like icon replacement), update immediately
         if (options?.shouldRefresh) {
             if (elementUpdateDebounceRef.current) clearTimeout(elementUpdateDebounceRef.current);
-            handlePageUpdate(targetIndex, html);
+            handlePageUpdate(targetIndex, html, options?.shouldRefresh);
             
             // If a new element was created (icon replacement), re-select it after refresh
             if (options?.newElement) {
@@ -1768,6 +1785,7 @@ const MainEditor = () => {
         openPreview={openPreview}
         onPopupPreviewUpdate={handlePopupPreviewUpdate}
         closePanelsSignal={closePanelsSignal}
+        currentPageVId={pages[currentPage]?.v_id || pages[currentPage]?.id}
       />
 
       {showTemplateModal && (

@@ -1,5 +1,7 @@
 // VideoEditor.jsx - Context-sensitive video editing panel
 import { useState, useRef, useEffect, useCallback, useMemo } from "react";
+import axios from "axios";
+import { useParams } from "react-router-dom";
 
 import {
   Video as VideoIcon,
@@ -65,7 +67,8 @@ const autoPickThumbnailFromVideo = (selectedElement, onUpdate) => {
   }
 };
 
-const VideoEditor = ({ selectedElement, onUpdate, onPopupPreviewUpdate }) => {
+const VideoEditor = ({ selectedElement, onUpdate, onPopupPreviewUpdate, currentPageVId }) => {
+  const { v_id } = useParams();
   const fileInputRef = useRef(null);
   const [openGallery, setOpenGallery] = useState(false);
   const [tab, setTab] = useState("gallery");
@@ -215,8 +218,12 @@ const VideoEditor = ({ selectedElement, onUpdate, onPopupPreviewUpdate }) => {
 
   const toggleLoop = useCallback(() => {
     if (!autoplay) return;
-    setLoop((prev) => !prev);
-  }, [autoplay]);
+    setLoop((prev) => {
+        const next = !prev;
+        debouncedUpdate({ loop: next });
+        return next;
+    });
+  }, [autoplay, debouncedUpdate]);
 
   // Sync autoplay and loop attributes on the video element
   useEffect(() => {
@@ -251,9 +258,10 @@ const VideoEditor = ({ selectedElement, onUpdate, onPopupPreviewUpdate }) => {
           fill: "fill"
         };
         selectedElement.style.objectFit = fitMap[type] || "contain";
+        debouncedUpdate();
       }
     },
-    [selectedElement],
+    [selectedElement, debouncedUpdate],
   );
   // Memoize hasAttribute to prevent re-creation
   const hasAttribute = useCallback(
@@ -263,14 +271,16 @@ const VideoEditor = ({ selectedElement, onUpdate, onPopupPreviewUpdate }) => {
 
   // Memoize handleVideoUpload to prevent re-creation
   const handleVideoUpload = useCallback(
-    (e) => {
+    async (e) => {
       const file = e.target.files?.[0];
       if (!file || !selectedElement) return;
 
-      // Use Object URL for better performance (avoids base64 conversion)
+      // Use Object URL for better performance (immediate preview)
       const videoURL = URL.createObjectURL(file);
 
       if (selectedElement.tagName === "VIDEO") {
+        const existingFileVid = selectedElement.dataset.fileVid;
+
         selectedElement.src = videoURL;
         selectedElement.setAttribute("data-filename", file.name);
         const source = selectedElement.querySelector("source");
@@ -279,11 +289,47 @@ const VideoEditor = ({ selectedElement, onUpdate, onPopupPreviewUpdate }) => {
 
         // Update preview immediately
         setPreviewSrc(videoURL);
+        debouncedUpdate({ newElement: selectedElement });
 
-        debouncedUpdate();
+        // Upload to Backend
+        const storedUser = localStorage.getItem('user');
+        if (storedUser && v_id) {
+            const user = JSON.parse(storedUser);
+            const formData = new FormData();
+            formData.append('emailId', user.emailId);
+            formData.append('v_id', v_id);
+            formData.append('type', 'video');
+            formData.append('page_v_id', currentPageVId || 'global');
+            if (existingFileVid) {
+                formData.append('replacing_file_v_id', existingFileVid);
+            }
+            // Append file LAST to ensure body fields are parsed first by some parsers
+            formData.append('file', file);
+
+            try {
+                const backendUrl = import.meta.env.VITE_BACKEND_URL || 'http://localhost:5000';
+                const res = await axios.post(`${backendUrl}/api/flipbook/upload-asset`, formData, {
+                    headers: { 'Content-Type': 'multipart/form-data' }
+                });
+
+                if (res.data.url) {
+                    const serverUrl = `${backendUrl}${res.data.url}`;
+                    selectedElement.src = serverUrl;
+                    selectedElement.dataset.fileVid = res.data.file_v_id;
+                    if (source) source.src = serverUrl;
+                    
+                    // Update persistent state with the Permanent URL
+                    debouncedUpdate({ newElement: selectedElement });
+                    console.log("Video uploaded successfully:", serverUrl);
+                }
+            } catch (err) {
+                console.error("Video upload failed, keeping local preview", err);
+                alert("Failed to upload video. Please try again.");
+            }
+        }
       }
     },
-    [selectedElement, debouncedUpdate],
+    [selectedElement, debouncedUpdate, v_id, currentPageVId],
   );
 
   // Memoize handleCoverUpload to prevent re-creation

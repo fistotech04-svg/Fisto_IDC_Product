@@ -128,7 +128,7 @@ const Navbar = ({ onExport, onSave, hasUnsavedChanges, saveSuccessInfo, isAutoSa
                 className={`p-2.5 rounded-lg transition-all relative
                   ${hasUnsavedChanges 
                       ? 'bg-amber-50 text-amber-600 hover:bg-amber-100 cursor-pointer ring-1 ring-amber-200' 
-                      : 'bg-[#F2FDF8] text-green-600 cursor-default opacity-80 ring-1 ring-green-100'
+                      : 'bg-[#F2FDF8] text-green-600 cursor-default opacity-80 ring-1 ring-green-300'
                   }`}
                 title={hasUnsavedChanges ? "You have unsaved changes" : "All changes saved"}
               >

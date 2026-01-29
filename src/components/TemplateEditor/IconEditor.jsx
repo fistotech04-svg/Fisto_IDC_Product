@@ -1,4 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
+import axios from "axios";
+import { useParams } from "react-router-dom";
 import { renderToStaticMarkup } from 'react-dom/server';
 import { Upload, Replace, ChevronUp, ChevronDown, Edit3, X, Grid, ArrowLeft, ZoomIn, ZoomOut, Mail, Phone, Globe, Trash2, Save, Image, Folder, Move, Check, CheckCheck, Battery, Calendar, File, Settings, Search, Home, User, Users, Star, Heart, Share2, Download, Cloud, Clock, MapPin, Lock, Unlock, Menu, Play, Pause, AlertCircle, Info, HelpCircle, Facebook, Twitter, Instagram, Linkedin, Github, Youtube, Pipette } from 'lucide-react';
 
@@ -215,7 +217,8 @@ const CustomColorPicker = ({ color, onChange, onCommit, onClose, position, opaci
 
 import InteractionPanel from './InteractionPanel';
 
-const IconEditor = ({ selectedElement, onUpdate, onPopupPreviewUpdate }) => {
+const IconEditor = ({ selectedElement, onUpdate, onPopupPreviewUpdate, currentPageVId }) => {
+  const { v_id } = useParams();
   const [iconColor, setIconColor] = useState('#000000');
   const [iconFill, setIconFill] = useState('none');
   const [strokeWidth, setStrokeWidth] = useState(2);
@@ -460,9 +463,39 @@ const IconEditor = ({ selectedElement, onUpdate, onPopupPreviewUpdate }) => {
     e.target.value = '';
   };
 
-  const handleModalFileUpload = (e) => {
+  const uploadIconToBackend = async (file) => {
+    const storedUser = localStorage.getItem('user');
+    if (!storedUser || !v_id) return null;
+    
+    const user = JSON.parse(storedUser);
+    const formData = new FormData();
+    formData.append('emailId', user.emailId);
+    formData.append('v_id', v_id);
+    formData.append('type', 'icon'); // or 'svg'
+    formData.append('page_v_id', currentPageVId || 'global');
+    // Append file LAST
+    formData.append('file', file);
+
+    try {
+        const backendUrl = import.meta.env.VITE_BACKEND_URL || 'http://localhost:5000';
+        const res = await axios.post(`${backendUrl}/api/flipbook/upload-asset`, formData, {
+            headers: { 'Content-Type': 'multipart/form-data' }
+        });
+        if (res.data.url) {
+            return `${backendUrl}${res.data.url}`;
+        }
+    } catch (err) {
+        console.error("Icon upload failed", err);
+    }
+    return null;
+  };
+
+  const handleModalFileUpload = async (e) => {
     const file = e.target.files[0];
     if (file && file.type === 'image/svg+xml') {
+        // Upload to backend
+        uploadIconToBackend(file);
+
         const reader = new FileReader();
         reader.onload = (event) => {
           const parser = new DOMParser();

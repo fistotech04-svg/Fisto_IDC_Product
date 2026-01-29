@@ -26,7 +26,8 @@ const RightSidebar = ({
   setIsDoublePage,
   openPreview,
   onPopupPreviewUpdate,
-  closePanelsSignal
+  closePanelsSignal,
+  currentPageVId
 }) => {
   return (
     <aside className="w-[25vw] bg-white border-l border-gray-200 overflow-y-auto custom-scrollbar flex flex-col flex-shrink-0">
@@ -122,6 +123,7 @@ const RightSidebar = ({
             selectedElement={selectedElement} 
             onUpdate={onUpdate} 
             onPopupPreviewUpdate={onPopupPreviewUpdate}
+            currentPageVId={currentPageVId}
           />
         )}
 
@@ -131,6 +133,7 @@ const RightSidebar = ({
             selectedElement={selectedElement} 
             onUpdate={onUpdate} 
             onPopupPreviewUpdate={onPopupPreviewUpdate}
+            currentPageVId={currentPageVId}
           />
         )}
         
@@ -139,6 +142,7 @@ const RightSidebar = ({
             selectedElement={selectedElement} 
             onUpdate={onUpdate} 
             onPopupPreviewUpdate={onPopupPreviewUpdate}
+            currentPageVId={currentPageVId}
           />
         )}
 
@@ -147,6 +151,7 @@ const RightSidebar = ({
             selectedElement={selectedElement} 
             onUpdate={onUpdate} 
             onPopupPreviewUpdate={onPopupPreviewUpdate}
+            currentPageVId={currentPageVId}
           />
         )}
         
