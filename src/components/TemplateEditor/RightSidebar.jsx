@@ -27,7 +27,10 @@ const RightSidebar = ({
   openPreview,
   onPopupPreviewUpdate,
   closePanelsSignal,
-  currentPageVId
+  currentPageVId,
+  flipbookVId,
+  folderName,
+  flipbookName
 }) => {
   return (
     <aside className="w-[25vw] bg-white border-l border-gray-200 overflow-y-auto custom-scrollbar flex flex-col flex-shrink-0">
@@ -124,6 +127,9 @@ const RightSidebar = ({
             onUpdate={onUpdate} 
             onPopupPreviewUpdate={onPopupPreviewUpdate}
             currentPageVId={currentPageVId}
+            flipbookVId={flipbookVId}
+            folderName={folderName}
+            flipbookName={flipbookName}
           />
         )}
 
@@ -134,6 +140,9 @@ const RightSidebar = ({
             onUpdate={onUpdate} 
             onPopupPreviewUpdate={onPopupPreviewUpdate}
             currentPageVId={currentPageVId}
+            flipbookVId={flipbookVId}
+            folderName={folderName}
+            flipbookName={flipbookName}
           />
         )}
         
@@ -143,6 +152,9 @@ const RightSidebar = ({
             onUpdate={onUpdate} 
             onPopupPreviewUpdate={onPopupPreviewUpdate}
             currentPageVId={currentPageVId}
+            flipbookVId={flipbookVId}
+            folderName={folderName}
+            flipbookName={flipbookName}
           />
         )}
 
@@ -152,6 +164,9 @@ const RightSidebar = ({
             onUpdate={onUpdate} 
             onPopupPreviewUpdate={onPopupPreviewUpdate}
             currentPageVId={currentPageVId}
+            flipbookVId={flipbookVId}
+            folderName={folderName}
+            flipbookName={flipbookName}
           />
         )}
         

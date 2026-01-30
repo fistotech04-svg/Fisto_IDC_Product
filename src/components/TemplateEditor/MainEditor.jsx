@@ -90,6 +90,7 @@ const MainEditor = () => {
      if (initialData.pageCount) {
          return Array.from({ length: initialData.pageCount }, (_, i) => ({
              id: i + 1,
+             v_id: 'page_' + Math.random().toString(36).substr(2, 9),
              name: `Page ${i + 1}`,
              html: '',
              thumbnail: null
@@ -101,6 +102,7 @@ const MainEditor = () => {
          if (tplPages.length > 0) {
              return tplPages.map((p, i) => ({
                  id: i + 1,
+                 v_id: p.v_id || 'page_' + Math.random().toString(36).substr(2, 9),
                  name: p.name || `Page ${i + 1}`,
                  html: p.html || '',
                  thumbnail: null
@@ -109,6 +111,7 @@ const MainEditor = () => {
      }
      return getRestoredState('pages', [{ 
        id: 1, 
+       v_id: 'page_' + Math.random().toString(36).substr(2, 9),
        name: 'Page 1', 
        html: '',
        thumbnail: null 
@@ -273,6 +276,7 @@ const MainEditor = () => {
                  if (res && res.data.pages && res.data.pages.length > 0) {
                       const loadedPages = res.data.pages.map((p, i) => ({
                           id: i + 1,
+                          v_id: p.v_id,
                           name: p.name || `Page ${i + 1}`,
                           html: p.html,
                           thumbnail: null
@@ -479,7 +483,8 @@ const MainEditor = () => {
       // Prepare pages
       const pagesToSave = pages.map(p => ({
           pageName: p.name,
-          content: p.html
+          content: p.html,
+          v_id: p.v_id  // Include page v_id to preserve it across renames
       }));
       
       // Reset dirty ref BEFORE async operation to capture any changes made DURING save
@@ -490,7 +495,8 @@ const MainEditor = () => {
           flipbookName: nameToSave.trim(), 
           pages: pagesToSave,
           overwrite: shouldOverwrite,
-          folderName: folderName.trim()
+          folderName: folderName.trim(),
+          v_id: paramVId  // Include v_id for rename detection
       });
       
       const savedVId = saveRes.data.v_id;
@@ -553,6 +559,7 @@ const MainEditor = () => {
              const nameChanged = pageName !== lastSavedName;
              // Trigger if content is dirty OR name has changed
              if (isDirtyRef.current || nameChanged) {
+                 console.log(`[Auto-save] Triggering save. Dirty: ${isDirtyRef.current}, NameChanged: ${nameChanged}`);
                  // Auto-save silently
                  // If name changed, pass overwrite=false to allow executeSave's rename logic to run
                  // If name same, pass overwrite=true to just save content
@@ -1786,6 +1793,9 @@ const MainEditor = () => {
         onPopupPreviewUpdate={handlePopupPreviewUpdate}
         closePanelsSignal={closePanelsSignal}
         currentPageVId={pages[currentPage]?.v_id || pages[currentPage]?.id}
+        flipbookVId={currentVId}
+        folderName={lastSavedFolder}
+        flipbookName={lastSavedName}
       />
 
       {showTemplateModal && (

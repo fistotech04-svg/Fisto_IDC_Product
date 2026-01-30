@@ -220,8 +220,10 @@ const ImageCropOverlay = ({ imageSrc, onSave, onCancel, element }) => {
   );
 };
 
-const ImageEditor = ({ selectedElement, onUpdate, onPopupPreviewUpdate, currentPageVId }) => {
-  const { v_id } = useParams();
+const ImageEditor = ({ selectedElement, onUpdate, onPopupPreviewUpdate, currentPageVId, flipbookVId, folderName, flipbookName }) => {
+  const { v_id: paramVId } = useParams();
+  const activeVId = flipbookVId || paramVId;
+
   const fileInputRef = useRef(null);
   const galleryInputRef = useRef(null);
   const stateRef = useRef({ imageType: 'Fit', opacity: 100, radius: { tl: 12, tr: 12, br: 12, bl: 12 }, previewSrc: selectedElement?.src });
@@ -270,12 +272,18 @@ const ImageEditor = ({ selectedElement, onUpdate, onPopupPreviewUpdate, currentP
 
   const uploadImageToBackend = async (file, replacing_file_v_id) => {
     const storedUser = localStorage.getItem('user');
-    if (!storedUser || !v_id) return null;
+    if (!storedUser || (!activeVId && (!folderName || !flipbookName))) {
+        console.warn("Skipping image upload: Missing project metadata");
+        return null;
+    }
     
     const user = JSON.parse(storedUser);
     const formData = new FormData();
     formData.append('emailId', user.emailId);
-    formData.append('v_id', v_id);
+    if (activeVId) formData.append('v_id', activeVId);
+    if (folderName) formData.append('folderName', folderName);
+    if (flipbookName) formData.append('flipbookName', flipbookName);
+    
     formData.append('type', 'image');
     formData.append('page_v_id', currentPageVId || 'global');
     if (replacing_file_v_id) {
@@ -286,14 +294,12 @@ const ImageEditor = ({ selectedElement, onUpdate, onPopupPreviewUpdate, currentP
 
     try {
         const backendUrl = import.meta.env.VITE_BACKEND_URL || 'http://localhost:5000';
-        const res = await axios.post(`${backendUrl}/api/flipbook/upload-asset`, formData, {
-            headers: { 'Content-Type': 'multipart/form-data' }
-        });
+        const res = await axios.post(`${backendUrl}/api/flipbook/upload-asset`, formData);
         if (res.data.url) {
             return { url: `${backendUrl}${res.data.url}`, file_v_id: res.data.file_v_id };
         }
     } catch (err) {
-        console.error("Image upload failed", err);
+        console.error("Image upload failed detail:", err.response?.data || err);
     }
     return null;
   };
@@ -435,6 +441,12 @@ const ImageEditor = ({ selectedElement, onUpdate, onPopupPreviewUpdate, currentP
     };
   }, [selectedElement, syncStateFromDOM]);
 
+  // Stabilize onUpdate with a ref to prevent infinite loops during parent re-renders
+  const onUpdateRef = useRef(onUpdate);
+  useEffect(() => {
+    onUpdateRef.current = onUpdate;
+  }, [onUpdate]);
+
   const applyVisuals = useCallback(() => {
     if (!selectedElement) return;
 
@@ -538,12 +550,12 @@ const ImageEditor = ({ selectedElement, onUpdate, onPopupPreviewUpdate, currentP
         if (activeEffects.includes('Drop Shadow') || activeEffects.includes('Blur')) {
             if (selectedElement.parentElement) selectedElement.parentElement.style.setProperty('overflow', 'visible', 'important');
         }
-        if (onUpdate) onUpdate({ newElement: selectedElement });
+        if (onUpdateRef.current) onUpdateRef.current({ newElement: selectedElement });
     } finally {
         // Increase delay to ensure all browser style mutations are processed
         setTimeout(() => { isUpdatingDOM.current = false; }, 250);
     }
-  }, [selectedElement, filters, activeEffects, effectSettings, opacity, imageType, onUpdate]);
+  }, [selectedElement, filters, activeEffects, effectSettings, opacity, imageType]);
 
   useEffect(() => { applyVisuals(); }, [applyVisuals]);
 

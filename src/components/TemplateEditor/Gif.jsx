@@ -18,8 +18,10 @@ const galleryPreviewImages = [
   "https://psdgang.com//wp-content/uploads/2017/04/009.gif"
 ];
 
-const GifEditor = ({ selectedElement, onUpdate, onPopupPreviewUpdate, currentPageVId }) => {
-  const { v_id } = useParams();
+const GifEditor = ({ selectedElement, onUpdate, onPopupPreviewUpdate, currentPageVId, flipbookVId, folderName, flipbookName }) => {
+  const { v_id: paramVId } = useParams();
+  const activeVId = flipbookVId || paramVId;
+
   const fileInputRef = useRef(null);
   // Accordian State: 'main' or 'interaction' or null
   const [activeSection, setActiveSection] = useState('main');
@@ -28,6 +30,12 @@ const GifEditor = ({ selectedElement, onUpdate, onPopupPreviewUpdate, currentPag
   const [opacity, setOpacity] = useState(100);
   const [imageType, setImageType] = useState('Fill');
   const [showImageTypeDropdown, setShowImageTypeDropdown] = useState(false);
+
+  // Stabilize onUpdate with a ref to prevent infinite loops during parent re-renders
+  const onUpdateRef = useRef(onUpdate);
+  useEffect(() => {
+    onUpdateRef.current = onUpdate;
+  }, [onUpdate]);
 
   // Sync opacity and object-fit when element changes
   useEffect(() => {
@@ -46,7 +54,7 @@ const GifEditor = ({ selectedElement, onUpdate, onPopupPreviewUpdate, currentPag
     if (selectedElement) {
       const fitMap = { 'Fit': 'contain', 'Fill': 'cover', 'Crop': 'cover' };
       selectedElement.style.objectFit = fitMap[type] || 'cover';
-      onUpdate?.();
+      onUpdateRef.current?.();
     }
   };
 
@@ -56,7 +64,7 @@ const GifEditor = ({ selectedElement, onUpdate, onPopupPreviewUpdate, currentPag
 
     if (selectedElement) {
       selectedElement.style.opacity = value / 100;
-      onUpdate?.();
+      onUpdateRef.current?.();
     }
   };
 
@@ -90,15 +98,18 @@ const GifEditor = ({ selectedElement, onUpdate, onPopupPreviewUpdate, currentPag
       const existingFileVid = selectedElement.dataset.fileVid;
       selectedElement.src = url;
       selectedElement.dataset.mediaType = "gif";
-      onUpdate?.({ newElement: selectedElement });
+      onUpdateRef.current?.({ newElement: selectedElement });
 
       // Upload to Backend
       const storedUser = localStorage.getItem('user');
-      if (storedUser && v_id) {
+      if (storedUser && (activeVId || (folderName && flipbookName))) {
           const user = JSON.parse(storedUser);
           const formData = new FormData();
           formData.append('emailId', user.emailId);
-          formData.append('v_id', v_id);
+          if (activeVId) formData.append('v_id', activeVId);
+          if (folderName) formData.append('folderName', folderName);
+          if (flipbookName) formData.append('flipbookName', flipbookName);
+          
           formData.append('type', 'gif');
           formData.append('page_v_id', currentPageVId || 'global');
 
@@ -110,18 +121,16 @@ const GifEditor = ({ selectedElement, onUpdate, onPopupPreviewUpdate, currentPag
 
           try {
               const backendUrl = import.meta.env.VITE_BACKEND_URL || 'http://localhost:5000';
-              const res = await axios.post(`${backendUrl}/api/flipbook/upload-asset`, formData, {
-                  headers: { 'Content-Type': 'multipart/form-data' }
-              });
+              const res = await axios.post(`${backendUrl}/api/flipbook/upload-asset`, formData);
 
               if (res.data.url) {
                   const serverUrl = `${backendUrl}${res.data.url}`;
                   selectedElement.src = serverUrl;
                   selectedElement.dataset.fileVid = res.data.file_v_id;
-                  onUpdate?.({ newElement: selectedElement });
+                  onUpdateRef.current?.({ newElement: selectedElement });
               }
           } catch (err) {
-              console.error("GIF upload failed", err);
+              console.error("GIF upload failed detail:", err.response?.data || err);
           }
       }
     }

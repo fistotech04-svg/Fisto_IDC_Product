@@ -67,8 +67,11 @@ const autoPickThumbnailFromVideo = (selectedElement, onUpdate) => {
   }
 };
 
-const VideoEditor = ({ selectedElement, onUpdate, onPopupPreviewUpdate, currentPageVId }) => {
-  const { v_id } = useParams();
+const VideoEditor = ({ selectedElement, onUpdate, onPopupPreviewUpdate, currentPageVId, flipbookVId, folderName, flipbookName }) => {
+  const { v_id: paramVId } = useParams();
+  // Use either the prop or the URL param, with priority to the prop from MainEditor
+  const activeVId = flipbookVId || paramVId;
+
   const fileInputRef = useRef(null);
   const [openGallery, setOpenGallery] = useState(false);
   const [tab, setTab] = useState("gallery");
@@ -83,14 +86,20 @@ const VideoEditor = ({ selectedElement, onUpdate, onPopupPreviewUpdate, currentP
   const [activeSection, setActiveSection] = useState('main');
   const isMainPanelOpen = activeSection === 'main';
 
+  // Stabilize onUpdate with a ref to prevent infinite loops during parent re-renders
+  const onUpdateRef = useRef(onUpdate);
+  useEffect(() => {
+    onUpdateRef.current = onUpdate;
+  }, [onUpdate]);
+
   const toggleMainPanel = () => {
     setActiveSection(activeSection === 'main' ? null : 'main');
   };
 
-  // Memoize the debounced update function to prevent recreation
+  // Memoize the debounced update function
   const debouncedUpdate = useMemo(
-    () => debounce((...args) => onUpdate?.(...args), 150),
-    [onUpdate],
+    () => debounce((...args) => onUpdateRef.current?.(...args), 150),
+    [],
   );
 
   // Memoize static gallery previews - this prevents re-creation on every render
@@ -106,7 +115,7 @@ const VideoEditor = ({ selectedElement, onUpdate, onPopupPreviewUpdate, currentP
     [],
   );
 
-  // Consolidate all element sync into one effect to prevent multiple re-renders
+  // Consolidate all element sync into one effect
   useEffect(() => {
     if (!selectedElement) {
       setPreviewSrc(null);
@@ -128,6 +137,11 @@ const VideoEditor = ({ selectedElement, onUpdate, onPopupPreviewUpdate, currentP
       selectedElement.controls = true;
       // always hide by default
       selectedElement.classList.add("hide-controls");
+      
+      // Sync local state
+      setAutoplay(selectedElement.autoplay);
+      setLoop(selectedElement.loop);
+      setVideoType(selectedElement.style.objectFit === 'fill' ? 'fill' : 'fit');
     } else if (selectedElement.tagName === "IFRAME") {
       setPreviewSrc(selectedElement.src || null);
       setPosterSrc(null);
@@ -196,7 +210,7 @@ const VideoEditor = ({ selectedElement, onUpdate, onPopupPreviewUpdate, currentP
         }
       });
       selectedElement.replaceWith(newElement);
-      debouncedUpdate(newElement);
+      debouncedUpdate({ newElement });
     },
     [selectedElement, debouncedUpdate],
   );
@@ -293,24 +307,27 @@ const VideoEditor = ({ selectedElement, onUpdate, onPopupPreviewUpdate, currentP
 
         // Upload to Backend
         const storedUser = localStorage.getItem('user');
-        if (storedUser && v_id) {
+        // Require either a v_id or the folder/name metadata to perform upload
+        if (storedUser && (activeVId || (folderName && flipbookName))) {
             const user = JSON.parse(storedUser);
             const formData = new FormData();
             formData.append('emailId', user.emailId);
-            formData.append('v_id', v_id);
+            if (activeVId) formData.append('v_id', activeVId);
+            if (folderName) formData.append('folderName', folderName);
+            if (flipbookName) formData.append('flipbookName', flipbookName);
+            
             formData.append('type', 'video');
             formData.append('page_v_id', currentPageVId || 'global');
+            
             if (existingFileVid) {
                 formData.append('replacing_file_v_id', existingFileVid);
             }
-            // Append file LAST to ensure body fields are parsed first by some parsers
+            // Append file LAST
             formData.append('file', file);
 
             try {
                 const backendUrl = import.meta.env.VITE_BACKEND_URL || 'http://localhost:5000';
-                const res = await axios.post(`${backendUrl}/api/flipbook/upload-asset`, formData, {
-                    headers: { 'Content-Type': 'multipart/form-data' }
-                });
+                const res = await axios.post(`${backendUrl}/api/flipbook/upload-asset`, formData);
 
                 if (res.data.url) {
                     const serverUrl = `${backendUrl}${res.data.url}`;
@@ -323,13 +340,16 @@ const VideoEditor = ({ selectedElement, onUpdate, onPopupPreviewUpdate, currentP
                     console.log("Video uploaded successfully:", serverUrl);
                 }
             } catch (err) {
-                console.error("Video upload failed, keeping local preview", err);
-                alert("Failed to upload video. Please try again.");
+                console.error("Video upload failed detail:", err.response?.data || err);
+                const msg = err.response?.data?.message || "Internal server error";
+                alert(`Failed to upload video: ${msg}`);
             }
+        } else {
+            console.warn("Skipping backend upload: Missing project metadata (v_id or name/folder)");
         }
       }
     },
-    [selectedElement, debouncedUpdate, v_id, currentPageVId],
+    [selectedElement, debouncedUpdate, activeVId, currentPageVId, folderName, flipbookName],
   );
 
   // Memoize handleCoverUpload to prevent re-creation

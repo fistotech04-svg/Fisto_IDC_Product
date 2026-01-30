@@ -217,8 +217,9 @@ const CustomColorPicker = ({ color, onChange, onCommit, onClose, position, opaci
 
 import InteractionPanel from './InteractionPanel';
 
-const IconEditor = ({ selectedElement, onUpdate, onPopupPreviewUpdate, currentPageVId }) => {
-  const { v_id } = useParams();
+const IconEditor = ({ selectedElement, onUpdate, onPopupPreviewUpdate, currentPageVId, flipbookVId, folderName, flipbookName }) => {
+  const { v_id: paramVId } = useParams();
+  const activeVId = flipbookVId || paramVId;
   const [iconColor, setIconColor] = useState('#000000');
   const [iconFill, setIconFill] = useState('none');
   const [strokeWidth, setStrokeWidth] = useState(2);
@@ -228,7 +229,13 @@ const IconEditor = ({ selectedElement, onUpdate, onPopupPreviewUpdate, currentPa
   const galleryInputRef = useRef(null);
   const [pickerTarget, setPickerTarget] = useState(null); // 'fill' or 'stroke'
   const [pickerPos, setPickerPos] = useState({ x: 0, y: 0 });
-  
+
+  // Stabilize onUpdate with a ref to prevent infinite loops during parent re-renders
+  const onUpdateRef = useRef(onUpdate);
+  useEffect(() => {
+    onUpdateRef.current = onUpdate;
+  }, [onUpdate]);
+
   const rgbToHex = (rgb) => {
     if (!rgb || rgb === 'none' || rgb === 'transparent') return 'none';
     if (!rgb.startsWith('rgb')) return rgb;
@@ -352,7 +359,6 @@ const IconEditor = ({ selectedElement, onUpdate, onPopupPreviewUpdate, currentPa
       
       // Sync sidebar preview SVG (instant, no iframe rewrite)
       setPreviewData(prev => ({ ...prev, html: selectedElement.innerHTML }));
-      // Removed immediate onUpdate() to prevent iframe rewrite during drag
     }
   };
 
@@ -381,12 +387,11 @@ const IconEditor = ({ selectedElement, onUpdate, onPopupPreviewUpdate, currentPa
 
       // Sync sidebar preview SVG (instant, no iframe rewrite)
       setPreviewData(prev => ({ ...prev, html: selectedElement.innerHTML }));
-      // Removed immediate onUpdate() to prevent iframe rewrite during drag
     }
   };
 
   const commitChanges = () => {
-    if (onUpdate) onUpdate();
+    if (onUpdateRef.current) onUpdateRef.current();
   };
 
   const updateStrokeWidth = (newWidth) => {
@@ -405,16 +410,17 @@ const IconEditor = ({ selectedElement, onUpdate, onPopupPreviewUpdate, currentPa
     
     setStrokeWidth(widthVal);
     setPreviewData(prev => ({ ...prev, html: selectedElement.innerHTML }));
-    onUpdate && onUpdate();
+    commitChanges();
   };
 
-  const updateOpacity = (newOpacity) => {
-    if (!selectedElement) return;
-    const val = newOpacity / 100;
-    selectedElement.style.opacity = val;
-    selectedElement.setAttribute('opacity', val);
-    setOpacity(newOpacity);
-    onUpdate && onUpdate();
+  const handleOpacityChange = (e) => {
+    const val = parseInt(e.target.value);
+    setOpacity(val);
+    if (selectedElement) {
+       selectedElement.setAttribute('opacity', (val / 100).toString());
+       selectedElement.style.opacity = (val/100).toString();
+       if (onUpdateRef.current) onUpdateRef.current();
+    }
   };
 
   const replaceIconContent = (newViewBox, newInnerHtml) => {
@@ -465,27 +471,31 @@ const IconEditor = ({ selectedElement, onUpdate, onPopupPreviewUpdate, currentPa
 
   const uploadIconToBackend = async (file) => {
     const storedUser = localStorage.getItem('user');
-    if (!storedUser || !v_id) return null;
+    if (!storedUser || (!activeVId && (!folderName || !flipbookName))) {
+        console.warn("Skipping icon upload: Missing project metadata");
+        return null;
+    }
     
     const user = JSON.parse(storedUser);
     const formData = new FormData();
     formData.append('emailId', user.emailId);
-    formData.append('v_id', v_id);
-    formData.append('type', 'icon'); // or 'svg'
+    if (activeVId) formData.append('v_id', activeVId);
+    if (folderName) formData.append('folderName', folderName);
+    if (flipbookName) formData.append('flipbookName', flipbookName);
+    
+    formData.append('type', 'icon'); 
     formData.append('page_v_id', currentPageVId || 'global');
     // Append file LAST
     formData.append('file', file);
 
     try {
         const backendUrl = import.meta.env.VITE_BACKEND_URL || 'http://localhost:5000';
-        const res = await axios.post(`${backendUrl}/api/flipbook/upload-asset`, formData, {
-            headers: { 'Content-Type': 'multipart/form-data' }
-        });
+        const res = await axios.post(`${backendUrl}/api/flipbook/upload-asset`, formData);
         if (res.data.url) {
             return `${backendUrl}${res.data.url}`;
         }
     } catch (err) {
-        console.error("Icon upload failed", err);
+        console.error("Icon upload failed detail:", err.response?.data || err);
     }
     return null;
   };
