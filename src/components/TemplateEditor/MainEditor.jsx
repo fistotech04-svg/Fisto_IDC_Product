@@ -455,6 +455,8 @@ const MainEditor = () => {
       const isSameFolder = lastSavedFolder && folderName && (lastSavedFolder.trim().toLowerCase() === folderName.trim().toLowerCase());
       const isNameChanged = lastSavedName && (nameToSave.trim() !== lastSavedName.trim());
 
+      let pagesPayloadSource = pages;
+
       if (!overwrite && isSameFolder && isNameChanged) {
            // Attempt to rename the directory first
            try {
@@ -468,6 +470,22 @@ const MainEditor = () => {
                // If rename successful, the "new" name now exists (it's the renamed folder).
                // We must overwrite it with the current content.
                shouldOverwrite = true;
+               
+               // UPDATE FRONTEND STATE & CONTENT
+               // We must update the asset URLs in the pages to match the new folder name
+               // otherwise the immediately following 'save' will write old URLs back to disk.
+               // We assume URLs contain /My_Flipbooks/{Folder}/{BookName}/
+               const oldPathSegment = `/My_Flipbooks/${lastSavedFolder}/${lastSavedName}/`;
+               const newPathSegment = `/My_Flipbooks/${lastSavedFolder}/${nameToSave.trim()}/`;
+               
+               const updatedPages = pages.map(p => ({
+                   ...p,
+                   html: p.html ? p.html.split(oldPathSegment).join(newPathSegment) : ''
+               }));
+               
+               setPages(updatedPages);
+               pagesPayloadSource = updatedPages;
+
            } catch (renameErr) {
                // If rename fails (e.g. name exists), we fall through to normal save (which handles conflicts)
                // But if it's a conflict, the Save call below will trigger the 409 flow.
@@ -481,7 +499,7 @@ const MainEditor = () => {
       }
 
       // Prepare pages
-      const pagesToSave = pages.map(p => ({
+      const pagesToSave = pagesPayloadSource.map(p => ({
           pageName: p.name,
           content: p.html,
           v_id: p.v_id  // Include page v_id to preserve it across renames
@@ -533,13 +551,23 @@ const MainEditor = () => {
       // Restore dirty state on failure so we retry
       isDirtyRef.current = true;
       
-      if (!silent && error.response && error.response.status === 409) {
-          showAlert('warning', 'Flipbook Exists', 'A flipbook with this name already exists in this folder. Do you want to overwrite it?', {
-              showCancel: true,
-              confirmText: 'Overwrite',
-              cancelText: 'Cancel',
-              onConfirm: () => executeSave(folderName, true, false, overrideName)
-          });
+      if (error.response && error.response.status === 409) {
+          if (!silent) {
+              showAlert('warning', 'Flipbook Exists', 'A flipbook with this name already exists in this folder. Do you want to overwrite it?', {
+                  showCancel: true,
+                  confirmText: 'Overwrite',
+                  cancelText: 'Cancel',
+                  onConfirm: () => executeSave(folderName, true, false, overrideName)
+              });
+          } else {
+              // Even during silent save (auto-save), if name exists, we must revert and warn
+              showAlert('error', 'Name Already Exists', 'This name already exists in the folder. Please use a different name.');
+              
+              // Revert to old name
+              if (lastSavedName) {
+                  setPageName(lastSavedName);
+              }
+          }
           return;
       }
       console.error("Save failed:", error);
