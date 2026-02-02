@@ -727,6 +727,10 @@ const VideoEditor = ({ selectedElement, onUpdate, onPopupPreviewUpdate, currentP
             selectedElement={selectedElement}
             onUpdate={onUpdate}
             onClose={() => setOpenGallery(false)}
+            currentPageVId={currentPageVId}
+            flipbookVId={activeVId}
+            folderName={folderName}
+            flipbookName={flipbookName}
           />
         )}
       </div>

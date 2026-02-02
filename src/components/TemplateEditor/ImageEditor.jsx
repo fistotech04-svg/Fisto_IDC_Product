@@ -270,9 +270,47 @@ const ImageEditor = ({ selectedElement, onUpdate, onPopupPreviewUpdate, currentP
     stateRef.current = { ...stateRef.current, imageType, opacity, radius, previewSrc };
   });
 
-  const uploadImageToBackend = async (file, replacing_file_v_id) => {
+  // Fetch gallery images when gallery opens
+  useEffect(() => {
+    const fetchGalleryAssets = async () => {
+      if (!showGallery) return;
+      
+      const storedUser = localStorage.getItem('user');
+      if (!storedUser) return;
+      
+      const user = JSON.parse(storedUser);
+      const backendUrl = import.meta.env.VITE_BACKEND_URL || 'http://localhost:5000';
+      
+      try {
+        const res = await axios.get(`${backendUrl}/api/flipbook/get-gallery-assets`, {
+          params: {
+            emailId: user.emailId,
+            type: 'image'
+          }
+        });
+        
+        if (res.data.assets) {
+          // Convert backend assets to the format expected by the UI
+          const formattedAssets = res.data.assets.map(asset => ({
+            id: asset.name, // Use filename as ID
+            name: asset.name,
+            url: `${backendUrl}${asset.url}`,
+            uploadedAt: asset.uploadedAt
+          }));
+          
+          setUploadedImages(formattedAssets);
+        }
+      } catch (err) {
+        console.error('Failed to fetch gallery assets:', err);
+      }
+    };
+    
+    fetchGalleryAssets();
+  }, [showGallery]);
+
+  const uploadImageToBackend = async (file, replacing_file_v_id, isGallery = false) => {
     const storedUser = localStorage.getItem('user');
-    if (!storedUser || (!activeVId && (!folderName || !flipbookName))) {
+    if (!storedUser || (!isGallery && !activeVId && (!folderName || !flipbookName))) {
         console.warn("Skipping image upload: Missing project metadata");
         return null;
     }
@@ -284,6 +322,8 @@ const ImageEditor = ({ selectedElement, onUpdate, onPopupPreviewUpdate, currentP
     if (folderName) formData.append('folderName', folderName);
     if (flipbookName) formData.append('flipbookName', flipbookName);
     
+    if (isGallery) formData.append('isGallery', 'true');
+
     formData.append('type', 'image');
     formData.append('page_v_id', currentPageVId || 'global');
     if (replacing_file_v_id) {
@@ -313,30 +353,15 @@ const ImageEditor = ({ selectedElement, onUpdate, onPopupPreviewUpdate, currentP
       return;
     }
     const imageUrl = URL.createObjectURL(file);
-    const newImageData = { id: Date.now(), name: file.name, url: imageUrl };
+    const newImageData = { id: Date.now(), name: file.name, url: imageUrl, file: file };
     setUploadedImages((prev) => [newImageData, ...prev]);
     
-    if (selectedElement) {
-      const existingFileVid = selectedElement.dataset.fileVid; // Get ID of file we are replacing
-      selectedElement.src = imageUrl;
-      if (onUpdate) onUpdate({ newElement: selectedElement });
-      
-      const result = await uploadImageToBackend(file, existingFileVid);
-      if (result && result.url) {
-          selectedElement.src = result.url;
-          selectedElement.dataset.fileVid = result.file_v_id; // Store new File ID
-          
-          // Update the uploaded image URL in the gallery as well so reusing it uses the server URL
-          setUploadedImages((prev) => prev.map(img => img.id === newImageData.id ? { ...img, url: result.url } : img));
-          if (onUpdate) onUpdate({ newElement: selectedElement });
-      }
-    } else {
-       // Just upload to gallery without replacement context
-       const result = await uploadImageToBackend(file);
-       if (result && result.url) {
-          setUploadedImages((prev) => prev.map(img => img.id === newImageData.id ? { ...img, url: result.url } : img));
-       }
+    // Upload to gallery (user workspace folder) only
+    const result = await uploadImageToBackend(file, null, true);
+    if (result && result.url) {
+       setUploadedImages((prev) => prev.map(img => img.id === newImageData.id ? { ...img, url: result.url, file_v_id: result.file_v_id } : img));
     }
+    
     e.target.value = '';
   };
 
@@ -806,7 +831,49 @@ const ImageEditor = ({ selectedElement, onUpdate, onPopupPreviewUpdate, currentP
           ) : (
             <div className="text-center py-8 text-gray-400"><p className="text-sm">No uploaded images yet</p><p className="text-xs mt-1">Upload an image to get started</p></div>
           )}</div>
-          <div className="p-3 border-t flex justify-end gap-2 bg-white"><button onClick={() => setShowGallery(false)} className="flex-1 h-8 border border-gray-300 rounded-lg text-[11px] font-semibold flex items-center justify-center gap-1 hover:bg-gray-50"><X size={12} /> Close</button><button disabled={!tempSelectedImage} onClick={() => { if (!tempSelectedImage) return; selectedElement.src = tempSelectedImage.url; if (onUpdate) onUpdate({ newElement: selectedElement }); setShowGallery(false); }} className="flex-1 h-8 bg-black text-white rounded-lg text-[11px] font-semibold flex items-center justify-center gap-1 hover:bg-zinc-800 disabled:opacity-50"><Replace size={12} /> Replace</button></div>
+          <div className="p-3 border-t flex justify-end gap-2 bg-white"><button onClick={() => setShowGallery(false)} className="flex-1 h-8 border border-gray-300 rounded-lg text-[11px] font-semibold flex items-center justify-center gap-1 hover:bg-gray-50"><X size={12} /> Close</button><button disabled={!tempSelectedImage} onClick={async () => { 
+            if (!tempSelectedImage) return; 
+            
+            // Get the existing file_v_id from the selected element
+            const existingFileVid = selectedElement.dataset.fileVid;
+            
+            // If the gallery image has a file object (newly uploaded), upload it to flipbook assets
+            if (tempSelectedImage.file) {
+              selectedElement.src = tempSelectedImage.url;
+              if (onUpdate) onUpdate({ newElement: selectedElement });
+              
+              const result = await uploadImageToBackend(tempSelectedImage.file, existingFileVid);
+              if (result && result.url) {
+                selectedElement.src = result.url;
+                selectedElement.dataset.fileVid = result.file_v_id;
+                if (onUpdate) onUpdate({ newElement: selectedElement });
+              }
+            } else {
+              // If it's an already uploaded image from gallery, we need to fetch it and re-upload to flipbook assets
+              try {
+                const response = await fetch(tempSelectedImage.url);
+                const blob = await response.blob();
+                const file = new File([blob], tempSelectedImage.name || 'image.jpg', { type: blob.type });
+                
+                selectedElement.src = tempSelectedImage.url;
+                if (onUpdate) onUpdate({ newElement: selectedElement });
+                
+                const result = await uploadImageToBackend(file, existingFileVid);
+                if (result && result.url) {
+                  selectedElement.src = result.url;
+                  selectedElement.dataset.fileVid = result.file_v_id;
+                  if (onUpdate) onUpdate({ newElement: selectedElement });
+                }
+              } catch (error) {
+                console.error('Failed to upload gallery image to flipbook assets:', error);
+                // Fallback: just use the gallery URL
+                selectedElement.src = tempSelectedImage.url;
+                if (onUpdate) onUpdate({ newElement: selectedElement });
+              }
+            }
+            
+            setShowGallery(false); 
+          }} className="flex-1 h-8 bg-black text-white rounded-lg text-[11px] font-semibold flex items-center justify-center gap-1 hover:bg-zinc-800 disabled:opacity-50"><Replace size={12} /> Replace</button></div>
         </div>
       )}
 

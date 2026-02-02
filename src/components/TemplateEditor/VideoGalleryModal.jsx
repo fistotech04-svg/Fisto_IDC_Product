@@ -1,12 +1,50 @@
-import React, { useState, useRef } from "react";
+import React, { useState, useRef, useEffect } from "react";
+import axios from "axios";
 import { Upload, X, Check, Replace } from "lucide-react";
 
-export default function VideoGalleryModal({ onClose, onUpdate, selectedElement }) {
+export default function VideoGalleryModal({ onClose, onUpdate, selectedElement, currentPageVId, flipbookVId, folderName, flipbookName }) {
   const [tempSelectedVideo, setTempSelectedVideo] = useState(null);
   const [uploadedVideos, setUploadedVideos] = useState([]);
   const galleryInputRef = useRef(null);
 
-  const handleModalFileUpload = (e) => {
+  // Fetch gallery videos when modal opens
+  useEffect(() => {
+    const fetchGalleryAssets = async () => {
+      const storedUser = localStorage.getItem('user');
+      if (!storedUser) return;
+      
+      const user = JSON.parse(storedUser);
+      const backendUrl = import.meta.env.VITE_BACKEND_URL || 'http://localhost:5000';
+      
+      try {
+        const res = await axios.get(`${backendUrl}/api/flipbook/get-gallery-assets`, {
+          params: {
+            emailId: user.emailId,
+            type: 'video'
+          }
+        });
+        
+        if (res.data.assets) {
+          // Convert backend assets to the format expected by the UI
+          const formattedAssets = res.data.assets.map(asset => ({
+            id: asset.name, // Use filename as ID
+            name: asset.name.replace(/\.[^/.]+$/, ''), // Remove extension
+            url: `${backendUrl}${asset.url}`,
+            type: asset.type,
+            uploadedAt: asset.uploadedAt
+          }));
+          
+          setUploadedVideos(formattedAssets);
+        }
+      } catch (err) {
+        console.error('Failed to fetch gallery assets:', err);
+      }
+    };
+    
+    fetchGalleryAssets();
+  }, []); // Run once when component mounts
+
+  const handleModalFileUpload = async (e) => {
     const file = e.target.files[0];
     if (!file) return;
     
@@ -19,32 +57,170 @@ export default function VideoGalleryModal({ onClose, onUpdate, selectedElement }
       return;
     }
 
+    // Immediate local preview
     const videoUrl = URL.createObjectURL(file);
     const newVideoData = {
       id: Date.now(),
       name: file.name.split('.')[0],
       url: videoUrl,
-      type: file.type
+      type: file.type,
+      file: file  // Store the file object for later upload
     };
     
     setUploadedVideos((prev) => [newVideoData, ...prev]);
     setTempSelectedVideo(newVideoData);
     e.target.value = '';
+
+    // Upload to gallery (user workspace folder) only
+    const storedUser = localStorage.getItem('user');
+    if (storedUser) {
+        const user = JSON.parse(storedUser);
+        const formData = new FormData();
+        formData.append('emailId', user.emailId);
+        formData.append('isGallery', 'true');
+        formData.append('type', 'video');
+        formData.append('file', file);
+
+        try {
+            const backendUrl = import.meta.env.VITE_BACKEND_URL || 'http://localhost:5000';
+            const res = await axios.post(`${backendUrl}/api/flipbook/upload-asset`, formData);
+
+            if (res.data.url) {
+                const serverUrl = `${backendUrl}${res.data.url}`;
+                // Update the local item with the server URL and file_v_id
+                setUploadedVideos((prev) => prev.map(v => v.id === newVideoData.id ? { ...v, url: serverUrl, file_v_id: res.data.file_v_id } : v));
+                setTempSelectedVideo(prev => prev && prev.id === newVideoData.id ? { ...prev, url: serverUrl, file_v_id: res.data.file_v_id } : prev);
+                console.log("Gallery Video uploaded:", serverUrl);
+            }
+        } catch (err) {
+            console.error("Gallery Upload Error:", err);
+        }
+    }
   };
 
-  const handleReplace = () => {
+  const handleReplace = async () => {
     if (!selectedElement || !tempSelectedVideo) return;
     
-    if (selectedElement.tagName === "VIDEO") {
-      selectedElement.src = tempSelectedVideo.url;
-      const source = selectedElement.querySelector("source");
-      if (source) source.src = tempSelectedVideo.url;
-      selectedElement.load();
+    const existingFileVid = selectedElement.dataset.fileVid;
+    
+    // If the gallery video has a file object (newly uploaded), upload it to flipbook assets
+    if (tempSelectedVideo.file) {
+      // Set temporary preview
+      if (selectedElement.tagName === "VIDEO") {
+        selectedElement.src = tempSelectedVideo.url;
+        const source = selectedElement.querySelector("source");
+        if (source) source.src = tempSelectedVideo.url;
+        selectedElement.load();
+      } else {
+        selectedElement.src = tempSelectedVideo.url;
+      }
+      if (onUpdate) onUpdate();
+      
+      // Upload to flipbook assets
+      const storedUser = localStorage.getItem('user');
+      if (storedUser && (flipbookVId || (folderName && flipbookName))) {
+        const user = JSON.parse(storedUser);
+        const formData = new FormData();
+        formData.append('emailId', user.emailId);
+        if (flipbookVId) formData.append('v_id', flipbookVId);
+        if (folderName) formData.append('folderName', folderName);
+        if (flipbookName) formData.append('flipbookName', flipbookName);
+        formData.append('type', 'video');
+        formData.append('page_v_id', currentPageVId || 'global');
+        if (existingFileVid) formData.append('replacing_file_v_id', existingFileVid);
+        formData.append('file', tempSelectedVideo.file);
+        
+        try {
+          const backendUrl = import.meta.env.VITE_BACKEND_URL || 'http://localhost:5000';
+          const res = await axios.post(`${backendUrl}/api/flipbook/upload-asset`, formData);
+          
+          if (res.data.url) {
+            const serverUrl = `${backendUrl}${res.data.url}`;
+            if (selectedElement.tagName === "VIDEO") {
+              selectedElement.src = serverUrl;
+              selectedElement.dataset.fileVid = res.data.file_v_id;
+              const source = selectedElement.querySelector("source");
+              if (source) source.src = serverUrl;
+              selectedElement.load();
+            } else {
+              selectedElement.src = serverUrl;
+              selectedElement.dataset.fileVid = res.data.file_v_id;
+            }
+            if (onUpdate) onUpdate();
+          }
+        } catch (err) {
+          console.error("Failed to upload video to flipbook assets:", err);
+        }
+      }
     } else {
-      selectedElement.src = tempSelectedVideo.url;
+      // If it's an already uploaded video from gallery, fetch and re-upload to flipbook assets
+      try {
+        const response = await fetch(tempSelectedVideo.url);
+        const blob = await response.blob();
+        const file = new File([blob], tempSelectedVideo.name || 'video.mp4', { type: blob.type });
+        
+        // Set temporary preview
+        if (selectedElement.tagName === "VIDEO") {
+          selectedElement.src = tempSelectedVideo.url;
+          const source = selectedElement.querySelector("source");
+          if (source) source.src = tempSelectedVideo.url;
+          selectedElement.load();
+        } else {
+          selectedElement.src = tempSelectedVideo.url;
+        }
+        if (onUpdate) onUpdate();
+        
+        // Upload to flipbook assets
+        const storedUser = localStorage.getItem('user');
+        if (storedUser && (flipbookVId || (folderName && flipbookName))) {
+          const user = JSON.parse(storedUser);
+          const formData = new FormData();
+          formData.append('emailId', user.emailId);
+          if (flipbookVId) formData.append('v_id', flipbookVId);
+          if (folderName) formData.append('folderName', folderName);
+          if (flipbookName) formData.append('flipbookName', flipbookName);
+          formData.append('type', 'video');
+          formData.append('page_v_id', currentPageVId || 'global');
+          if (existingFileVid) formData.append('replacing_file_v_id', existingFileVid);
+          formData.append('file', file);
+          
+          try {
+            const backendUrl = import.meta.env.VITE_BACKEND_URL || 'http://localhost:5000';
+            const res = await axios.post(`${backendUrl}/api/flipbook/upload-asset`, formData);
+            
+            if (res.data.url) {
+              const serverUrl = `${backendUrl}${res.data.url}`;
+              if (selectedElement.tagName === "VIDEO") {
+                selectedElement.src = serverUrl;
+                selectedElement.dataset.fileVid = res.data.file_v_id;
+                const source = selectedElement.querySelector("source");
+                if (source) source.src = serverUrl;
+                selectedElement.load();
+              } else {
+                selectedElement.src = serverUrl;
+                selectedElement.dataset.fileVid = res.data.file_v_id;
+              }
+              if (onUpdate) onUpdate();
+            }
+          } catch (err) {
+            console.error("Failed to upload video to flipbook assets:", err);
+          }
+        }
+      } catch (error) {
+        console.error('Failed to fetch and upload gallery video:', error);
+        // Fallback: just use the gallery URL
+        if (selectedElement.tagName === "VIDEO") {
+          selectedElement.src = tempSelectedVideo.url;
+          const source = selectedElement.querySelector("source");
+          if (source) source.src = tempSelectedVideo.url;
+          selectedElement.load();
+        } else {
+          selectedElement.src = tempSelectedVideo.url;
+        }
+        if (onUpdate) onUpdate();
+      }
     }
 
-    if (onUpdate) onUpdate();
     onClose();
   };
 

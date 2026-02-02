@@ -1,12 +1,49 @@
-import React, { useState, useRef } from "react";
+import React, { useState, useRef, useEffect } from "react";
+import axios from "axios";
 import { Upload, X, Check, Replace } from "lucide-react";
 
-export default function GalleryGif({ onClose, onUpdate, selectedElement }) {
+export default function GalleryGif({ onClose, onUpdate, selectedElement, currentPageVId, flipbookVId, folderName, flipbookName }) {
   const [tempSelectedGif, setTempSelectedGif] = useState(null);
   const [uploadedGifs, setUploadedGifs] = useState([]);
   const galleryInputRef = useRef(null);
 
-  const handleModalFileUpload = (e) => {
+  // Fetch gallery GIFs when modal opens
+  useEffect(() => {
+    const fetchGalleryAssets = async () => {
+      const storedUser = localStorage.getItem('user');
+      if (!storedUser) return;
+      
+      const user = JSON.parse(storedUser);
+      const backendUrl = import.meta.env.VITE_BACKEND_URL || 'http://localhost:5000';
+      
+      try {
+        const res = await axios.get(`${backendUrl}/api/flipbook/get-gallery-assets`, {
+          params: {
+            emailId: user.emailId,
+            type: 'gif'
+          }
+        });
+        
+        if (res.data.assets) {
+          const formattedAssets = res.data.assets.map(asset => ({
+            id: asset.name,
+            name: asset.name.replace(/\.[^/.]+$/, ''),
+            url: `${backendUrl}${asset.url}`,
+            type: asset.type,
+            uploadedAt: asset.uploadedAt
+          }));
+          
+          setUploadedGifs(formattedAssets);
+        }
+      } catch (err) {
+        console.error('Failed to fetch gallery assets:', err);
+      }
+    };
+    
+    fetchGalleryAssets();
+  }, []);
+
+  const handleModalFileUpload = async (e) => {
     const file = e.target.files[0];
     if (!file) return;
     
@@ -23,27 +60,163 @@ export default function GalleryGif({ onClose, onUpdate, selectedElement }) {
       id: Date.now(),
       name: file.name.split('.')[0],
       url: fileUrl,
-      type: file.type
+      type: file.type,
+      file: file  // Store file for later upload
     };
     
     setUploadedGifs((prev) => [newGifData, ...prev]);
     setTempSelectedGif(newGifData);
     e.target.value = '';
+
+    // Upload to Backend
+    const storedUser = localStorage.getItem('user');
+    if (storedUser) {
+        const user = JSON.parse(storedUser);
+        const formData = new FormData();
+        formData.append('emailId', user.emailId);
+        formData.append('isGallery', 'true');
+        formData.append('type', 'gif'); 
+        formData.append('file', file);
+
+        try {
+            const backendUrl = import.meta.env.VITE_BACKEND_URL || 'http://localhost:5000';
+            const res = await axios.post(`${backendUrl}/api/flipbook/upload-asset`, formData);
+
+            if (res.data.url) {
+                const serverUrl = `${backendUrl}${res.data.url}`;
+                setUploadedGifs((prev) => prev.map(v => v.id === newGifData.id ? { ...v, url: serverUrl, file_v_id: res.data.file_v_id } : v));
+                setTempSelectedGif(prev => prev && prev.id === newGifData.id ? { ...prev, url: serverUrl, file_v_id: res.data.file_v_id } : prev);
+                console.log("Gallery GIF uploaded:", serverUrl);
+            }
+        } catch (err) {
+            console.error("Gallery Upload Error:", err);
+        }
+    }
   };
 
-  const handleReplace = () => {
+  const handleReplace = async () => {
     if (!selectedElement || !tempSelectedGif) return;
     
-    if (selectedElement.tagName === "VIDEO") {
-      selectedElement.src = tempSelectedGif.url;
-      const source = selectedElement.querySelector("source");
-      if (source) source.src = tempSelectedGif.url;
-      selectedElement.load();
+    const existingFileVid = selectedElement.dataset.fileVid;
+    
+    // If the gallery GIF has a file object (newly uploaded), upload it to flipbook assets
+    if (tempSelectedGif.file) {
+      // Set temporary preview
+      if (selectedElement.tagName === "VIDEO") {
+        selectedElement.src = tempSelectedGif.url;
+        const source = selectedElement.querySelector("source");
+        if (source) source.src = tempSelectedGif.url;
+        selectedElement.load();
+      } else {
+        selectedElement.src = tempSelectedGif.url;
+      }
+      if (onUpdate) onUpdate();
+      
+      // Upload to flipbook assets
+      const storedUser = localStorage.getItem('user');
+      if (storedUser && (flipbookVId || (folderName && flipbookName))) {
+        const user = JSON.parse(storedUser);
+        const formData = new FormData();
+        formData.append('emailId', user.emailId);
+        if (flipbookVId) formData.append('v_id', flipbookVId);
+        if (folderName) formData.append('folderName', folderName);
+        if (flipbookName) formData.append('flipbookName', flipbookName);
+        formData.append('type', 'gif');
+        formData.append('page_v_id', currentPageVId || 'global');
+        if (existingFileVid) formData.append('replacing_file_v_id', existingFileVid);
+        formData.append('file', tempSelectedGif.file);
+        
+        try {
+          const backendUrl = import.meta.env.VITE_BACKEND_URL || 'http://localhost:5000';
+          const res = await axios.post(`${backendUrl}/api/flipbook/upload-asset`, formData);
+          
+          if (res.data.url) {
+            const serverUrl = `${backendUrl}${res.data.url}`;
+            if (selectedElement.tagName === "VIDEO") {
+              selectedElement.src = serverUrl;
+              selectedElement.dataset.fileVid = res.data.file_v_id;
+              const source = selectedElement.querySelector("source");
+              if (source) source.src = serverUrl;
+              selectedElement.load();
+            } else {
+              selectedElement.src = serverUrl;
+              selectedElement.dataset.fileVid = res.data.file_v_id;
+            }
+            if (onUpdate) onUpdate();
+          }
+        } catch (err) {
+          console.error("Failed to upload GIF to flipbook assets:", err);
+        }
+      }
     } else {
-      selectedElement.src = tempSelectedGif.url;
+      // If it's an already uploaded GIF from gallery, fetch and re-upload to flipbook assets
+      try {
+        const response = await fetch(tempSelectedGif.url);
+        const blob = await response.blob();
+        const file = new File([blob], tempSelectedGif.name || 'animation.gif', { type: 'image/gif' });
+        
+        // Set temporary preview
+        if (selectedElement.tagName === "VIDEO") {
+          selectedElement.src = tempSelectedGif.url;
+          const source = selectedElement.querySelector("source");
+          if (source) source.src = tempSelectedGif.url;
+          selectedElement.load();
+        } else {
+          selectedElement.src = tempSelectedGif.url;
+        }
+        if (onUpdate) onUpdate();
+        
+        // Upload to flipbook assets
+        const storedUser = localStorage.getItem('user');
+        if (storedUser && (flipbookVId || (folderName && flipbookName))) {
+          const user = JSON.parse(storedUser);
+          const formData = new FormData();
+          formData.append('emailId', user.emailId);
+          if (flipbookVId) formData.append('v_id', flipbookVId);
+          if (folderName) formData.append('folderName', folderName);
+          if (flipbookName) formData.append('flipbookName', flipbookName);
+          formData.append('type', 'gif');
+          formData.append('page_v_id', currentPageVId || 'global');
+          if (existingFileVid) formData.append('replacing_file_v_id', existingFileVid);
+          formData.append('file', file);
+          
+          try {
+            const backendUrl = import.meta.env.VITE_BACKEND_URL || 'http://localhost:5000';
+            const res = await axios.post(`${backendUrl}/api/flipbook/upload-asset`, formData);
+            
+            if (res.data.url) {
+              const serverUrl = `${backendUrl}${res.data.url}`;
+              if (selectedElement.tagName === "VIDEO") {
+                selectedElement.src = serverUrl;
+                selectedElement.dataset.fileVid = res.data.file_v_id;
+                const source = selectedElement.querySelector("source");
+                if (source) source.src = serverUrl;
+                selectedElement.load();
+              } else {
+                selectedElement.src = serverUrl;
+                selectedElement.dataset.fileVid = res.data.file_v_id;
+              }
+              if (onUpdate) onUpdate();
+            }
+          } catch (err) {
+            console.error("Failed to upload GIF to flipbook assets:", err);
+          }
+        }
+      } catch (error) {
+        console.error('Failed to fetch and upload gallery GIF:', error);
+        // Fallback: just use the gallery URL
+        if (selectedElement.tagName === "VIDEO") {
+          selectedElement.src = tempSelectedGif.url;
+          const source = selectedElement.querySelector("source");
+          if (source) source.src = tempSelectedGif.url;
+          selectedElement.load();
+        } else {
+          selectedElement.src = tempSelectedGif.url;
+        }
+        if (onUpdate) onUpdate();
+      }
     }
 
-    if (onUpdate) onUpdate();
     onClose();
   };
 
