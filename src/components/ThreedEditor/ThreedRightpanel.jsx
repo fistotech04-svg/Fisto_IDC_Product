@@ -3,13 +3,31 @@ import { Icon } from "@iconify/react";
 import PreDefined from "./PreDefined";
 import Customized from "./Customized";
 
-export default function RightPanel({ setModelUrl, hasModel, autoRotate, setAutoRotate }) {
+export default function RightPanel({ setModelUrl, hasModel, autoRotate, setAutoRotate, setModelStats, setModelType }) {
   const fileRef = useRef(null);
   const [tab, setTab] = useState("pre");
 
   const handleFileChange = (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
+    
+    // Update stats with file size
+    const sizeInMB = (file.size / (1024 * 1024)).toFixed(2);
+    setModelStats(prev => ({
+        ...prev,
+        fileSize: `${sizeInMB} MB`
+    }));
+
+    // Determine Model Type
+    const name = file.name.toLowerCase();
+    let type = 'glb';
+    if (name.endsWith('.obj')) type = 'obj';
+    else if (name.endsWith('.stl')) type = 'stl';
+    else if (name.endsWith('.fbx')) type = 'fbx';
+    else if (name.endsWith('.step') || name.endsWith('.stp')) type = 'step';
+    
+    setModelType(type);
+
     const url = URL.createObjectURL(file);
     setModelUrl(url);
   };
@@ -81,7 +99,7 @@ export default function RightPanel({ setModelUrl, hasModel, autoRotate, setAutoR
                   Supported File
                 </div>
                 <div className="text-[9px] text-gray-400 leading-relaxed uppercase max-w-[200px] font-medium text-center">
-                  STEP, OBJ, FBX, GLB, GLTF, BLENDER, MAYA
+                  STEP, OBJ, FBX, GLB, GLTF
                 </div>
               </div>
             </div>
@@ -89,7 +107,7 @@ export default function RightPanel({ setModelUrl, hasModel, autoRotate, setAutoR
             <input
               ref={fileRef}
               type="file"
-              accept=".glb,.gltf,.obj,.fbx"
+              accept=".glb,.gltf,.obj,.fbx,.stl,.step,.stp"
               hidden
               onChange={handleFileChange}
             />

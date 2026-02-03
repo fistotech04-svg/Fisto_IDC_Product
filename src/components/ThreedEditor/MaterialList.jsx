@@ -1,16 +1,14 @@
 import React from "react";
 import { Icon } from "@iconify/react";
-import EditorInfoBox from "./EditorInfoBox";
 
-export default function MaterialList({ isCollapsed, setIsCollapsed, isTextureOpen }) {
-    const materials = Array.from({ length: 14 }, (_, i) => `Material ${i + 1}`);
+export default function MaterialList({ isCollapsed, setIsCollapsed, isTextureOpen, materials = [] }) {
 
     return (
-        <div className="absolute left-5 top-5 z-40 flex flex-col">
+        <div className="relative z-40 flex flex-col w-[200px]">
             {/* STATIC FLOATING HEADER */}
-            <div className="flex items-center justify-between gap-4 bg-white px-4 h-[42px] rounded-[12px] border border-gray-200 shadow-sm pointer-events-auto">
+            <div className={`flex items-center justify-between gap-4 bg-white px-4 h-[42px] border border-gray-200 pointer-events-auto transition-all duration-300 ${!isCollapsed ? "rounded-t-xl border-b-transparent shadow-none" : "rounded-xl shadow-sm"}`}>
                 <span className="text-[14px] font-semibold text-gray-600 tracking-tight">
-                    Materials
+                    Materials ({materials.length})
                 </span>
                 <button
                     onClick={() => setIsCollapsed(!isCollapsed)}
@@ -27,10 +25,10 @@ export default function MaterialList({ isCollapsed, setIsCollapsed, isTextureOpe
 
             {/* DROPDOWN CONTENT */}
             <div
-                className={`mt-2 w-[210px] bg-white border border-gray-100 rounded-[18px] shadow-[0_15px_40px_rgba(0,0,0,0.08)] transition-all duration-500 ease-in-out overflow-hidden flex flex-col pointer-events-auto ${isCollapsed ? "max-h-0 opacity-0 -translate-y-2 scale-95 pointer-events-none" : "opacity-100 translate-y-0 scale-100"
+                className={`absolute top-full left-0 w-full bg-white border border-gray-200 border-t-0 transition-all duration-500 ease-in-out overflow-hidden flex flex-col pointer-events-auto ${isCollapsed ? "max-h-0 opacity-0 -translate-y-2 scale-95 pointer-events-none rounded-xl" : "opacity-100 translate-y-0 scale-100 rounded-b-xl rounded-t-none"
                     }`}
                 style={{
-                    maxHeight: isCollapsed ? "0" : (isTextureOpen ? "calc(100vh - 310px)" : "calc(100vh - 210px)")
+                    maxHeight: isCollapsed ? "0" : (isTextureOpen ? "calc(92vh - 410px)" : "calc(92vh - 270px)")
                 }}
             >
                 {/* MATERIALS LIST */}
@@ -47,11 +45,6 @@ export default function MaterialList({ isCollapsed, setIsCollapsed, isTextureOpe
                             {material}
                         </div>
                     ))}
-                </div>
-
-                {/* INFO BOX (BOTTOM OF DROPDOWN) */}
-                <div className="border-t border-gray-100 p-2 bg-gray-50/50">
-                    <EditorInfoBox />
                 </div>
             </div>
         </div>

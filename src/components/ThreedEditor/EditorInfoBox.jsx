@@ -1,22 +1,22 @@
 import React from "react";
 
-export default function EditorInfoBox() {
-  const stats = [
-    { label: "Vertex Count", value: "1000" },
-    { label: "Polygon Count", value: "1000" },
-    { label: "Material Count", value: "89" },
-    { label: "File Size", value: "1002 Mb" },
-    { label: "Dimensions", value: "56 X 54 X 25 cm" },
+export default function EditorInfoBox({ stats }) {
+  const displayStats = [
+    { label: "Vertex Count", value: stats?.vertexCount || "0" },
+    { label: "Polygon Count", value: stats?.polygonCount || "0" },
+    { label: "Material Count", value: stats?.materialCount || "0" },
+    { label: "File Size", value: stats?.fileSize || "0 MB" },
+    { label: "Dimensions", value: stats?.dimensions || "0 X 0 X 0 cm" },
   ];
 
   return (
-    <div className="w-full bg-white px-1 py-2 space-y-1 p-2">
-      {stats.map((stat, idx) => (
-        <div key={idx} className="flex items-center justify-between">
-          <span className="text-[11px] text-gray-500 font-medium">
+    <div className="w-full px-1 py-1 space-y-1 p-2">
+      {displayStats.map((stat, idx) => (
+        <div key={idx} className="flex items-center justify-between ">
+          <span className="text-[11px] text-[#5d5efc] font-semibold">
             {stat.label}
           </span>
-          <span className="text-[11px] text-gray-600 font-medium tabular-nums">
+          <span className="text-[11px] text-[#5d5efc] font-semibold tabular-nums">
             {stat.value}
           </span>
         </div>

@@ -1,11 +1,19 @@
 import React from "react";
 import { Icon } from "@iconify/react";
+import MaterialList from "./MaterialList";
 
-const TopToolbar = ({ isSidebarCollapsed }) => {
+const TopToolbar = ({ isSidebarCollapsed, setIsSidebarCollapsed, isTextureOpen, onReset, targetPosition, materialList }) => {
     return (
         <div className="absolute inset-x-0 left-5 z-30 pointer-events-none">
-            {/* Left: Undo/Redo Section (Static Island) */}
-            <div className="absolute top-5 left-[220px] pointer-events-auto transition-none">
+            {/* Left Section: Materials + Undo/Redo */}
+            <div className="absolute top-5 left-0 flex items-start gap-3 pointer-events-auto transition-none">
+                <MaterialList 
+                    isCollapsed={isSidebarCollapsed} 
+                    setIsCollapsed={setIsSidebarCollapsed} 
+                    isTextureOpen={isTextureOpen}
+                    materials={materialList}
+                />
+                
                 <div className="flex items-center bg-white h-[42px] px-1.5 rounded-[12px] border border-gray-200 gap-1 shadow-sm">
                     <button className="w-9 h-8 flex items-center justify-center rounded-lg hover:bg-gray-50 transition-all text-gray-700">
                         <Icon icon="lucide:undo-dot" width={18} />
@@ -29,17 +37,20 @@ const TopToolbar = ({ isSidebarCollapsed }) => {
                 <div className="bg-white h-[42px] px-5 rounded-[12px] border border-gray-200 flex items-center gap-5 shadow-sm">
                     <div className="text-[12px] font-semibold flex items-center gap-2">
                         <span className="text-gray-400 uppercase tracking-widest text-[10px]">X</span>
-                        <span className="text-gray-700">234</span>
+                        <span className="text-gray-700 min-w-[20px] text-right">{targetPosition?.x ?? 0}</span>
                     </div>
                     <div className="text-[12px] font-semibold flex items-center gap-2">
                         <span className="text-gray-400 uppercase tracking-widest text-[10px]">Y</span>
-                        <span className="text-gray-700">234</span>
+                        <span className="text-gray-700 min-w-[20px] text-right">{targetPosition?.y ?? 0}</span>
                     </div>
                     <div className="text-[12px] font-semibold flex items-center gap-2 border-r border-gray-100 pr-5 h-5">
                         <span className="text-gray-400 uppercase tracking-widest text-[10px]">Z</span>
-                        <span className="text-gray-700">123</span>
+                        <span className="text-gray-700 min-w-[20px] text-right">{targetPosition?.z ?? 0}</span>
                     </div>
-                    <button className="text-[13px] font-semibold text-blue-600 hover:text-blue-700 transition-all">
+                    <button 
+                        onClick={onReset}
+                        className="text-[13px] font-semibold text-blue-600 hover:text-blue-700 transition-all uppercase tracking-wide"
+                    >
                         Reset
                     </button>
                 </div>

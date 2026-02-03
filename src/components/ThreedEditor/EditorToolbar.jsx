@@ -39,77 +39,25 @@ export default function EditorToolbar({ hasModel, settings, setSettings }) {
                     {/* Header */}
                     <div className="flex items-center justify-between mb-5">
                         <div className="flex items-center gap-2">
-                             <Icon icon="heroicons:cog-6-tooth-solid" width={18} className="text-gray-800" />
-                             <span className="font-bold text-gray-800 text-[14px]">Settings</span>
+                             <Icon icon="heroicons:cog-6-tooth" width={18} className="text-gray-800" />
+                             <span className="font-semibold text-gray-800 text-[14px]">Settings</span>
                         </div>
                         <button 
                             onClick={() => { setShowSettings(false); setActiveColorPicker(null); }}
-                            className="w-6 h-6 border border-red-200 rounded flex items-center justify-center text-red-500 hover:bg-red-50 hover:border-red-300 transition-colors"
+                            className="w-6 h-6 border-2 border-red-400 rounded-lg flex cursor-pointer items-center justify-center text-red-500 hover:bg-red-50 hover:border-red-300 transition-colors"
                         >
-                            <Icon icon="heroicons:x-mark" width={14} className="stroke-2" />
+                            <Icon icon="heroicons:x-mark" width={19} className="stroke-2" />
                         </button>
                     </div>
 
-                    {/* Background Color */}
-                    <div className="mb-6 relative">
-                        <label className="text-[13px] font-medium text-gray-700 block mb-3">Background Color</label>
-                        <div className="flex items-center gap-3">
-                            <div 
-                                onClick={() => setActiveColorPicker("bg")}
-                                className={`w-8 h-8 rounded-lg border shadow-sm relative overflow-hidden group cursor-pointer hover:scale-105 transition-transform ${activeColorPicker === 'bg' ? 'ring-2 ring-[#5d5efc] border-[#5d5efc]' : 'border-gray-200'}`}
-                            >
-                                <div 
-                                    className="w-full h-full"
-                                    style={{ backgroundColor: settings?.backgroundColor || "#ffffff" }}
-                                />
-                            </div>
-                            <div className="flex items-center justify-between flex-1 border border-gray-200 rounded-lg px-2.5 py-1.5 bg-white shadow-sm">
-                                <input 
-                                    type="text" 
-                                    value={settings?.backgroundColor || "#ffffff"}
-                                    onChange={(e) => updateSetting("backgroundColor", e.target.value)}
-                                    className="w-full text-[12px] text-gray-600 font-mono uppercase bg-transparent outline-none"
-                                />
-                                <span className="text-[10px] text-gray-400 font-medium whitespace-nowrap ml-2">100%</span>
-                            </div>
-                        </div>
-                    </div>
-
                     {/* Toggles */}
-                    <div className="space-y-4">
-                        <div>
-                            <ToggleRow 
-                                label="Base" 
-                                isActive={settings?.base} 
-                                onToggle={() => updateSetting("base", !settings?.base)} 
-                            />
-                            
-                            {/* Conditional Base Color Picker */}
-                            {settings?.base && (
-                                <div className="mt-3 animate-in slide-in-from-top-2 fade-in duration-300 relative">
-                                    <div className="flex items-center gap-3">
-                                        <div 
-                                            onClick={() => setActiveColorPicker("base")}
-                                            className={`w-8 h-8 rounded-lg border shadow-sm relative overflow-hidden group cursor-pointer hover:scale-105 transition-transform ${activeColorPicker === 'base' ? 'ring-2 ring-[#5d5efc] border-[#5d5efc]' : 'border-gray-200'}`}
-                                        >
-                                            <div 
-                                                className="w-full h-full"
-                                                style={{ backgroundColor: settings?.baseColor || "#f9fafb" }}
-                                            />
-                                        </div>
-                                        <div className="flex items-center justify-between flex-1 border border-gray-200 rounded-lg px-2.5 py-1.5 bg-gray-50/50 shadow-sm">
-                                            <input 
-                                                type="text" 
-                                                value={settings?.baseColor || "#f9fafb"}
-                                                onChange={(e) => updateSetting("baseColor", e.target.value)}
-                                                className="w-full text-[12px] text-gray-600 font-mono uppercase bg-transparent outline-none"
-                                            />
-                                        </div>
-                                    </div>
-                                </div>
-                            )}
-                        </div>
-
+                    <div className="space-y-4 pt-2">
+                        <ToggleRow 
+                            label="Base" 
+                            isActive={settings?.base} 
+                            onToggle={() => updateSetting("base", !settings?.base)} 
+                        />
+                        
                         <ToggleRow 
                             label="Grid lines" 
                             isActive={settings?.grid} 
@@ -121,24 +69,14 @@ export default function EditorToolbar({ hasModel, settings, setSettings }) {
                             onToggle={() => updateSetting("wireframe", !settings?.wireframe)} 
                         />
                     </div>
-
-                    {/* UNIFIED COLOR PICKER SIDE-PANEL */}
-                    {activeColorPicker && (
-                        <div className="absolute top-0 right-full mr-3 z-50 color-picker-popover">
-                            <ColorPicker 
-                                color={activeColorPicker === 'bg' ? (settings?.backgroundColor || "#ffffff") : (settings?.baseColor || "#f9fafb")} 
-                                onChange={(c) => updateSetting(activeColorPicker === 'bg' ? 'backgroundColor' : 'baseColor', c)}
-                            />
-                        </div>
-                    )}
                 </div>
             )}
 
             {/* MAIN TOOLBAR */}
             <div className="w-12 bg-white rounded-xl border-2 border-gray-300 py-1 flex flex-col items-center gap-2 shadow-sm">
-                <ToolbarButton icon="heroicons:plus" enabled />
-                <ToolbarButton icon="clarity:image-gallery-line" enabled />
-                <ToolbarButton icon="heroicons:camera" enabled={hasModel} />
+                <ToolbarButton icon="material-symbols:add-rounded" enabled />
+                <ToolbarButton icon="solar:gallery-wide-outline" enabled />
+                <ToolbarButton icon="solar:camera-outline" enabled={hasModel} />
                 <ToolbarButton 
                     icon="heroicons:cog-6-tooth" 
                     enabled={hasModel} 
@@ -150,9 +88,9 @@ export default function EditorToolbar({ hasModel, settings, setSettings }) {
             {/* SECONDARY TOOLBAR (TRANSFORM TOOLS) */}
             {hasModel && (
                 <div className="w-12 bg-white rounded-xl border-2 border-gray-300 py-1 flex flex-col items-center gap-2 animate-in fade-in slide-in-from-top-4 duration-500 shadow-sm">
-                    <ToolbarButton icon="lucide:move" enabled />
+                    <ToolbarButton icon="si:move-line" enabled />
                     <ToolbarButton icon="mdi:rotate-orbit" enabled />
-                    <ToolbarButton icon="solar:scale-linear" enabled />
+                    <ToolbarButton icon="solar:scale-outline" enabled />
                 </div>
             )}
         </div>
