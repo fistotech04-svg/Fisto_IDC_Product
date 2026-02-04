@@ -1,7 +1,7 @@
 import React from "react";
 import { Icon } from "@iconify/react";
 
-export default function MaterialList({ isCollapsed, setIsCollapsed, isTextureOpen, materials = [] }) {
+export default function MaterialList({ isCollapsed, setIsCollapsed, isTextureOpen, materials = [], selectedMaterial, onSelect, modelName }) {
 
     return (
         <div className="relative z-40 flex flex-col w-[200px]">
@@ -33,18 +33,64 @@ export default function MaterialList({ isCollapsed, setIsCollapsed, isTextureOpe
             >
                 {/* MATERIALS LIST */}
                 <div className="flex-1 overflow-y-auto space-y-0.5 custom-scrollbar px-2 py-3">
-                    {materials.map((material, idx) => (
-                        <div
-                            key={idx}
-                            className={`py-1.5 px-3 text-[12px] font-semibold rounded-lg cursor-pointer transition-all
-                                ${idx === 2
-                                    ? "bg-gray-900 text-white shadow-sm"
-                                    : "text-gray-600 hover:bg-gray-50 hover:text-gray-900"
-                                }`}
-                        >
-                            {material}
-                        </div>
-                    ))}
+                    {/* Model Name Parent Item */}
+                    <div 
+                        onClick={() => onSelect(modelName || "Model")}
+                        className={`py-1.5 px-3 mb-1 flex items-center gap-2 text-[12px] font-bold rounded-lg cursor-pointer transition-all border border-transparent
+                            ${selectedMaterial === (modelName || "Model")
+                                ? "bg-blue-50 text-blue-700 border-blue-100 shadow-sm"
+                                : "text-gray-800 hover:bg-gray-50"
+                            }`}
+                    >
+                         <Icon icon="ph:cube-duotone" width={14} className={selectedMaterial === (modelName || "Model") ? "text-blue-500" : "text-gray-400"} />
+                         <span className="truncate">{modelName || "Model"}</span>
+                    </div>
+
+                    {/* Material Items */}
+                    <div className="pl-3 space-y-0.5 border-l-2 border-gray-100 ml-1.5">
+                        {materials.map((item, idx) => {
+                            // Check if it's a group
+                            if (typeof item === 'object' && item.group) {
+                                return (
+                                    <div key={idx} className="mb-2">
+                                        <div className="px-2 py-1 text-[11px] font-bold text-gray-400 uppercase tracking-wider">
+                                            {item.group}
+                                        </div>
+                                        <div className="pl-2 space-y-0.5 border-l border-gray-100 ml-1">
+                                            {item.materials.map((mat, matIdx) => (
+                                                 <div
+                                                    key={matIdx}
+                                                    onClick={() => onSelect(mat)}
+                                                    className={`py-1.5 px-3 text-[12px] font-semibold rounded-lg cursor-pointer transition-all truncate
+                                                        ${selectedMaterial === mat
+                                                            ? "bg-gray-900 text-white shadow-sm"
+                                                            : "text-gray-600 hover:bg-gray-50 hover:text-gray-900"
+                                                        }`}
+                                                >
+                                                    {mat}
+                                                </div>
+                                            ))}
+                                        </div>
+                                    </div>
+                                );
+                            } else {
+                                // Standard string item
+                                return (
+                                    <div
+                                        key={idx}
+                                        onClick={() => onSelect(item)}
+                                        className={`py-1.5 px-3 text-[12px] font-semibold rounded-lg cursor-pointer transition-all truncate
+                                            ${selectedMaterial === item
+                                                ? "bg-gray-900 text-white shadow-sm"
+                                                : "text-gray-600 hover:bg-gray-50 hover:text-gray-900"
+                                            }`}
+                                    >
+                                        {item}
+                                    </div>
+                                );
+                            }
+                        })}
+                    </div>
                 </div>
             </div>
         </div>

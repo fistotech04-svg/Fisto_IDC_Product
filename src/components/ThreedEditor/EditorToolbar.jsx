@@ -2,8 +2,16 @@ import React, { useState, useRef, useEffect } from "react";
 import { Icon } from "@iconify/react";
 import ColorPicker from "./ColorPicker";
 
-export default function EditorToolbar({ hasModel, settings, setSettings }) {
+export default function EditorToolbar({ hasModel, settings, setSettings, onClear, transformMode, setTransformMode }) {
     const [showSettings, setShowSettings] = useState(false);
+
+    const handleModeToggle = (mode) => {
+        if (transformMode === mode) {
+            setTransformMode(null); // Toggle off
+        } else {
+            setTransformMode(mode);
+        }
+    };
     const [activeColorPicker, setActiveColorPicker] = useState(null); // 'bg' | 'base' | null
     const settingsRef = useRef(null);
 
@@ -63,11 +71,25 @@ export default function EditorToolbar({ hasModel, settings, setSettings }) {
                             isActive={settings?.grid} 
                             onToggle={() => updateSetting("grid", !settings?.grid)} 
                         />
-                         <ToggleRow 
+                        <ToggleRow 
                             label="Wireframe" 
                             isActive={settings?.wireframe} 
                             onToggle={() => updateSetting("wireframe", !settings?.wireframe)} 
                         />
+                    </div>
+
+                    {/* Clear Model Action */}
+                    <div className="pt-4 mt-4 border-t border-gray-100">
+                        <button
+                            onClick={() => {
+                                onClear();
+                                setShowSettings(false);
+                            }} 
+                            className="w-full py-2.5 px-4 bg-red-50 text-red-600 text-[13px] font-semibold rounded-xl flex items-center justify-center gap-2 hover:bg-red-100 transition-colors active:scale-95"
+                        >
+                            <Icon icon="heroicons:trash" width={18} />
+                            Clear 3D Model
+                        </button>
                     </div>
                 </div>
             )}
@@ -88,9 +110,24 @@ export default function EditorToolbar({ hasModel, settings, setSettings }) {
             {/* SECONDARY TOOLBAR (TRANSFORM TOOLS) */}
             {hasModel && (
                 <div className="w-12 bg-white rounded-xl border-2 border-gray-300 py-1 flex flex-col items-center gap-2 animate-in fade-in slide-in-from-top-4 duration-500 shadow-sm">
-                    <ToolbarButton icon="si:move-line" enabled />
-                    <ToolbarButton icon="mdi:rotate-orbit" enabled />
-                    <ToolbarButton icon="solar:scale-outline" enabled />
+                    <ToolbarButton 
+                        icon="si:move-line" 
+                        active={transformMode === 'translate'}
+                        onClick={() => handleModeToggle('translate')}
+                        enabled 
+                    />
+                    <ToolbarButton 
+                        icon="mdi:rotate-orbit" 
+                        active={transformMode === 'rotate'}
+                        onClick={() => handleModeToggle('rotate')}
+                        enabled 
+                    />
+                    <ToolbarButton 
+                        icon="solar:scale-outline" 
+                        active={transformMode === 'scale'}
+                        onClick={() => handleModeToggle('scale')}
+                        enabled 
+                    />
                 </div>
             )}
         </div>

@@ -3,38 +3,46 @@ import { Icon } from "@iconify/react";
 import PreDefined from "./PreDefined";
 import Customized from "./Customized";
 
-export default function RightPanel({ setModelUrl, hasModel, autoRotate, setAutoRotate, setModelStats, setModelType }) {
+export default function RightPanel({ onFileProcess, hasModel, autoRotate, setAutoRotate, isLoading }) {
   const fileRef = useRef(null);
   const [tab, setTab] = useState("pre");
+  const [isDragOver, setIsDragOver] = useState(false);
 
   const handleFileChange = (e) => {
     const file = e.target.files?.[0];
-    if (!file) return;
-    
-    // Update stats with file size
-    const sizeInMB = (file.size / (1024 * 1024)).toFixed(2);
-    setModelStats(prev => ({
-        ...prev,
-        fileSize: `${sizeInMB} MB`
-    }));
+    if (file) {
+        onFileProcess(file);
+        e.target.value = null; // Reset input
+    }
+  };
 
-    // Determine Model Type
-    const name = file.name.toLowerCase();
-    let type = 'glb';
-    if (name.endsWith('.obj')) type = 'obj';
-    else if (name.endsWith('.stl')) type = 'stl';
-    else if (name.endsWith('.fbx')) type = 'fbx';
-    else if (name.endsWith('.step') || name.endsWith('.stp')) type = 'step';
+  const handleDrop = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragOver(false);
     
-    setModelType(type);
+    if (isLoading) return;
 
-    const url = URL.createObjectURL(file);
-    setModelUrl(url);
+    const file = e.dataTransfer.files?.[0];
+    if (file) {
+        onFileProcess(file);
+    }
+  };
+
+  const handleDragOver = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (!isLoading) setIsDragOver(true);
+  };
+
+  const handleDragLeave = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragOver(false);
   };
 
   return (
     <div className="w-full h-full bg-white flex flex-col overflow-hidden border-l border-gray-300">
-      {/* TOP CONTROLS BAR (Visible only when model is loaded) */}
       {/* TOP CONTROLS BAR (Always Visible) */}
       <div className="p-4 flex items-center justify-between bg-white shrink-0">
         {/* Auto Rotate Toggle */}
@@ -83,14 +91,27 @@ export default function RightPanel({ setModelUrl, hasModel, autoRotate, setAutoR
 
             {/* Upload Area */}
             <div
-              onClick={() => fileRef.current.click()}
-              className="w-[90%] mx-auto h-[160px] border-2 border-dashed border-gray-300 rounded-[20px] bg-white flex flex-col items-center justify-center p-4 cursor-pointer hover:border-blue-500 transition-all group shadow-sm hover:shadow-md"
+              onClick={() => !isLoading && fileRef.current.click()}
+              onDrop={handleDrop}
+              onDragOver={handleDragOver}
+              onDragLeave={handleDragLeave}
+              className={`w-[90%] mx-auto h-[160px] border-2 border-dashed rounded-[20px] bg-white flex flex-col items-center justify-center p-4 transition-all group shadow-sm 
+                ${isLoading 
+                    ? "opacity-50 cursor-not-allowed bg-gray-50 border-gray-300 grayscale" 
+                    : isDragOver 
+                        ? "border-blue-500 bg-blue-50 cursor-copy scale-[1.02]" 
+                        : "border-gray-300 cursor-pointer hover:border-blue-500 hover:shadow-md"
+                }`}
             >
               <div className="text-[14px] font-semibold text-gray-500 mb-6 tracking-tight">
-                Drag & Drop or <span className="text-blue-600 font-bold">Upload</span>
+                {isDragOver ? (
+                    <span className="text-blue-600 font-bold">Drop to Upload</span>
+                ) : (
+                    <>Drag & Drop or <span className="text-blue-600 font-bold">Upload</span></>
+                )}
               </div>
 
-              <div className="mb-6 text-gray-400 group-hover:text-blue-500 transition-colors">
+              <div className={`mb-6 transition-colors ${isDragOver ? "text-blue-600" : "text-gray-400 group-hover:text-blue-500"}`}>
                 <Icon icon="heroicons:arrow-up-tray" width={28} />
               </div>
 

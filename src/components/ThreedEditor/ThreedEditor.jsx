@@ -2,13 +2,31 @@ import React, { useState, Suspense } from "react";
 import * as THREE from "three";
 import { Icon } from "@iconify/react";
 import { Canvas, useFrame } from "@react-three/fiber";
-import { OrbitControls, useGLTF, GizmoHelper, GizmoViewport, Environment, Html } from "@react-three/drei";
+import { OrbitControls, useGLTF, GizmoHelper, GizmoViewport, Environment, useProgress, TransformControls } from "@react-three/drei";
 import RightPanel from "./ThreedRightpanel";
-
 import EditorInfoBox from "./EditorInfoBox";
 import EditorToolbar from "./EditorToolbar";
 import TextureGalleryBar from "./TextureGalleryBar";
 import TopToolbar from "./TopToolbar";
+import { OBJLoader } from 'three/examples/jsm/loaders/OBJLoader';
+import { FBXLoader } from 'three/examples/jsm/loaders/FBXLoader';
+import { STLLoader } from 'three/examples/jsm/loaders/STLLoader';
+import { useLoader } from "@react-three/fiber";
+import initOCCT from "occt-import-js";
+
+
+const TransformWrapper = ({ children, mode }) => {
+    return (
+        <React.Fragment>
+             {mode && (
+                <TransformControls mode={mode} size={0.8} space="local">
+                    {children}
+                </TransformControls>
+             )}
+             {!mode && children}
+        </React.Fragment>
+    );
+};
 
 
 // Helper component to choose the right model component
@@ -22,22 +40,20 @@ const RenderModel = ({ type, ...props }) => {
     }
 };
 
-
-import { OBJLoader } from 'three/examples/jsm/loaders/OBJLoader';
-import { FBXLoader } from 'three/examples/jsm/loaders/FBXLoader';
-import { STLLoader } from 'three/examples/jsm/loaders/STLLoader';
-import { useLoader } from "@react-three/fiber";
-import initOCCT from "occt-import-js";
-
 // Shared Logic Component
-const GenericModel = React.memo(({ scene, wireframe, setModelStats, setMaterialList }) => {
+const GenericModel = React.memo(({ scene, wireframe, setModelStats, setMaterialList, selectedMaterial, onSelectMaterial, modelName, transformMode }) => {
   const [position, setPosition] = React.useState([0, 0, 0]);
   const [scale, setScale] = React.useState(1);
 
+  // 1. Initial Setup: Centering, Scaling, Stats, Material Naming
   React.useLayoutEffect(() => {
+    // ... (same as before) ...
+    // Note: To keep diff minimal, I will retain the logic but since this is replace_content, I must provide full body? 
+    // Actually, I can just update the component start and end.
+    // However, I need to insert the Transform logic.
     if (!scene) return;
 
-    // Reset position and scale
+    // Reset position and scale to calculate true bounding box
     scene.position.set(0, 0, 0);
     scene.scale.set(1, 1, 1);
     scene.updateMatrixWorld(true);
@@ -49,7 +65,6 @@ const GenericModel = React.memo(({ scene, wireframe, setModelStats, setMaterialL
     box.getSize(size);
     box.getCenter(center);
 
-    // Auto-scale logic: Always normalize to a comfortable viewing size (e.g. 3 units)
     const maxDim = Math.max(size.x, size.y, size.z);
     let targetScale = 1;
 
@@ -61,26 +76,26 @@ const GenericModel = React.memo(({ scene, wireframe, setModelStats, setMaterialL
 
     const centeredX = -center.x * targetScale;
     const centeredZ = -center.z * targetScale;
-    const bottomY = -box.min.y * targetScale;
-    
+    const bottomY = -box.min.y * targetScale; // Align bottom of model to y=0
+     
     setPosition([centeredX, bottomY, centeredZ]);
 
-    // Calculate Stats & Materials
+    // Stats & Material Naming
     let vertCount = 0;
     let polyCount = 0;
-    const materials = new Set();
-    const materialNames = new Set();
+    const processedMaterials = new Map();
+    const usedNames = new Set();
     let unnamedCount = 1;
+
+    const groupMap = new Map(); // GroupName -> Set<MaterialName>
+    const ungroupedMats = new Set();
 
     scene.traverse((child) => {
       if (child.isMesh) {
         child.castShadow = true;
         child.receiveShadow = true;
-        
-        if (child.material) {
-             child.material.wireframe = wireframe;
-        }
 
+        // Geometry Stats
         const geom = child.geometry;
         if (geom) {
           vertCount += geom.attributes.position.count;
@@ -91,16 +106,45 @@ const GenericModel = React.memo(({ scene, wireframe, setModelStats, setMaterialL
           }
         }
         
+        // Material Naming & Grouping logic
         if (child.material) {
+            
+            // Determine Group Name
+            let groupName = null;
+            if (child.parent && child.parent.isGroup && child.parent.name && child.parent.name !== 'Scene') {
+                 groupName = child.parent.name;
+            }
+
             const processMat = (m) => {
-                materials.add(m.uuid);
-                
-                // FIX: Ensure material has a name for the list
-                if (!m.name) {
-                    m.name = `Material ${unnamedCount++}`;
+                let uniqueName = processedMaterials.get(m.uuid);
+
+                if (!uniqueName) {
+                    let name = m.name; 
+                    if (!name || name.trim() === '') {
+                        const suffix = String(unnamedCount++).padStart(2, '0');
+                        name = `Material_${suffix}`;
+                    }
+                    
+                    name = name.replace(/[:|]/g, " ").trim();
+                    
+                    uniqueName = name;
+                    let conflictCount = 1;
+                    while (usedNames.has(uniqueName)) {
+                        uniqueName = `${name}_${String(conflictCount++).padStart(2, '0')}`;
+                    }
+                    
+                    m.name = uniqueName;
+                    processedMaterials.set(m.uuid, uniqueName);
+                    usedNames.add(uniqueName);
                 }
-                materialNames.add(m.name);
-                m.wireframe = wireframe;
+
+                // Add to Group or Ungrouped
+                if (groupName) {
+                    if (!groupMap.has(groupName)) groupMap.set(groupName, new Set());
+                    groupMap.get(groupName).add(uniqueName);
+                } else {
+                    ungroupedMats.add(uniqueName);
+                }
             };
 
             if (Array.isArray(child.material)) {
@@ -112,21 +156,273 @@ const GenericModel = React.memo(({ scene, wireframe, setModelStats, setMaterialL
       }
     });
 
-    // Update Stats
+    // Construct Structured List
+    const structuredList = [];
+    
+    // Add Groups
+    const sortedGroups = Array.from(groupMap.keys()).sort();
+    sortedGroups.forEach(grp => {
+        structuredList.push({
+            group: grp,
+            materials: Array.from(groupMap.get(grp)).sort()
+        });
+    });
+
+    // Add Ungrouped (if any, merge them or add as separate category?)
+    // If we have groups, usually we want everything in structure.
+    // If we have ONLY ungrouped, we might just pass flat list? 
+    // Let's standardize: ALWAYS pass structured list? Or Mixed?
+    // Let's add "Ungrouped" if groups exist.
+    if (ungroupedMats.size > 0) {
+        if (structuredList.length > 0) {
+             structuredList.push({
+                 group: "Ungrouped",
+                 materials: Array.from(ungroupedMats).sort()
+             });
+        } else {
+             // No groups at all -> Just flat list (backward compat/simple view)
+             // actually, let's keep it simple for MaterialList component.
+             // If we return flat array, MaterialList renders flat.
+             // If mixed? 
+        }
+    }
+    
+    // Simplify: If no groups found, return flat array. If groups found, return structured.
+    if (structuredList.length === 0) {
+         setMaterialList(Array.from(ungroupedMats).sort());
+    } else {
+         // If there are some ungrouped items in a mostly grouped scene, add them.
+         if (ungroupedMats.size > 0 && !structuredList.find(x => x.group === "Ungrouped")) {
+             structuredList.push({
+                 group: "Models", // Better name than Ungrouped
+                 materials: Array.from(ungroupedMats).sort()
+             });
+         }
+         setMaterialList(structuredList);
+    }
+
     setModelStats(prev => ({
         ...prev,
         vertexCount: vertCount.toLocaleString(),
         polygonCount: Math.round(polyCount).toLocaleString(),
-        materialCount: materials.size,
+        materialCount: processedMaterials.size,
         dimensions: `${Math.round(size.x * 100) / 100} X ${Math.round(size.y * 100) / 100} X ${Math.round(size.z * 100) / 100} unit`
     }));
+    // setMaterialList set above in traversal logic
 
-    // Update Material List
-    setMaterialList(Array.from(materialNames));
+  }, [scene, setModelStats, setMaterialList]);
 
-  }, [scene, wireframe, setModelStats, setMaterialList]);
+  // 2. Wireframe Update Effect
+  React.useLayoutEffect(() => {
+      if (!scene) return;
+      scene.traverse((child) => {
+          if (child.isMesh && child.material) {
+              if (Array.isArray(child.material)) {
+                  child.material.forEach(m => m.wireframe = wireframe);
+              } else {
+                  child.material.wireframe = wireframe;
+              }
+          }
+      });
+  }, [scene, wireframe]);
 
-  return <primitive object={scene} scale={scale} position={position} />;
+  // 3. Material Highlight Effect
+  React.useEffect(() => {
+    if (!scene) return;
+    
+    const timeouts = [];
+
+    // Logic: If selectedMaterial.name matches modelName, Blink ALL meshes.
+    // If matches a material name, blink specific meshes.
+    const targetName = selectedMaterial ? selectedMaterial.name : null;
+    const isFullModelSelect = (targetName && modelName && targetName === modelName);
+
+    // Initial Flash color
+    const FLASH_COLOR = new THREE.Color("#ff0000"); // Red
+    const FLASH_INTENSITY = 1.5;
+    const HIGHLIGHT_INTENSITY_LOW = 0.5;
+    const HIGHLIGHT_INTENSITY_FINAL = 0; // Restore to original
+
+    const processHighlight = (m) => {
+        if (!m.emissive) return;
+
+        const isTarget = isFullModelSelect || (m.name === targetName);
+
+        if (isTarget) {
+            // Save original state if not already saved
+            if (!m.userData.originalEmissive) {
+                    m.userData.originalEmissive = m.emissive.clone();
+                    m.userData.originalIntensity = m.emissiveIntensity;
+            }
+            
+            // Double Blink Animation Sequence
+            // 1. Blink On (Immediate)
+            m.emissive = FLASH_COLOR;
+            m.emissiveIntensity = FLASH_INTENSITY; 
+
+            // 2. Blink Off (150ms) - only if still selected
+            timeouts.push(setTimeout(() => {
+                    if (selectedMaterial && selectedMaterial.name === targetName) m.emissiveIntensity = HIGHLIGHT_INTENSITY_LOW;
+            }, 150));
+
+            // 3. Blink On (300ms)
+            timeouts.push(setTimeout(() => {
+                    if (selectedMaterial && selectedMaterial.name === targetName) m.emissiveIntensity = FLASH_INTENSITY;
+            }, 300));
+
+            // 4. Finish Blink (450ms) - Restore Original
+            timeouts.push(setTimeout(() => {
+                    // Check if *still* selected with same timestamp logic if needed, but essentially restore
+                    if (m.userData.originalEmissive) {
+                        m.emissive = m.userData.originalEmissive.clone();
+                        m.emissiveIntensity = m.userData.originalIntensity;
+                    } else {
+                        m.emissive = new THREE.Color(0, 0, 0); 
+                        m.emissiveIntensity = 0; 
+                    }
+            }, 450));
+
+        } else {
+            // Restore original state if not target
+            if (m.userData.originalEmissive) {
+                m.emissive = m.userData.originalEmissive.clone();
+                m.emissiveIntensity = m.userData.originalIntensity;
+            }
+        }
+    };
+
+    scene.traverse((child) => {
+        if (child.isMesh && child.material) {
+            if (Array.isArray(child.material)) {
+                child.material.forEach(processHighlight);
+            } else {
+                 processHighlight(child.material);
+            }
+        }
+    });
+
+    return () => timeouts.forEach(clearTimeout);
+  }, [scene, selectedMaterial, modelName]);
+
+  // 4. Determine Transform Target
+  const [transformTarget, setTransformTarget] = React.useState(null);
+
+  React.useEffect(() => {
+    if (!scene) return;
+
+    const targetName = selectedMaterial ? selectedMaterial.name : null;
+    const targetUuid = selectedMaterial ? selectedMaterial.uuid : null;
+    
+    // Default to Full Model (scene) if nothing selected or Model Name selected
+    if (!targetName || (modelName && targetName === modelName)) {
+        setTransformTarget(scene);
+        return;
+    }
+
+    // Otherwise, try to find the mesh with the selected material
+    let foundMesh = null;
+
+    // Priority 1: UUID Match (Exact Mesh Selection)
+    if (targetUuid) {
+        scene.traverse((child) => {
+            if (foundMesh) return;
+            if (child.uuid === targetUuid) {
+                foundMesh = child;
+            }
+        });
+    }
+
+    // Priority 2: Name Match (First found with material)
+    if (!foundMesh) {
+        scene.traverse((child) => {
+            if (foundMesh) return; // Stop if already found
+            if (child.isMesh && child.material) {
+                 const m = child.material;
+                 // Check single material or array
+                 if (Array.isArray(m)) {
+                     if (m.some(mat => mat.name === targetName)) foundMesh = child;
+                 } else {
+                     if (m.name === targetName) foundMesh = child;
+                 }
+            }
+        });
+    }
+
+    if (foundMesh) {
+         // Auto-Center Pivot Logic:
+         // Ensure the mesh origin (pivot) is at the center of its geometry for perfect gizmo placement.
+         if (!foundMesh.userData.originCentered) {
+             // 1. Ensure unique geometry to prevent side effects on shared meshes
+             foundMesh.geometry = foundMesh.geometry.clone();
+             
+             // 2. Compute current center
+             foundMesh.geometry.computeBoundingBox();
+             const center = new THREE.Vector3();
+             foundMesh.geometry.boundingBox.getCenter(center);
+             
+             // 3. Only adjust if center is not already (0,0,0)
+             if (center.lengthSq() > 0.000001) {
+                 // Convert local center to world position using current transform
+                 const worldCenter = foundMesh.localToWorld(center.clone());
+                 
+                 // Shift geometry vertices to be centered around (0,0,0) local
+                 foundMesh.geometry.translate(-center.x, -center.y, -center.z);
+                 
+                 // Move mesh object to the world position where the center was
+                 // compensating for the geometry shift so visual position doesn't change
+                 if (foundMesh.parent) {
+                     foundMesh.position.copy(foundMesh.parent.worldToLocal(worldCenter));
+                 } else {
+                     foundMesh.position.copy(worldCenter);
+                 }
+                 
+                 foundMesh.updateMatrixWorld();
+             }
+             
+             foundMesh.userData.originCentered = true;
+         }
+    }
+
+    setTransformTarget(foundMesh || scene); // Fallback to scene if not found
+  }, [scene, selectedMaterial, modelName]);
+
+  return (
+    <>
+        {transformMode && transformTarget && (
+             <TransformControls 
+                key={transformTarget.uuid} // FORCE REMOUNT ON TARGET CHANGE
+                object={transformTarget} 
+                mode={transformMode} 
+                size={0.8} 
+                space="local" 
+             />
+        )}
+        <primitive 
+            object={scene} 
+            scale={scale} 
+            position={position} 
+            onClick={(e) => {
+                e.stopPropagation();
+                // If gizmo is active, we might want to prevent selection? Or allow?
+                // TransformControls handles its own events. This click is on the mesh.
+                
+                if (onSelectMaterial && e.object.material) {
+                    let mat = e.object.material;
+                    if (Array.isArray(mat)) {
+                        if (e.face && e.face.materialIndex !== undefined) {
+                             mat = mat[e.face.materialIndex];
+                        } else {
+                             mat = mat[0];
+                        }
+                    }
+                    if (mat && mat.name) {
+                        onSelectMaterial({ name: mat.name, uuid: e.object.uuid });
+                    }
+                }
+            }}
+        />
+    </>
+  );
 });
 
 // GLB Loader Component
@@ -154,7 +450,7 @@ function STLModel({ url, ...props }) {
   const scene = React.useMemo(() => {
       const mat = new THREE.MeshStandardMaterial({ 
           color: 'gray',
-          name: 'Standard STL Material' // FIX: Name the STL material
+          name: 'STL Material' // FIX: Name the STL material
       });
       const mesh = new THREE.Mesh(geom, mat);
       const group = new THREE.Group();
@@ -242,16 +538,26 @@ function StepModel({ url, ...props }) {
                          geometry.computeVertexNormals();
                     }
 
+                    // FIX: Bake rotation into geometry to ensure correct bounding box calculation
+                    geometry.rotateX(-Math.PI / 2);
+
                     // Material
                     let color = '#a0a0a0';
-                    let matName = `Material_${matIndex++}`;
+                    const suffix = String(matIndex++).padStart(2, '0');
+                    let matName = `Material_${suffix}`; // Default fallback
+                    
+                    if (meshData.name) {
+                        matName = `${meshData.name}_Mat`;
+                    }
+                    
+                    // Fallback again if mesh name was empty
+                    if (!matName) matName = `Material_${suffix}`;
 
                     if (meshData.color) {
                          const c = meshData.color;
                          color = new THREE.Color(c[0], c[1], c[2]);
-                         // Generate a nicer name based on color
-                         const hex = color.getHexString();
-                         matName = `Color #${hex.slice(0,6)}`;
+                         // Use Color Code ONLY if no other name exists ? No, user specifically requested NO color codes.
+                         // So we stick to matName derived from index or mesh name.
                     }
                     
                     const material = new THREE.MeshStandardMaterial({ 
@@ -268,7 +574,7 @@ function StepModel({ url, ...props }) {
                     group.add(mesh);
                 }
 
-                group.rotation.x = -Math.PI / 2;
+                // group.rotation.x = -Math.PI / 2; // REMOVED: Rotation is now baked into geometry
                 group.updateMatrixWorld(true);
 
                 if (isMounted) {
@@ -289,18 +595,25 @@ function StepModel({ url, ...props }) {
         return () => { isMounted = false; };
     }, [url]);
 
-    if (loading) {
-        return (
-             <Html fullscreen zIndexRange={[100, 0]}>
-                <LoadingSpinner text="Please Wait Converting STEP to GLB" dark={true} />
-            </Html>
-        );
-    }
-
-    if (!scene) return null;
+    if (loading || !scene) return null;
 
     return <GenericModel scene={scene} {...props} />;
 }
+
+
+// Global Loader Component
+const GlobalLoader = ({ manualLoading }) => {
+  const { active, progress } = useProgress();
+  const show = active || manualLoading;
+  
+  if (!show) return null;
+
+  return (
+    <div className="absolute inset-0 z-[100] bg-black pointer-events-auto">
+        <LoadingSpinner text={`Loading Model... ${Math.round(progress)}%`} dark={true} />
+    </div>
+  );
+};
 
 // Animated Gizmo Component for smooth transitions
 function AnimatedGizmo({ isTextureOpen }) {
@@ -348,6 +661,17 @@ export default function ThreedEditor() {
   const [autoRotate, setAutoRotate] = useState(false);
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(true);
   const [isTextureOpen, setIsTextureOpen] = useState(false);
+  const [manualLoading, setManualLoading] = useState(false);
+
+  // Sync manual loading with useProgress active state
+  const { active } = useProgress();
+  React.useEffect(() => {
+    if (active && manualLoading) {
+        setManualLoading(false);
+    }
+  }, [active, manualLoading]);
+
+  const isGlobalLoading = manualLoading || active;
   
   // Model Statistics State
   const [modelStats, setModelStats] = useState({
@@ -364,6 +688,72 @@ export default function ThreedEditor() {
   // Target Position State
   const [targetPosition, setTargetPosition] = useState({ x: 0, y: 0, z: 0 });
   const [materialList, setMaterialList] = useState([]);
+  const [selectedMaterial, setSelectedMaterial] = useState(null);
+  
+  const [showWarning, setShowWarning] = useState(false);
+
+  // Transform Tools State
+  const [transformMode, setTransformMode] = useState(null); // 'translate', 'rotate', 'scale', null
+  const [modelName, setModelName] = useState("");
+
+  const processFile = (file) => {
+    if (!file) return;
+
+    const name = file.name.toLowerCase();
+    setModelName(file.name.replace(/\.[^/.]+$/, "")); // Set model name without extension
+
+    const validExtensions = ['.glb', '.gltf', '.obj', '.fbx', '.stl', '.step', '.stp'];
+    
+    if (!validExtensions.some(ext => name.endsWith(ext))) {
+        setShowWarning(true);
+        return;
+    }
+    
+    setManualLoading(true);
+
+    const sizeInMB = (file.size / (1024 * 1024)).toFixed(2);
+    setModelStats(prev => ({
+        ...prev,
+        fileSize: `${sizeInMB} MB`
+    }));
+
+    let type = 'glb';
+    if (name.endsWith('.obj')) type = 'obj';
+    else if (name.endsWith('.stl')) type = 'stl';
+    else if (name.endsWith('.fbx')) type = 'fbx';
+    else if (name.endsWith('.step') || name.endsWith('.stp')) type = 'step';
+    
+    setModelType(type);
+
+    const url = URL.createObjectURL(file);
+    setModelUrl(url);
+  };
+
+  const handleDragOver = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+  };
+
+  const handleDrop = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    const file = e.dataTransfer.files[0];
+    processFile(file);
+  };
+
+  const handleClearModel = () => {
+    setModelUrl(null);
+    setModelType('glb');
+    setMaterialList([]);
+    setSelectedMaterial(null);
+    setModelStats({
+        vertexCount: "0",
+        polygonCount: "0",
+        materialCount: "0",
+        fileSize: "0 MB",
+        dimensions: "0 X 0 X 0 unit"
+    });
+  };
 
   const handleResetView = () => {
     if (controlsRef.current) {
@@ -375,15 +765,54 @@ export default function ThreedEditor() {
 
   // Visual Settings State
   const [settings, setSettings] = useState({
-    backgroundColor: "rgba(146, 146, 146, 1)",
-    baseColor: "rgba(106, 106, 106, 1)",
-    base: true,
+    backgroundColor: "#393939", // Blender default dark grey
+    baseColor: "#2c2c2c",
+    base: false, // Blender doesn't have a solid floor plane by default
     grid: true,
     wireframe: false,
   });
 
   return (
-    <div className="flex h-[92vh] w-full bg-white overflow-hidden">
+    <div 
+        className="flex h-[92vh] w-full bg-white overflow-hidden relative"
+        onDragOver={handleDragOver}
+        onDrop={handleDrop}
+    >
+      <GlobalLoader manualLoading={manualLoading} />
+      
+      {/* Unsupported Format Warning Modal */}
+      {showWarning && (
+        <div className="absolute inset-0 z-[120] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+            <div className="bg-white rounded-2xl shadow-2xl max-w-sm w-full overflow-hidden animate-in fade-in zoom-in duration-200">
+                <div className="p-6 text-center">
+                    <div className="w-14 h-14 bg-red-50 text-red-500 rounded-full flex items-center justify-center mx-auto mb-5">
+                        <Icon icon="heroicons:exclamation-triangle-solid" width={32} />
+                    </div>
+                    
+                    <h3 className="text-xl font-bold text-gray-900 mb-2">Format Not Supported</h3>
+                    
+                    <p className="text-[14px] text-gray-500 mb-6 leading-relaxed">
+                        Oops! We currently don't support this file format. Please upload one of the following:
+                    </p>
+                    
+                    <div className="flex flex-wrap gap-2 justify-center mb-8">
+                        {['.GLB', '.OBJ', '.FBX', '.STL', '.STEP'].map((ext) => (
+                            <span key={ext} className="px-2.5 py-1 bg-gray-100 text-gray-600 text-xs font-bold rounded-md border border-gray-200">
+                                {ext}
+                            </span>
+                        ))}
+                    </div>
+
+                    <button 
+                        onClick={() => setShowWarning(false)}
+                        className="w-full py-3 bg-gray-900 hover:bg-black text-white font-semibold rounded-xl transition-all active:scale-[0.98]"
+                    >
+                        Got it, thanks!
+                    </button>
+                </div>
+            </div>
+        </div>
+      )}
 
       {/* --- MAIN CONTENT AREA --- */}
       <div className="flex flex-1 overflow-hidden relative">
@@ -400,6 +829,9 @@ export default function ThreedEditor() {
               onReset={handleResetView}
               targetPosition={targetPosition}
               materialList={materialList}
+              selectedMaterial={selectedMaterial?.name}
+              onSelectMaterial={(name) => setSelectedMaterial({ name, ts: Date.now() })}
+              modelName={modelName} // Pass filename
             />
           )}
 
@@ -407,6 +839,9 @@ export default function ThreedEditor() {
             hasModel={!!modelUrl}
             settings={settings}
             setSettings={setSettings}
+            onClear={handleClearModel}
+            transformMode={transformMode}
+            setTransformMode={setTransformMode}
           />
 
           {modelUrl && (
@@ -418,7 +853,7 @@ export default function ThreedEditor() {
 
           {modelUrl && (
             <div 
-              className={`absolute left-6 z-20 p-1 transition-all duration-500 ease-in-out bg-white border border-gray-200 rounded-xl shadow-sm overflow-hidden w-[200px] pointer-events-none select-none
+              className={`absolute left-6 z-20 p-1 transition-all duration-500 ease-in-out overflow-hidden w-[200px] pointer-events-none select-none
                 ${isTextureOpen ? "bottom-[220px]" : "bottom-[80px]"}
               `}
             > 
@@ -429,9 +864,9 @@ export default function ThreedEditor() {
 
           {!modelUrl && (
             <div className="absolute inset-0 flex flex-col items-center justify-center z-10 pointer-events-none select-none">
-              <div className="flex flex-col items-center gap-3 opacity-30">
-                <Icon icon="ph:cube-focus-thin" width={80} className="text-gray-600" />
-                <span className="text-[14px] font-medium text-gray-700">Uploaded 3D Model will be shown here</span>
+              <div className="flex flex-col items-center gap-3 opacity-50">
+                <Icon icon="ph:cube-focus-thin" width={80} className="text-gray-50" />
+                <span className="text-[14px] font-medium text-gray-50">Uploaded 3D Model will be shown here</span>
               </div>
             </div>
           )}
@@ -439,14 +874,16 @@ export default function ThreedEditor() {
           {/* 3D CANVAS */}
           <div className="flex-1 h-full w-full">
             <Canvas camera={{ position: [0, 1, 5] }} shadows>
-              <color attach="background" args={[modelUrl ? settings.backgroundColor : "#ffffff"]} />
+              <color attach="background" args={[settings.backgroundColor]} />
               
               <ambientLight intensity={0.6} />
               <spotLight position={[10, 10, 10]} angle={0.15} penumbra={1} intensity={1} castShadow />
               <directionalLight position={[-5, 5, 5]} intensity={0.5} />
-              <Environment preset="city" />
+              <Suspense fallback={null}>
+                <Environment preset="city" />
+              </Suspense>
 
-              <Suspense fallback={modelType === 'step' ? null : <Html fullscreen><LoadingSpinner text="Loading 3D Model..." /></Html>}>
+              <Suspense fallback={null}>
                   {modelUrl && (
                     <RenderModel 
                         type={modelType}  
@@ -454,13 +891,58 @@ export default function ThreedEditor() {
                         wireframe={settings.wireframe}
                         setModelStats={setModelStats}
                         setMaterialList={setMaterialList}
+                        selectedMaterial={selectedMaterial}
+                        onSelectMaterial={(val) => {
+                            if (typeof val === 'object' && val.name) {
+                                setSelectedMaterial({ name: val.name, uuid: val.uuid, ts: Date.now() });
+                            } else {
+                                setSelectedMaterial({ name: val, uuid: null, ts: Date.now() });
+                            }
+                        }}
+                        modelName={modelName}
+                        transformMode={transformMode}
                     />
                   )}
               </Suspense>
               
-              {modelUrl && settings.grid && <gridHelper args={[30, 60, 0xaaaaaa, 0x666666]} />}
+              {/* Blender-style Grid: Darker lines on dark background. 
+                  Color 1 (Center): Transparent/Same as grid since we draw custom axes. 
+                  Color 2 (Grid): #222222 or similar dark grey. 
+              */}
+              {settings.grid && <gridHelper args={[30, 30, 0x222222, 0x222222]} position={[0, -0.01, 0]} />}
               
-              {modelUrl && settings.base && (
+              {/* Custom Center Lines: Red for X-axis, Green for Z-axis (User requested Red & Green) */}
+              {settings.grid && (
+                <group position={[0, 0.01, 0]}>
+                    {/* X Axis - Red */}
+                    <line>
+                        <bufferGeometry attach="geometry">
+                            <bufferAttribute
+                                attach="attributes-position"
+                                count={2}
+                                array={new Float32Array([-15, 0, 0, 15, 0, 0])} 
+                                itemSize={3}
+                            />
+                        </bufferGeometry>
+                        <lineBasicMaterial attach="material" color="red" linewidth={2} />
+                    </line>
+                    
+                    {/* Z Axis - Green (User asked for green center line) */}
+                    <line>
+                        <bufferGeometry attach="geometry">
+                             <bufferAttribute
+                                attach="attributes-position"
+                                count={2}
+                                array={new Float32Array([0, 0, -15, 0, 0, 15])} 
+                                itemSize={3}
+                            />
+                        </bufferGeometry>
+                        <lineBasicMaterial attach="material" color="green" linewidth={2} />
+                    </line>
+                </group>
+              )}
+              
+              {settings.base && (
                  <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -0.01, 0]} receiveShadow>
                     <planeGeometry args={[30, 30]} />
                     <meshStandardMaterial color={settings.baseColor} />
@@ -499,12 +981,11 @@ export default function ThreedEditor() {
         {/* RIGHT SETTINGS PANEL */}
         <div className="w-[22vw] h-full border-l border-gray-100 bg-white z-40 relative flex flex-col shadow-[-10px_0_30px_-15px_rgba(0,0,0,0.05)]">
           <RightPanel
-            setModelUrl={setModelUrl}
-            setModelStats={setModelStats}
-            setModelType={setModelType}
+            onFileProcess={processFile}
             hasModel={!!modelUrl}
             autoRotate={autoRotate}
             setAutoRotate={setAutoRotate}
+            isLoading={isGlobalLoading}
           />
         </div>
       </div>

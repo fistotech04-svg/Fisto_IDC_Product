@@ -2,7 +2,7 @@ import React from "react";
 import { Icon } from "@iconify/react";
 import MaterialList from "./MaterialList";
 
-const TopToolbar = ({ isSidebarCollapsed, setIsSidebarCollapsed, isTextureOpen, onReset, targetPosition, materialList }) => {
+const TopToolbar = ({ isSidebarCollapsed, setIsSidebarCollapsed, isTextureOpen, onReset, targetPosition, materialList, selectedMaterial, onSelectMaterial, modelName }) => {
     return (
         <div className="absolute inset-x-0 left-5 z-30 pointer-events-none">
             {/* Left Section: Materials + Undo/Redo */}
@@ -12,6 +12,9 @@ const TopToolbar = ({ isSidebarCollapsed, setIsSidebarCollapsed, isTextureOpen, 
                     setIsCollapsed={setIsSidebarCollapsed} 
                     isTextureOpen={isTextureOpen}
                     materials={materialList}
+                    selectedMaterial={selectedMaterial}
+                    onSelect={onSelectMaterial}
+                    modelName={modelName}
                 />
                 
                 <div className="flex items-center bg-white h-[42px] px-1.5 rounded-[12px] border border-gray-200 gap-1 shadow-sm">
