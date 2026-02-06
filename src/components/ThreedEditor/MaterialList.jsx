@@ -83,7 +83,10 @@ export default function MaterialList({ isCollapsed, setIsCollapsed, isTextureOpe
     return (
         <div className="relative z-40 flex flex-col w-[220px]">
             {/* STATIC FLOATING HEADER */}
-            <div className={`flex items-center justify-between gap-4 bg-white px-4 h-[42px] border border-gray-200 pointer-events-auto transition-all duration-300 ${!isCollapsed ? "rounded-t-xl border-b-transparent shadow-none" : "rounded-xl shadow-sm"}`}>
+            <div 
+                onClick={() => setIsCollapsed(!isCollapsed)}
+                className={`flex items-center justify-between gap-4 bg-white px-4 h-[42px] border border-gray-200 pointer-events-auto transition-all duration-300 cursor-pointer ${!isCollapsed ? "rounded-t-xl border-b-transparent shadow-none" : "rounded-xl shadow-sm"}`}
+            >
                 <div className="flex items-center gap-2">
                     <Icon icon="solar:layers-minimalistic-bold-duotone" width={18} className="text-gray-500" />
                     <span className="text-[14px] font-semibold text-gray-700 tracking-tight">
@@ -95,7 +98,10 @@ export default function MaterialList({ isCollapsed, setIsCollapsed, isTextureOpe
                 </div>
                 
                 <button
-                    onClick={() => setIsCollapsed(!isCollapsed)}
+                    onClick={(e) => {
+                        e.stopPropagation();
+                        setIsCollapsed(!isCollapsed);
+                    }}
                     className={`w-7 h-7 flex items-center justify-center border border-gray-100 hover:bg-gray-50 rounded-lg transition-all shadow-sm group ${!isCollapsed ? "bg-gray-50" : "bg-white"
                         }`}
                 >

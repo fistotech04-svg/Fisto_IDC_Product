@@ -56,9 +56,9 @@ const hsvToHex = ({ h, s, v }) => {
   return `#${toHex(r)}${toHex(g)}${toHex(b)}`;
 };
 
-export default function ColorPicker({ color, onChange, onClose }) {
+export default function ColorPicker({ color, onChange, opacity, onOpacityChange, onClose }) {
   const [hsv, setHsv] = useState(() => hexToHsv(color));
-  const [opacity, setOpacity] = useState(100);
+
 
   useEffect(() => {
     setHsv(hexToHsv(color));
@@ -193,7 +193,7 @@ export default function ColorPicker({ color, onChange, onClose }) {
                       min="0" 
                       max="100" 
                       value={opacity} 
-                      onChange={(e) => setOpacity(parseInt(e.target.value))}
+                      onChange={(e) => onOpacityChange && onOpacityChange(parseInt(e.target.value))}
                       className="absolute inset-0 w-full opacity-0 cursor-pointer"
                    />
                    <div 

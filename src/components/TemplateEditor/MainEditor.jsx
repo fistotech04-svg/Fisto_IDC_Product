@@ -1544,11 +1544,10 @@ const MainEditor = () => {
 
       {showPreview && (
         <FlipbookPreview 
-          pages={flipbookPages} 
+          pages={pages.map(p => p.html || '')} 
           pageName={pageName} 
           onClose={closePreview} 
           isMobile={deviceInfo.isMobile}
-          isDoublePage={isDoublePage}
         />
       )}
 

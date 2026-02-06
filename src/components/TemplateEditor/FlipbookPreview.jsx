@@ -6,8 +6,9 @@ import {
   Music, Loader2, BookOpen, FileText, Bookmark, List, X
 } from 'lucide-react';
 import logo from '../../assets/logo/Fisto_logo.png';
+import PopupPreview from './PopupPreview';
 
-const FlipbookPreview = ({ pages, pageName = "Name of the Book", onClose, isMobile = false, isDoublePage }) => {
+const FlipbookPreview = ({ pages, pageName = "Name of the Book", onClose, isMobile = false }) => {
   const flipbookRef = useRef(null);
   const containerRef = useRef(null);
   const audioRef = useRef(null);
@@ -15,7 +16,7 @@ const FlipbookPreview = ({ pages, pageName = "Name of the Book", onClose, isMobi
   const initializationRef = useRef(false);
 
   // State
-  const [isSingleView, setIsSingleView] = useState(isMobile || (isDoublePage === false));
+  const [isSingleView, setIsSingleView] = useState(true);
   const [currentPage, setCurrentPage] = useState(1);
   const [zoom, setZoom] = useState(0.6);
   const [isFullscreen, setIsFullscreen] = useState(false);
@@ -824,7 +825,7 @@ const FlipbookPreview = ({ pages, pageName = "Name of the Book", onClose, isMobi
                 data: {
                   content: content,
                   styles: styles,
-                  elementType: el.tagName.toLowerCase() === 'img' ? 'image' : 'text',
+                  elementType: (imageSrc || el.tagName.toLowerCase() === 'img') ? 'image' : 'text',
                   elementSource: imageSrc || (el.tagName.toLowerCase() === 'img' ? el.src : null)
                 }
               }, '*');
@@ -834,7 +835,19 @@ const FlipbookPreview = ({ pages, pageName = "Name of the Book", onClose, isMobi
               const type = el.dataset.interaction;
               const trigger = el.dataset.interactionTrigger || 'click';
               const value = el.dataset.interactionValue;
-              const content = el.dataset.interactionContent;
+              
+              let content = el.dataset.interactionContent || '';
+              const isEncodedAttr = el.dataset.interactionContentEncoded === 'true';
+              const hasEncodedPrefix = content.startsWith('ENCODED:::');
+
+              if (isEncodedAttr || hasEncodedPrefix) {
+                try {
+                  const raw = hasEncodedPrefix ? content.substring(10) : content;
+                  content = decodeURIComponent(raw);
+                } catch (e) {
+                  console.warn("Interaction Script: Failed to decode content", e);
+                }
+              }
               
               console.log("Interaction Script: Executing", type, "Event:", eventType, "Trigger:", trigger);
 
@@ -2041,65 +2054,17 @@ const FlipbookPreview = ({ pages, pageName = "Name of the Book", onClose, isMobi
         </div>
       </div>
 
-      {/* Global Popup Message Overlay - Covers entire screen */}
+      {/* Global Popup Message Overlay */}
       {popupData.isOpen && (
-        <div
-          className="fixed inset-0 z-[200] flex items-center justify-center bg-black/40 backdrop-blur-sm animate-fadeIn"
-          onClick={() => setPopupData({ ...popupData, isOpen: false })}
-        >
-          <style>{`
-            @import url('https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&family=Roboto:wght@300;400;500;700&family=Open+Sans:wght@300;400;600;700&display=swap');
-          `}</style>
-          <div
-            className="bg-white relative border border-[#00a2ff] shadow-2xl flex flex-col items-center justify-center p-12 animate-scaleUp overflow-y-auto"
-            onClick={(e) => e.stopPropagation()}
-            style={{
-              width: '100%',
-              height: '85%',
-              maxWidth: '95%',
-              maxHeight: '95vh',
-              minWidth: '320px',
-              minHeight: '400px'
-            }}
-          >
-            <button
-              onClick={() => setPopupData({ ...popupData, isOpen: false })}
-              className="absolute top-6 right-6 p-2 hover:bg-gray-100 rounded-full transition-all text-gray-400 hover:text-gray-600 shadow-sm bg-white"
-            >
-              <X size={24} />
-            </button>
-
-            <div className="w-full flex flex-col items-center justify-center gap-10">
-              {popupData.elementType === 'image' && (
-                <img
-                  src={popupData.elementSource}
-                  alt="Popup"
-                  className="max-w-full max-h-[55vh] shadow-md rounded-sm"
-                  style={{
-                    objectFit: popupData.styles.fit === 'Fill' ? 'cover' : (popupData.styles.fit === 'Stretch' ? 'fill' : 'contain')
-                  }}
-                />
-              )}
-
-              {popupData.content && (
-                <div
-                  className="w-full text-center px-8"
-                  style={{
-                    fontFamily: `'${popupData.styles.font || 'Poppins'}', sans-serif`,
-                    fontSize: `${popupData.styles.size || '32'}px`,
-                    fontWeight: popupData.styles.weight === 'Bold' ? '700' : (popupData.styles.weight === 'Semi Bold' ? '600' : '400'),
-                    color: popupData.styles.fill || '#000000',
-                    lineHeight: '1.4',
-                    wordBreak: 'break-word',
-                    whiteSpace: 'pre-wrap'
-                  }}
-                >
-                  {popupData.content}
-                </div>
-              )}
-            </div>
-          </div>
-        </div>
+        <PopupPreview
+          content={popupData.content}
+          styles={popupData.styles}
+          elementType={popupData.elementType}
+          elementSource={popupData.elementSource}
+          renderId={popupData.renderId}
+          onClose={() => setPopupData({ ...popupData, isOpen: false })}
+          isWorkspaceModal={false} // Use fixed positioning for global overlay
+        />
       )}
 
       {/* Styles for scaleUp animation */}

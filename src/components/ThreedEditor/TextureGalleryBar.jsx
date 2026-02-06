@@ -1,28 +1,20 @@
-import React from "react";
+import React, { useState } from "react";
 import { Icon } from "@iconify/react";
+import { textureData } from "../../data/textureData";
 
-
-export default function TextureGalleryBar({ isOpen, setIsOpen }) {
+export default function TextureGalleryBar({ isOpen, setIsOpen, onSelectTexture, selectedTextureId }) {
     const scrollRef = React.useRef(null);
+    const [localSelected, setLocalSelected] = useState(null);
 
-    const textures = [
-        { name: "Silver Mate", color: "linear-gradient(135deg, #a1a1aa 0%, #3f3f46 100%)", active: false },
-        { name: "Power Cot...", color: "linear-gradient(135deg, #78350f 0%, #451a03 100%)", active: false },
-        { name: "Bronze Ma...", color: "linear-gradient(135deg, #d97706 0%, #78350f 100%)", active: false },
-        { name: "Basic Mate..", color: "linear-gradient(135deg, #facc15 0%, #854d0e 100%)", active: false },
-        { name: "Metal Clad...", color: "linear-gradient(135deg, #52525b 0%, #18181b 100%)", active: true },
-        { name: "Worn Alu...", color: "linear-gradient(135deg, #94a3b8 0%, #334155 100%)", active: false },
-        { name: "Scratched Met...", color: "linear-gradient(135deg, #3f3f46 0%, #09090b 100%)", active: false },
-        { name: "Power Cot...", color: "linear-gradient(135deg, #451a03 0%, #000000 100%)", active: false },
-        { name: "Over Hum...", color: "linear-gradient(135deg, #9a3412 0%, #431407 100%)", active: false },
-        { name: "Bronze Ma...", color: "linear-gradient(135deg, #b45309 0%, #451a03 100%)", active: false },
-        { name: "Silver Mate", color: "linear-gradient(135deg, #d4d4d8 0%, #52525b 100%)", active: false },
-        { name: "Knights Ar...", color: "linear-gradient(135deg, #3f3f46 0%, #18181b 100%)", active: false },
-        { name: "Worn Alu...", color: "linear-gradient(135deg, #64748b 0%, #1e293b 100%)", active: false },
-        { name: "Silver Mate", color: "linear-gradient(135deg, #d4d4d8 0%, #52525b 100%)", active: false },
-        { name: "Knights Ar...", color: "linear-gradient(135deg, #3f3f46 0%, #18181b 100%)", active: false },
-        { name: "Worn Alu...", color: "linear-gradient(135deg, #64748b 0%, #1e293b 100%)", active: false },
-    ];
+    // Use data from centralized file
+    const textures = textureData;
+
+    const handleSelect = (tex) => {
+        setLocalSelected(tex.id || tex.name);
+        if (onSelectTexture) {
+            onSelectTexture(tex);
+        }
+    };
 
     const scrollLeft = () => {
         if (scrollRef.current) {
@@ -64,10 +56,9 @@ export default function TextureGalleryBar({ isOpen, setIsOpen }) {
                     <div className="flex items-center gap-3">
                         <span className="text-[14px] font-semibold text-gray-900">Texture Gallery :</span>
                         
-                        {/* Fake Dropdown */}
-                        <div className="flex items-center gap-2 px-3 py-1.5 bg-gray-100 rounded-md cursor-pointer hover:bg-gray-200 transition-colors">
-                            <span className="text-[13px] font-medium text-gray-700">Metal (24)</span>
-                            <Icon icon="heroicons:chevron-down-20-solid" width={14} className="text-gray-500" />
+                        {/* Count Badge */}
+                        <div className="flex items-center gap-2 px-3 py-1.5 bg-gray-100 rounded-md">
+                            <span className="text-[13px] font-medium text-gray-700">All ({textures.length})</span>
                         </div>
                     </div>
 
@@ -99,32 +90,45 @@ export default function TextureGalleryBar({ isOpen, setIsOpen }) {
                         className="flex-1 overflow-x-auto custom-scrollbar px-4 h-full flex items-center pb-2"
                     >
                         <div className="flex items-center gap-4 min-w-max mx-auto">
-                            {textures.map((tex, idx) => (
-                                <div key={idx} className="flex flex-col items-center gap-2 group cursor-pointer">
-                                    <div
-                                        className={`relative rounded-full transition-all duration-300 group-hover:scale-105 shadow-sm ${
-                                            tex.active
-                                            ? "w-[80px] h-[80px] ring-[2px] ring-offset-2 ring-gray-900"
-                                            : "w-[80px] h-[80px] hover:shadow-md"
-                                        }`}
-                                        style={{
-                                            background: tex.color,
-                                            boxShadow: !tex.active ? 'inset 0 0 0 1px rgba(0,0,0,0.05)' : ''
+                            {textures.map((tex, idx) => {
+                                const isActive = selectedTextureId === tex.id || (!selectedTextureId && localSelected === (tex.id || tex.name));
+                                return (
+                                    <div 
+                                        key={idx} 
+                                        className="flex flex-col items-center gap-2 group cursor-pointer"
+                                        onClick={(e) => {
+                                            e.stopPropagation();
+                                            handleSelect(tex);
                                         }}
                                     >
-                                        {/* Specular Shine */}
-                                        <div className="absolute top-0 right-0 w-full h-full bg-gradient-to-tr from-transparent via-white/10 to-white/30 opacity-50 rounded-lg"></div>
+                                        <div
+                                            className={`relative rounded-full transition-all duration-300 group-hover:scale-105 shadow-sm overflow-hidden bg-gray-100 ${
+                                                isActive
+                                                ? "w-[80px] h-[80px] ring-[2px] ring-offset-2 ring-[#5d5efc]"
+                                                : "w-[80px] h-[80px] hover:shadow-md border border-gray-200"
+                                            }`}
+                                        >
+                                            <img 
+                                                src={tex.preview} 
+                                                alt={tex.name} 
+                                                className="w-full h-full object-cover"
+                                                loading="lazy"
+                                            />
+                                            {/* Specular Shine Overlay */}
+                                            <div className="absolute top-0 right-0 w-full h-full bg-gradient-to-tr from-transparent via-white/10 to-white/30 opacity-50 pointer-events-none"></div>
+                                        </div>
+                                        
+                                        <span
+                                            className={`text-[11px] text-center max-w-[80px] truncate ${
+                                                isActive ? "font-bold text-[#5d5efc]" : "font-medium text-gray-500"
+                                            }`}
+                                            title={tex.name}
+                                        >
+                                            {tex.name}
+                                        </span>
                                     </div>
-                                    
-                                    <span
-                                        className={`text-[11px] text-center max-w-[80px] truncate ${
-                                            tex.active ? "font-bold text-gray-900" : "font-medium text-gray-500"
-                                        }`}
-                                    >
-                                        {tex.name}
-                                    </span>
-                                </div>
-                            ))}
+                                );
+                            })}
                         </div>
                     </div>
 

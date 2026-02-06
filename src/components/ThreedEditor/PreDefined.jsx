@@ -1,5 +1,6 @@
 import React, { useState } from "react";
 import { Icon } from "@iconify/react";
+import ColorPicker from "./ColorPicker";
 
 // --- Reusable UI Components ---
 
@@ -88,7 +89,19 @@ const CustomSlider = ({ label, value, onChange, unit = "%" }) => {
   );
 };
 
-const NumberStepper = ({ label, value, axisLabel, compact }) => {
+const NumberStepper = ({ label, value, axisLabel, compact, onChange, step = 1 }) => {
+  const handleIncrement = () => {
+    if (onChange) {
+      onChange(parseFloat(value) + step);
+    }
+  };
+
+  const handleDecrement = () => {
+    if (onChange) {
+      onChange(parseFloat(value) - step);
+    }
+  };
+
   return (
     <div
       className={`flex items-center ${
@@ -108,6 +121,7 @@ const NumberStepper = ({ label, value, axisLabel, compact }) => {
           </span>
         )}
         <button 
+          onClick={handleDecrement}
           className={`text-gray-400 hover:text-[#5d5efc] transition-colors ${compact ? "" : "p-0.5 hover:bg-indigo-50 rounded"}`}
         >
           <Icon
@@ -124,6 +138,7 @@ const NumberStepper = ({ label, value, axisLabel, compact }) => {
           {value}
         </div>
         <button 
+          onClick={handleIncrement}
           className={`text-gray-400 hover:text-[#5d5efc] transition-colors ${compact ? "" : "p-0.5 hover:bg-indigo-50 rounded"}`}
         >
           <Icon
@@ -137,33 +152,93 @@ const NumberStepper = ({ label, value, axisLabel, compact }) => {
   );
 };
 
+const CustomDropdown = ({ label, value, options, onChange }) => {
+  const [isOpen, setIsOpen] = useState(false);
+  const [dropdownPosition, setDropdownPosition] = useState('bottom');
+  const dropdownRef = React.useRef(null);
+  const selectedOption = options.find(opt => opt.value === value) || options[0];
+
+  const toggleDropdown = () => {
+      if (!isOpen && dropdownRef.current) {
+          const rect = dropdownRef.current.getBoundingClientRect();
+          const spaceBelow = window.innerHeight - rect.bottom;
+          const spaceNeeded = 200; // max-h-48 is roughly 192px
+          
+          if (spaceBelow < spaceNeeded) {
+              setDropdownPosition('top');
+          } else {
+              setDropdownPosition('bottom');
+          }
+      }
+      setIsOpen(!isOpen);
+  };
+
+  return (
+    <div className="relative mb-5" ref={dropdownRef}>
+      {label && (
+         <div className="text-[13px] font-medium text-gray-600 mb-2 flex items-center justify-between">
+            {label} <span>:</span>
+         </div>
+      )}
+      
+      <div 
+        className={`w-full px-3 py-2 flex items-center justify-between bg-white border ${isOpen ? 'border-[#5d5efc] ring-1 ring-[#5d5efc]/20' : 'border-gray-200'} rounded-lg shadow-sm cursor-pointer transition-all hover:border-gray-300`}
+        onClick={toggleDropdown}
+      >
+         <span className="text-[12px] font-medium text-gray-700 capitalize">
+            {selectedOption?.label || value}
+         </span>
+         <Icon 
+            icon="heroicons:chevron-down" 
+            className={`text-gray-400 transition-transform duration-200 ${isOpen ? 'rotate-180' : ''}`} 
+            width={14} 
+            height={14} 
+         />
+      </div>
+
+      {isOpen && (
+        <div className={`absolute left-0 right-0 bg-white border border-gray-100 rounded-lg shadow-xl z-50 max-h-48 overflow-y-auto custom-scrollbar ${
+            dropdownPosition === 'top' ? 'bottom-full mb-1' : 'top-full mt-1'
+        }`}>
+            {options.map((opt) => (
+                <div 
+                    key={opt.value}
+                    className={`px-3 py-2 text-[12px] cursor-pointer transition-colors ${value === opt.value ? 'bg-indigo-50 text-[#5d5efc] font-medium' : 'text-gray-600 hover:bg-gray-50'}`}
+                    onClick={() => {
+                        onChange(opt.value);
+                        setIsOpen(false);
+                    }}
+                >
+                    {opt.label}
+                </div>
+            ))}
+        </div>
+      )}
+      
+      {/* Overlay to close dropdown when clicking outside */}
+      {isOpen && (
+        <div className="fixed inset-0 z-40 bg-transparent" onClick={() => setIsOpen(false)}></div>
+      )}
+    </div>
+  );
+};
+
 // --- Main Application ---
 
-export default function SettingsPanel() {
-  const [controls, setControls] = useState({
-    alpha: 35,
-    metallic: 35,
-    roughness: 35,
-    normal: 35,
-    bump: 35,
-    scale: 35,
-    rotation: 35,
-    specular: 35,
-    reflection: 35,
-    shadow: 35,
-    softness: 35,
-    ao: 35,
-  });
+// --- Main Application ---
 
-  const [activePanel, setActivePanel] = useState("factor"); // "factor", "position", or "lighting"
+// --- Main Application ---
 
+export default function SettingsPanel({ controls, updateControl, activePanel, setActivePanel, transformValues, onManualTransformChange }) {
+  const [showColorPicker, setShowColorPicker] = useState(false);
+  
   const togglePanel = (panel) => {
     setActivePanel(activePanel === panel ? null : panel);
   };
 
-  const updateControl = (key, val) => {
-    setControls((prev) => ({ ...prev, [key]: val }));
-  };
+  // Helper to format values safely
+  const fmt = (val) => (val !== undefined && val !== null) ? Number(val).toFixed(2) : "0.00";
+  const fmtDeg = (rad) => (rad !== undefined && rad !== null) ? Math.round(rad * (180 / Math.PI)) : "0";
 
   return (
     <div className="flex flex-col gap-1 pb-10">
@@ -174,6 +249,7 @@ export default function SettingsPanel() {
         isOpen={activePanel === "factor"}
         onToggle={() => togglePanel("factor")}
       >
+        {/* Reset Texture Row */}
         {/* Reset Texture Row */}
         <div className="flex justify-end mb-6">
             <button className="flex items-center gap-2 px-3 py-1.5 bg-gray-50 hover:bg-gray-100 text-gray-600 text-[11px] font-semibold rounded-md border border-gray-200 transition-all shadow-sm hover:shadow active:scale-95">
@@ -187,20 +263,41 @@ export default function SettingsPanel() {
           <div>
             <SectionHeader label="Color & Transparency" />
 
-            <div className="flex items-center justify-between mb-5 mt-4 group">
+            <div className="flex items-center justify-between mb-5 mt-4 group relative">
               <span className="text-[13px] font-medium text-gray-600 w-24 flex items-center justify-between pr-2">
                 Factor <span>:</span>
               </span>
               <div className="flex items-center gap-2.5 flex-1">
-                <div className="w-8 h-8 bg-black rounded-[6px] border border-gray-200 shadow-sm cursor-pointer hover:border-[#5d5efc] transition-colors relative overflow-hidden">
-                    {/* Optional: Add a subtle shine or texture */}
-                    <div className="absolute inset-0 bg-linear-to-tr from-white/10 to-transparent"></div>
+                <div 
+                    className="w-8 h-8 rounded-[6px] border border-gray-200 shadow-sm cursor-pointer hover:border-[#5d5efc] transition-colors"
+                    style={{ backgroundColor: controls.color || '#000000' }}
+                    onClick={() => setShowColorPicker(!showColorPicker)}
+                >
                 </div>
-                <div className="flex-1 flex items-center justify-between border border-gray-200 rounded-[6px] px-3 py-1.5 bg-white hover:border-gray-300 transition-colors shadow-sm">
-                  <span className="text-[12px] text-gray-600 font-medium tracking-wide font-mono">#000000</span>
-                  <span className="text-[12px] text-gray-400 font-medium">100%</span>
+                <div 
+                    className="flex-1 flex items-center justify-between border border-gray-200 rounded-[6px] px-3 py-1.5 bg-white hover:border-gray-300 transition-colors shadow-sm cursor-pointer"
+                    onClick={() => setShowColorPicker(!showColorPicker)}
+                >
+                  <span className="text-[12px] text-gray-600 font-medium tracking-wide font-mono uppercase">{controls.color || '#000000'}</span>
+                  <span className="text-[12px] text-gray-400 font-medium">{controls.alpha}%</span>
                 </div>
               </div>
+
+              {showColorPicker && (
+                  <>
+                    <div className="fixed inset-0 z-40 bg-transparent" onClick={() => setShowColorPicker(false)}></div>
+                    <ColorPicker 
+                        color={controls.color || '#000000'} 
+                        onChange={(c) => {
+                             updateControl('color', c);
+                             updateControl('useFactorColor', true); // Automagic activation
+                        }}
+                        opacity={controls.alpha}
+                        onOpacityChange={(val) => updateControl('alpha', val)}
+                        onClose={() => setShowColorPicker(false)}
+                    />
+                  </>
+              )}
             </div>
 
             <CustomSlider
@@ -283,41 +380,59 @@ export default function SettingsPanel() {
       >
         <div className="flex flex-col gap-1 pb-2">
            {/* Move Row */}
-           <div className="flex items-end justify-between py-2 px-1">
-              <span className="text-[13px] font-medium text-gray-600 w-14 mb-1">Move :</span>
-              <div className="flex gap-2">
-                 {["X", "Y", "Z"].map((axis) => (
-                    <div key={axis} className="flex flex-col items-center gap-1.5">
-                       <span className="text-[10px] font-semibold text-gray-400 uppercase">{axis}</span>
-                       <NumberStepper value={210} compact />
-                    </div>
-                 ))}
+           <div className="flex flex-col items-start gap-2 mb-2 w-full">
+              <span className="text-[13px] font-medium text-black mb-1 ml-1">Move :</span>
+              <div className="grid grid-cols-3 gap-2 w-full">
+                 <div className="flex flex-col items-center gap-1.5">
+                    <span className="text-[10px] font-semibold text-gray-400 uppercase">X</span>
+                    <NumberStepper value={fmt(transformValues?.position?.x)} compact onChange={(val) => onManualTransformChange('position', 'x', val)} step={0.5} />
+                 </div>
+                 <div className="flex flex-col items-center gap-1.5">
+                    <span className="text-[10px] font-semibold text-gray-400 uppercase">Y</span>
+                    <NumberStepper value={fmt(transformValues?.position?.y)} compact onChange={(val) => onManualTransformChange('position', 'y', val)} step={0.5} />
+                 </div>
+                 <div className="flex flex-col items-center gap-1.5">
+                    <span className="text-[10px] font-semibold text-gray-400 uppercase">Z</span>
+                    <NumberStepper value={fmt(transformValues?.position?.z)} compact onChange={(val) => onManualTransformChange('position', 'z', val)} step={0.5} />
+                 </div>
               </div>
            </div>
 
-           {/* Rotate Row - with subtle background */}
-           <div className="flex items-end justify-between py-2 px-1 bg-gray-50 rounded-lg">
-              <span className="text-[13px] font-medium text-gray-600 w-14 mb-1">Rotate :</span>
-              <div className="flex gap-2">
-                 {["X", "Y", "Z"].map((axis) => (
-                    <div key={axis} className="flex flex-col items-center gap-1.5">
-                       <span className="text-[10px] font-semibold text-gray-400 uppercase">{axis}</span>
-                       <NumberStepper value={210} compact />
-                    </div>
-                 ))}
+           {/* Rotate Row */}
+           <div className="flex flex-col items-start gap-2 mb-2 bg-gray-50 rounded-lg py-2 w-full">
+              <span className="text-[13px] font-medium text-black mb-1 ml-1">Rotate :</span>
+              <div className="grid grid-cols-3 gap-2 w-full">
+                 <div className="flex flex-col items-center gap-1.5">
+                    <span className="text-[10px] font-semibold text-gray-400 uppercase">X</span>
+                    <NumberStepper value={fmtDeg(transformValues?.rotation?.x)} compact onChange={(val) => onManualTransformChange('rotation', 'x', val)} step={5} />
+                 </div>
+                 <div className="flex flex-col items-center gap-1.5">
+                    <span className="text-[10px] font-semibold text-gray-400 uppercase">Y</span>
+                    <NumberStepper value={fmtDeg(transformValues?.rotation?.y)} compact onChange={(val) => onManualTransformChange('rotation', 'y', val)} step={5} />
+                 </div>
+                 <div className="flex flex-col items-center gap-1.5">
+                    <span className="text-[10px] font-semibold text-gray-400 uppercase">Z</span>
+                    <NumberStepper value={fmtDeg(transformValues?.rotation?.z)} compact onChange={(val) => onManualTransformChange('rotation', 'z', val)} step={5} />
+                 </div>
               </div>
            </div>
 
            {/* Scale Row */}
-           <div className="flex items-end justify-between py-2 px-1">
-              <span className="text-[13px] font-medium text-gray-600 w-14 mb-1">Scale :</span>
-              <div className="flex gap-2">
-                 {["X", "Y", "Z"].map((axis) => (
-                    <div key={axis} className="flex flex-col items-center gap-1.5">
-                       <span className="text-[10px] font-semibold text-gray-400 uppercase">{axis}</span>
-                       <NumberStepper value={210} compact />
-                    </div>
-                 ))}
+           <div className="flex flex-col items-start gap-2 w-full">
+              <span className="text-[13px] font-medium text-black mb-1 ml-1">Scale :</span>
+              <div className="grid grid-cols-3 gap-2 w-full">
+                 <div className="flex flex-col items-center gap-1.5">
+                    <span className="text-[10px] font-semibold text-gray-400 uppercase">X</span>
+                    <NumberStepper value={fmt(transformValues?.scale?.x)} compact onChange={(val) => onManualTransformChange('scale', 'x', val)} step={0.1} />
+                 </div>
+                 <div className="flex flex-col items-center gap-1.5">
+                    <span className="text-[10px] font-semibold text-gray-400 uppercase">Y</span>
+                    <NumberStepper value={fmt(transformValues?.scale?.y)} compact onChange={(val) => onManualTransformChange('scale', 'y', val)} step={0.1} />
+                 </div>
+                 <div className="flex flex-col items-center gap-1.5">
+                    <span className="text-[10px] font-semibold text-gray-400 uppercase">Z</span>
+                    <NumberStepper value={fmt(transformValues?.scale?.z)} compact onChange={(val) => onManualTransformChange('scale', 'z', val)} step={0.1} />
+                 </div>
               </div>
            </div>
         </div>
@@ -332,7 +447,15 @@ export default function SettingsPanel() {
       >
         {/* Visualizer Box */}
         <div className="relative bg-[#f8fafc] h-[180px] rounded-xl border border-gray-100 mb-6 flex flex-col items-center justify-center shadow-inner overflow-hidden group">
-          <div className="absolute top-4 left-4 text-amber-400 drop-shadow-sm">
+          {/* Dynamic Sun Position */}
+          <div 
+            className="absolute text-amber-400 drop-shadow-sm transition-all duration-300"
+            style={{
+              left: `${50 + (controls.lightPosition?.x || 10) * 2}%`,
+              top: `${50 - (controls.lightPosition?.y || 10) * 2}%`,
+              transform: 'translate(-50%, -50%)'
+            }}
+          >
             <Icon icon="heroicons:sun" width={24} height={24} />
           </div>
 
@@ -346,12 +469,53 @@ export default function SettingsPanel() {
         </div>
 
         <div className="flex justify-center gap-2 mb-8">
-          <NumberStepper value={210} axisLabel="X" compact />
-          <NumberStepper value={210} axisLabel="Y" compact />
-          <NumberStepper value={210} axisLabel="Z" compact />
+          <NumberStepper 
+            value={Math.round(controls.lightPosition?.x || 10)} 
+            axisLabel="X" 
+            compact 
+            onChange={(val) => updateControl('lightPosition', { ...controls.lightPosition, x: val })}
+            step={1}
+          />
+          <NumberStepper 
+            value={Math.round(controls.lightPosition?.y || 10)} 
+            axisLabel="Y" 
+            compact 
+            onChange={(val) => updateControl('lightPosition', { ...controls.lightPosition, y: val })}
+            step={1}
+          />
+          <NumberStepper 
+            value={Math.round(controls.lightPosition?.z || 10)} 
+            axisLabel="Z" 
+            compact 
+            onChange={(val) => updateControl('lightPosition', { ...controls.lightPosition, z: val })}
+            step={1}
+          />
         </div>
 
         <div className="space-y-6">
+            <div>
+
+                 <SectionHeader label="Environment" />
+                 <CustomDropdown 
+
+                    value={controls.environment || 'city'}
+                    onChange={(val) => updateControl('environment', val)}
+                    options={[
+                        { label: 'City', value: 'city' },
+                        { label: 'Apartment', value: 'apartment' },
+                        { label: 'Dawn', value: 'dawn' },
+                        { label: 'Forest', value: 'forest' },
+                        { label: 'Lobby', value: 'lobby' },
+                        { label: 'Night', value: 'night' },
+                        { label: 'Park', value: 'park' },
+                        { label: 'Studio', value: 'studio' },
+                        { label: 'Sunset', value: 'sunset' },
+                        { label: 'Warehouse', value: 'warehouse' },
+                    ]}
+                 />
+            </div>
+
+
             <div>
                 <SectionHeader label="Lighting & Reflection" />
                 <div className="space-y-1">

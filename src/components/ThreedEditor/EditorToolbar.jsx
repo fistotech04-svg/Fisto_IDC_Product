@@ -52,7 +52,7 @@ export default function EditorToolbar({ hasModel, settings, setSettings, onClear
                         </div>
                         <button 
                             onClick={() => { setShowSettings(false); setActiveColorPicker(null); }}
-                            className="w-6 h-6 border-2 border-red-400 rounded-lg flex cursor-pointer items-center justify-center text-red-500 hover:bg-red-50 hover:border-red-300 transition-colors"
+                            className="w-6 h-6 border-2 border-red-400 rounded-xl flex cursor-pointer items-center justify-center text-red-500 hover:bg-red-50 hover:border-red-300 transition-colors"
                         >
                             <Icon icon="heroicons:x-mark" width={19} className="stroke-2" />
                         </button>

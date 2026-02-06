@@ -3,9 +3,22 @@ import { Icon } from "@iconify/react";
 import PreDefined from "./PreDefined";
 import Customized from "./Customized";
 
-export default function RightPanel({ onFileProcess, hasModel, autoRotate, setAutoRotate, isLoading }) {
+export default function RightPanel({ 
+    onFileProcess, 
+    hasModel, 
+    autoRotate, 
+    setAutoRotate, 
+    isLoading, 
+    materialSettings, 
+    onUpdateMaterialSetting,
+    activeTab = "pre",
+    setActiveTab,
+    activeAccordion,
+    setActiveAccordion,
+    transformValues,
+    onManualTransformChange
+}) {
   const fileRef = useRef(null);
-  const [tab, setTab] = useState("pre");
   const [isDragOver, setIsDragOver] = useState(false);
 
   const handleFileChange = (e) => {
@@ -139,9 +152,9 @@ export default function RightPanel({ onFileProcess, hasModel, autoRotate, setAut
             <div className="px-4 pt-4 pb-3 bg-white">
               <div className="bg-gray-100 p-1 rounded-xl flex gap-1">
                 <button
-                  onClick={() => setTab("pre")}
+                  onClick={() => setActiveTab("pre")}
                   className={`flex-1 py-2.5 text-[13px] font-semibold rounded-lg transition-all duration-300 flex items-center justify-center gap-2 ${
-                    tab === "pre"
+                    activeTab === "pre"
                       ? "bg-white shadow-sm text-gray-900"
                       : "text-gray-500 hover:text-gray-700"
                   }`}
@@ -157,9 +170,9 @@ export default function RightPanel({ onFileProcess, hasModel, autoRotate, setAut
                 </button>
 
                 <button
-                  onClick={() => setTab("custom")}
+                  onClick={() => setActiveTab("custom")}
                   className={`flex-1 py-2.5 text-[13px] font-semibold rounded-lg transition-all duration-300 flex items-center justify-center gap-2 ${
-                    tab === "custom"
+                    activeTab === "custom"
                       ? "bg-white shadow-sm text-gray-900"
                       : "text-gray-500 hover:text-gray-700"
                   }`}
@@ -175,18 +188,25 @@ export default function RightPanel({ onFileProcess, hasModel, autoRotate, setAut
               {/* Pre Defined Tab */}
               <div
                 className={`absolute inset-0 overflow-y-auto p-4 custom-scrollbar transition-all duration-300 ${
-                  tab === "pre"
+                  activeTab === "pre"
                     ? "opacity-100 translate-x-0 pointer-events-auto"
                     : "opacity-0 -translate-x-4 pointer-events-none"
                 }`}
               >
-                <PreDefined />
+                <PreDefined 
+                    controls={materialSettings} 
+                    updateControl={onUpdateMaterialSetting}
+                    activePanel={activeAccordion}
+                    setActivePanel={setActiveAccordion}
+                    transformValues={transformValues}
+                    onManualTransformChange={onManualTransformChange}
+                />
               </div>
 
               {/* Customized Tab */}
               <div
                 className={`absolute inset-0 overflow-y-auto p-4 custom-scrollbar transition-all duration-300 ${
-                  tab === "custom"
+                  activeTab === "custom"
                     ? "opacity-100 translate-x-0 pointer-events-auto"
                     : "opacity-0 translate-x-4 pointer-events-none"
                 }`}
