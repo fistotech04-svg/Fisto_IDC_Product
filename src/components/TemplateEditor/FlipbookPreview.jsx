@@ -54,8 +54,11 @@ const FlipbookPreview = ({ pages, pageName = "Name of the Book", onClose, isMobi
   const currentInitIdRef = useRef(0);
 
   const animationEndTimerRef = useRef(null);
+  
+  // Stabilize pages prop to prevent unnecessary re-renders/initialization
+  const stablePages = React.useMemo(() => pages, [JSON.stringify(pages)]);
 
-  const totalPages = pages.length;
+  const totalPages = stablePages.length;
 
   // Page dimensions (A4 ratio)
   const PAGE_WIDTH = 595;
@@ -200,8 +203,534 @@ const FlipbookPreview = ({ pages, pageName = "Name of the Book", onClose, isMobi
   // Sanitize HTML content
   const sanitizeHTML = useCallback((html, pageNumber) => {
 
+    const slideshowScript = `
+      <script>
+        (function() {
+          const initSlideshows = () => {
+            const elements = document.querySelectorAll('[data-slideshow]');
+            elements.forEach(el => {
+              if (el.dataset.slideshowInitialized) return;
+              el.dataset.slideshowInitialized = 'true';
+
+              try {
+                const data = JSON.parse(el.dataset.slideshow);
+                const settings = data.settings;
+                const images = data.images;
+                
+                if (!images || images.length <= 1) return;
+
+                let currentIndex = 0;
+                let isAnimating = false;
+                
+                // Ensure parent relative
+                if (el.parentElement && getComputedStyle(el.parentElement).position === 'static') {
+                   el.parentElement.style.position = 'relative';
+                }
+
+                const updateSlide = (newIndex) => {
+                   if (newIndex === currentIndex || isAnimating) return;
+                   
+                   const nextImg = images[newIndex];
+                   const effect = settings.transitionEffect;
+                   const baseOpacity = el.style.opacity || '1';
+                   
+                   currentIndex = newIndex;
+                   isAnimating = true;
+
+                   const finish = () => {
+                      el.src = nextImg.url;
+                      el.style.transition = '';
+                      el.style.transform = '';
+                      el.style.opacity = baseOpacity;
+                      isAnimating = false;
+                      updateControls();
+                   };
+
+                   if (effect === 'Fade') {
+                      el.style.transition = 'opacity 0.4s ease-in-out';
+                      el.style.opacity = '0.2';
+                      setTimeout(() => {
+                         el.src = nextImg.url;
+                         el.style.opacity = baseOpacity;
+                         setTimeout(finish, 400); // Wait for fade in
+                      }, 400);
+
+                   } else if (effect === 'Slide' || effect === 'Push') {
+                      el.style.transition = 'transform 0.4s ease-in, opacity 0.4s ease-in';
+                      el.style.transform = 'translateX(-30%)';
+                      el.style.opacity = '0';
+                      setTimeout(() => {
+                         el.src = nextImg.url;
+                         el.style.transition = 'none';
+                         el.style.transform = 'translateX(30%)';
+                         void el.offsetWidth; // Force Reflow
+                         el.style.transition = 'transform 0.4s ease-out, opacity 0.4s ease-out';
+                         el.style.transform = 'translateX(0)';
+                         el.style.opacity = baseOpacity;
+                         setTimeout(finish, 400);
+                      }, 400);
+
+                   } else if (effect === 'Flip') {
+                      el.style.transition = 'transform 0.5s ease-in-out';
+                      el.style.transform = 'rotateY(90deg)';
+                      setTimeout(() => {
+                         el.src = nextImg.url;
+                         el.style.transition = 'none';
+                         el.style.transform = 'rotateY(-90deg)';
+                         void el.offsetWidth;
+                         el.style.transition = 'transform 0.5s ease-in-out';
+                         el.style.transform = 'rotateY(0)';
+                         setTimeout(finish, 500);
+                      }, 500);
+
+                   } else if (effect === 'Reveal' || effect === 'Zoom') {
+                      el.style.transition = 'transform 0.4s ease-in, opacity 0.4s ease';
+                      el.style.transform = 'scale(0.8)';
+                      el.style.opacity = '0.5';
+                      setTimeout(() => {
+                         el.src = nextImg.url;
+                         el.style.transition = 'transform 0.4s ease-out, opacity 0.4s ease';
+                         el.style.transform = 'scale(1)';
+                         el.style.opacity = baseOpacity;
+                         setTimeout(finish, 400);
+                      }, 400);
+
+                   } else {
+                      // Linear
+                      el.src = nextImg.url;
+                      isAnimating = false;
+                      updateControls();
+                   }
+                };
+
+                // --- Controls Container ---
+                let overlay = document.createElement('div');
+                overlay.className = 'slideshow-controls-' + Date.now();
+                Object.assign(overlay.style, {
+                   position: 'absolute', inset: '0', pointerEvents: 'none', 
+                   zIndex: '10', display: 'flex', flexDirection: 'column', 
+                   justifyContent: 'space-between'
+                });
+                el.parentElement.appendChild(overlay);
+
+                // --- Helper to update Dots/Arrows state ---
+                const updateControls = () => {
+                   if (!settings.autoPlay) {
+                      // Update Arrows Visibility
+                      const leftArr = overlay.querySelector('.arrow-left');
+                      const rightArr = overlay.querySelector('.arrow-right');
+                      if (leftArr) leftArr.style.display = (!settings.infiniteLoop && currentIndex === 0) ? 'none' : 'flex';
+                      if (rightArr) rightArr.style.display = (!settings.infiniteLoop && currentIndex === images.length - 1) ? 'none' : 'flex';
+                   }
+                   
+                   // Update Dots
+                   if (settings.showDots) {
+                      const dots = overlay.querySelectorAll('.slide-dot');
+                      dots.forEach((d, i) => {
+                         const isActive = i === currentIndex;
+                         d.style.backgroundColor = isActive ? settings.dotColor : 'rgba(255,255,255,0.5)';
+                         d.style.opacity = isActive ? '1' : (settings.dotOpacity / 100);
+                         d.style.transform = isActive ? 'scale(1.2)' : 'scale(1)';
+                      });
+                   }
+                };
+
+
+                // --- Auto Play ---
+                if (settings.autoPlay) {
+                   const intervalMs = (settings.speed || 2) * 1000;
+                   setInterval(() => {
+                      let next = currentIndex + 1;
+                      if (next >= images.length) {
+                         if (!settings.infiniteLoop) return;
+                         next = 0;
+                      }
+                      updateSlide(next);
+                   }, intervalMs);
+                } 
+                else {
+                   // --- Manual Controls ---
+                   
+                   // Arrows
+                   if (settings.showArrows) {
+                      const createArrow = (dir) => {
+                         const btn = document.createElement('div');
+                         btn.className = 'arrow-' + dir;
+                         const isLeft = dir === 'left';
+                         Object.assign(btn.style, {
+                            position: 'absolute', top: '50%', transform: 'translateY(-50%)',
+                            width: '32px', height: '32px', background: 'rgba(255,255,255,0.8)',
+                            borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                            cursor: 'pointer', pointerEvents: 'auto', boxShadow: '0 2px 5px rgba(0,0,0,0.2)',
+                            transition: 'background 0.2s', zIndex: '20',
+                            left: isLeft ? '10px' : 'auto', right: isLeft ? 'auto' : '10px'
+                         });
+                         btn.innerHTML = isLeft 
+                            ? '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#1f2937" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg>'
+                            : '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#1f2937" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18l6-6-6-6"/></svg>';
+                         
+                         btn.onclick = (e) => {
+                            e.stopPropagation();
+                            let next = isLeft ? currentIndex - 1 : currentIndex + 1;
+                            if (isLeft && next < 0) next = settings.infiniteLoop ? images.length - 1 : 0;
+                            if (!isLeft && next >= images.length) next = settings.infiniteLoop ? 0 : images.length - 1;
+                            updateSlide(next);
+                         };
+                         return btn;
+                      };
+                      overlay.appendChild(createArrow('left'));
+                      overlay.appendChild(createArrow('right'));
+                   }
+
+                   // Drag
+                   if (settings.dragToSlide) {
+                      const dragLayer = document.createElement('div');
+                      Object.assign(dragLayer.style, {
+                         position: 'absolute', inset: '0', zIndex: '5', cursor: 'grab', pointerEvents: 'auto'
+                      });
+                      
+                      let startX = 0;
+                      let isDragging = false;
+                      
+                      const onMove = (e) => {
+                         if (Math.abs(e.clientX - startX) > 10) isDragging = true;
+                      };
+                      const onUp = (e) => {
+                         if (isDragging) {
+                            const diff = e.clientX - startX;
+                            if (Math.abs(diff) > 50) {
+                               let next = diff > 0 
+                                  ? (currentIndex === 0 ? (settings.infiniteLoop ? images.length - 1 : 0) : currentIndex - 1)
+                                  : (currentIndex === images.length - 1 ? (settings.infiniteLoop ? 0 : currentIndex) : currentIndex + 1);
+                               updateSlide(next);
+                            }
+                         }
+                         document.removeEventListener('mousemove', onMove);
+                         document.removeEventListener('mouseup', onUp);
+                      };
+                      dragLayer.onmousedown = (e) => {
+                         e.stopPropagation();
+                         startX = e.clientX;
+                         isDragging = false;
+                         document.addEventListener('mousemove', onMove);
+                         document.addEventListener('mouseup', onUp);
+                      };
+                      overlay.appendChild(dragLayer);
+                   }
+                }
+
+                // --- Dots (Always visible if enabled) ---
+                if (settings.showDots) {
+                   const dotsCont = document.createElement('div');
+                   Object.assign(dotsCont.style, {
+                      position: 'absolute', bottom: '12px', left: '50%', transform: 'translateX(-50%)',
+                      display: 'flex', gap: '6px', pointerEvents: 'auto', padding: '4px 8px',
+                      background: 'rgba(0,0,0,0.1)', borderRadius: '12px', backdropFilter: 'blur(2px)', zIndex: '20'
+                   });
+                   images.forEach((_, i) => {
+                      const dot = document.createElement('div');
+                      dot.className = 'slide-dot';
+                      Object.assign(dot.style, {
+                         width: '8px', height: '8px', borderRadius: '50%', cursor: 'pointer', transition: 'all 0.2s',
+                         boxShadow: '0 1px 2px rgba(0,0,0,0.1)'
+                      });
+                      dot.onclick = (e) => { e.stopPropagation(); updateSlide(i); };
+                      dotsCont.appendChild(dot);
+                   });
+                   overlay.appendChild(dotsCont);
+                }
+                
+                // Init State
+                updateControls();
+
+              } catch(e) { console.error('Slideshow init error', e); }
+            });
+          };
+
+          if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', initSlideshows);
+          else initSlideshows();
+        })();
+      </script>
+    `;
+
     // Interaction Handler Script
-    // Interaction Handler Script
+    const animationScript = `
+      <script>
+        (function() {
+          const pageNumber = ${pageNumber}; // Inject locally
+          const initAnim = () => {
+          const WAAPI_ANIMATIONS = {
+            'none': [],
+            'fade-in': [{ opacity: 0 }, { opacity: 1 }],
+            'blur-in': [{ filter: 'blur(20px)', opacity: 0 }, { filter: 'blur(0)', opacity: 1 }],
+            'focus-in': [{ filter: 'blur(12px)', opacity: 0, transform: 'scale(1.2)' }, { filter: 'blur(0)', opacity: 1, transform: 'scale(1)' }],
+            'glass-reveal': [{ opacity: 0, backdropFilter: 'blur(20px)' }, { opacity: 1, backdropFilter: 'blur(0px)' }],
+            'perspective-in': [{ transform: 'perspective(400px) rotateX(-60deg) translateZ(-500px)', opacity: 0 }, { transform: 'perspective(400px) rotateX(0deg) translateZ(0)', opacity: 1 }],
+            'slide-up': [{ transform: 'translateY(100px)', opacity: 0 }, { transform: 'translateY(0)', opacity: 1 }],
+            'slide-down': [{ transform: 'translateY(-100px)', opacity: 0 }, { transform: 'translateY(0)', opacity: 1 }],
+            'slide-left': [{ transform: 'translateX(100px)', opacity: 0 }, { transform: 'translateX(0)', opacity: 1 }],
+            'slide-right': [{ transform: 'translateX(-100px)', opacity: 0 }, { transform: 'translateX(0)', opacity: 1 }],
+            'back-in-up': [{ transform: 'translateY(500px) scale(0.7)', opacity: 0 }, { transform: 'translateY(0) scale(0.7)', opacity: 0.7, offset: 0.8 }, { transform: 'translateY(0) scale(1)', opacity: 1 }],
+            'back-in-down': [{ transform: 'translateY(-500px) scale(0.7)', opacity: 0 }, { transform: 'translateY(0) scale(0.7)', opacity: 0.7, offset: 0.8 }, { transform: 'translateY(0) scale(1)', opacity: 1 }],
+            'back-in-left': [{ transform: 'translateX(-500px) scale(0.7)', opacity: 0 }, { transform: 'translateX(0) scale(0.7)', opacity: 0.7, offset: 0.8 }, { transform: 'translateX(0) scale(1)', opacity: 1 }],
+            'back-in-right': [{ transform: 'translateX(500px) scale(0.7)', opacity: 0 }, { transform: 'translateX(0) scale(0.7)', opacity: 0.7, offset: 0.8 }, { transform: 'translateX(0) scale(1)', opacity: 1 }],
+            'zoom-in': [{ transform: 'scale(0)', opacity: 0 }, { transform: 'scale(1)', opacity: 1 }],
+            'zoom-in-up': [{ transform: 'scale(0.1) translateY(100px)', opacity: 0 }, { transform: 'scale(1) translateY(0)', opacity: 1 }],
+            'zoom-in-down': [{ transform: 'scale(0.1) translateY(-100px)', opacity: 0 }, { transform: 'scale(1) translateY(0)', opacity: 1 }],
+            'rotate-in': [{ transform: 'rotate(-200deg) scale(0)', opacity: 0 }, { transform: 'rotate(0) scale(1)', opacity: 1 }],
+            'rotate-in-down-left': [{ transform: 'rotate(-45deg)', transformOrigin: 'left bottom', opacity: 0 }, { transform: 'rotate(0)', transformOrigin: 'left bottom', opacity: 1 }],
+            'rotate-in-up-right': [{ transform: 'rotate(-90deg)', transformOrigin: 'right bottom', opacity: 0 }, { transform: 'rotate(0)', transformOrigin: 'right bottom', opacity: 1 }],
+            'bounce-in': [{ transform: 'scale(0.3)', opacity: 0 }, { transform: 'scale(1.1)', opacity: 0.8, offset: 0.5 }, { transform: 'scale(0.9)', opacity: 1, offset: 0.7 }, { transform: 'scale(1)', opacity: 1 }],
+            'flip-in': [{ transform: 'perspective(400px) rotateX(90deg)', opacity: 0 }, { transform: 'perspective(400px) rotateX(0deg)', opacity: 1 }],
+            'flip-in-y': [{ transform: 'perspective(400px) rotateY(90deg)', opacity: 0 }, { transform: 'perspective(400px) rotateY(0deg)', opacity: 1 }],
+            'roll-in': [{ transform: 'translateX(-100px) rotate(-120deg)', opacity: 0 }, { transform: 'translateX(0) rotate(0)', opacity: 1 }],
+            'pulse': [{ transform: 'scale(1)' }, { transform: 'scale(1.1)', offset: 0.5 }, { transform: 'scale(1)' }],
+            'heartbeat': [{ transform: 'scale(1)' }, { transform: 'scale(1.3)', offset: 0.14 }, { transform: 'scale(1)', offset: 0.28 }, { transform: 'scale(1.3)', offset: 0.42 }, { transform: 'scale(1)', offset: 0.7 }],
+            'float': [{ transform: 'translateY(0)' }, { transform: 'translateY(-15px)', offset: 0.5 }, { transform: 'translateY(0)' }],
+            'neon-glow': [{ filter: 'brightness(1) drop-shadow(0 0 0px rgba(79, 70, 229, 0))' }, { filter: 'brightness(1.5) drop-shadow(0 0 10px rgba(79, 70, 229, 0.8))', offset: 0.5 }, { filter: 'brightness(1) drop-shadow(0 0 0px rgba(79, 70, 229, 0))' }],
+            'tada': [{ transform: 'scale(1) rotate(0)' }, { transform: 'scale(0.9) rotate(-3deg)', offset: 0.1 }, { transform: 'scale(0.9) rotate(-3deg)', offset: 0.2 }, { transform: 'scale(1.1) rotate(3deg)', offset: 0.3 }, { transform: 'scale(1.1) rotate(-3deg)', offset: 0.4 }, { transform: 'scale(1.1) rotate(3deg)', offset: 0.5 }, { transform: 'scale(1.1) rotate(-3deg)', offset: 0.6 }, { transform: 'scale(1.1) rotate(3deg)', offset: 0.7 }, { transform: 'scale(1.1) rotate(-3deg)', offset: 0.8 }, { transform: 'scale(1.1) rotate(3deg)', offset: 0.9 }, { transform: 'scale(1) rotate(0)' }],
+            'rubber-band': [{ transform: 'scale(1, 1)' }, { transform: 'scale(1.25, 0.75)', offset: 0.3 }, { transform: 'scale(0.75, 1.25)', offset: 0.4 }, { transform: 'scale(1.15, 0.85)', offset: 0.5 }, { transform: 'scale(0.95, 1.05)', offset: 0.65 }, { transform: 'scale(1.05, 0.95)', offset: 0.75 }, { transform: 'scale(1, 1)' }],
+            'jello': [{ transform: 'skew(0,0)' }, { transform: 'skew(-12.5deg, -12.5deg)', offset: 0.22 }, { transform: 'skew(6.25deg, 6.25deg)', offset: 0.33 }, { transform: 'skew(-3.125deg, -3.125deg)', offset: 0.44 }, { transform: 'skew(1.5625deg, 1.5625deg)', offset: 0.55 }, { transform: 'skew(-0.78deg, -0.78deg)', offset: 0.66 }, { transform: 'skew(0.39deg, 0.39deg)', offset: 0.77 }, { transform: 'skew(-0.2deg, -0.2deg)', offset: 0.88 }, { transform: 'skew(0,0)' }],
+            'swing': [{ transform: 'rotate(0deg)' }, { transform: 'rotate(15deg)', offset: 0.2 }, { transform: 'rotate(-10deg)', offset: 0.4 }, { transform: 'rotate(5deg)', offset: 0.6 }, { transform: 'rotate(-5deg)', offset: 0.8 }, { transform: 'rotate(0deg)' }],
+            'wobble': [{ transform: 'translateX(0%) rotate(0deg)' }, { transform: 'translateX(-25%) rotate(-5deg)', offset: 0.15 }, { transform: 'translateX(20%) rotate(3deg)', offset: 0.3 }, { transform: 'translateX(-15%) rotate(-3deg)', offset: 0.45 }, { transform: 'translateX(10%) rotate(2deg)', offset: 0.6 }, { transform: 'translateX(-5%) rotate(-1deg)', offset: 0.75 }, { transform: 'translateX(0%) rotate(0deg)' }],
+            'glitch': [{ transform: 'translate(0)' }, { transform: 'translate(-2px, 2px)', offset: 0.2 }, { transform: 'translate(2px, -2px)', offset: 0.4 }, { transform: 'translate(-2px, 2px)', offset: 0.6 }, { transform: 'translate(2px, -2px)', offset: 0.8 }, { transform: 'translate(0)' }],
+            'bounce-out': [{ transform: 'scale(1)', opacity: 1 }, { transform: 'scale(1.1)', opacity: 0.8, offset: 0.2 }, { transform: 'scale(0.3)', opacity: 0, offset: 1 }],
+            'fade-out': [{ opacity: 1 }, { opacity: 0 }],
+          };
+
+          const getEasing = (e) => {
+            const map = { 
+              'Linear': 'linear', 
+              'Smooth': 'ease-in-out', 
+              'Ease In': 'ease-in', 
+              'Ease Out': 'ease-out', 
+              'Ease In & Out': 'ease-in-out',
+              'Bounce': 'cubic-bezier(0.175, 0.885, 0.32, 1.275)' 
+            };
+            return map[e] || 'ease-out';
+          };
+
+          const runAnim = (el, type, settings, isReverse = false) => {
+             if (!type || type === 'none' || !WAAPI_ANIMATIONS[type]) return;
+             
+             // Check Every Visit
+             if (!settings.everyVisit && el.dataset.animRun === 'true' && !isReverse) return;
+
+             let frames = JSON.parse(JSON.stringify(WAAPI_ANIMATIONS[type]));
+
+             // Handle Fadings
+             if (!settings.fadeAtStart && !settings.fadeAtStartEnd) {
+                // If NO fade at start requested, force opacity 1 on first frame
+                 if (frames[0] && frames[0].opacity !== undefined) frames[0].opacity = 1;
+             }
+             if (!settings.fadeAtEnd && !settings.fadeAtStartEnd) {
+                // If NO fade at end requested, force opacity 1 on last frame
+                 if (frames[frames.length - 1] && frames[frames.length - 1].opacity !== undefined) frames[frames.length - 1].opacity = 1;
+             }
+
+             const duration = ((parseFloat(settings.duration) || 1) / (parseFloat(settings.speed) || 1)) * 1000;
+             const delay = (parseFloat(settings.delay) || 0) * 1000;
+             const iterations = (settings.forceOnce || settings.action !== 'Always') ? 1 : Infinity;
+
+             // If triggered by CLICK or HOVER, we typically want to restart it if it's already running?
+             // Or allow parallel? WAAPI allows multiple. Cleaning up previous might be good.
+             const currentAnims = el.getAnimations();
+             currentAnims.forEach(a => a.cancel());
+
+             const anim = el.animate(frames, { 
+               duration, 
+               delay, 
+               easing: getEasing(settings.easing), 
+               fill: 'forwards', 
+               iterations: iterations,
+               direction: isReverse ? 'reverse' : 'normal'
+             });
+
+             if (!isReverse) {
+                el.dataset.animRun = 'true';
+             }
+          };
+
+          const parseSettings = (el, prefix) => ({
+             type: el.getAttribute('data-animation-' + prefix + '-type'),
+             duration: el.getAttribute('data-animation-' + prefix + '-duration'),
+             speed: el.getAttribute('data-animation-' + prefix + '-speed'),
+             delay: el.getAttribute('data-animation-' + prefix + '-delay'),
+             easing: el.getAttribute('data-animation-' + prefix + '-easing'),
+             everyVisit: el.getAttribute('data-animation-' + prefix + '-every-visit') !== 'false',
+             fadeStart: el.getAttribute('data-animation-' + prefix + '-fade-start') !== 'false',
+             fadeEnd: el.getAttribute('data-animation-' + prefix + '-fade-end') !== 'false',
+             fadeStartEnd: el.getAttribute('data-animation-' + prefix + '-fade-start-end') !== 'false',
+             action: el.getAttribute('data-animation-action')
+          });
+
+          const handleTrigger = (trigger, context) => { 
+             // Async Theory: Use RAF to ensure DOM is ready and not blocking
+             requestAnimationFrame(() => {
+                 if (!document || !document.body) return;
+                   const elements = document.querySelectorAll('[data-animation-trigger], [data-animation-open-type]');
+                   elements.forEach(el => {
+                      
+                      
+
+                      // --- Entrance / Exit Animation Logic ---
+                      const openType = el.getAttribute('data-animation-open-type');
+                      const separate = el.getAttribute('data-animation-separate') === 'true';
+
+                      if (openType && openType !== 'none') {
+                         if (context === 'open') {
+                            const s = parseSettings(el, 'open');
+                            // Force behavior: Page 1 = once, Others = every visit
+                            s.forceOnce = true; 
+                             
+                            runAnim(el, s.type, s, false);
+                         } 
+                         else if (context === 'close') {
+                            if (separate) {
+                               const s = parseSettings(el, 'close');
+                               s.forceOnce = true; 
+                               
+                               s.isClose = true; 
+                               runAnim(el, s.type, s, false); 
+                            } else {
+                               const s = parseSettings(el, 'open');
+                               s.forceOnce = true;
+                               // Only run reverse/cleanup if we intend to animate again next visit
+                               if (s.everyVisit) {
+                                  runAnim(el, s.type, s, true);
+                               }
+                            }
+                         }
+                      }
+
+                      // --- Interaction Animation Logic (On Page) ---
+                      const triggerMode = el.getAttribute('data-animation-trigger');
+                      const action = el.getAttribute('data-animation-action') || 'Click';
+
+                       if (triggerMode === 'On Page') {
+                          if (action === 'Always') {
+                             if (context === 'open') {
+                                const s = parseSettings(el, 'interact');
+                                runAnim(el, s.type, s, false);
+                             } else if (context === 'close') {
+                                const currentAnims = el.getAnimations();
+                                currentAnims.forEach(a => a.cancel());
+                             }
+                          }
+                       }
+                   });
+             });
+          };
+
+          // --- Mutation Observer for Live Updates (Editor Mode) ---
+          const observer = new MutationObserver((mutations) => {
+             mutations.forEach((mutation) => {
+               if (mutation.type === 'attributes') {
+                 const el = mutation.target;
+                 const attr = mutation.attributeName;
+
+                 // Only care about animation attributes
+                 if (attr.startsWith('data-animation-')) {
+                   const trigger = el.getAttribute('data-animation-trigger');
+                   const action = el.getAttribute('data-animation-action');
+
+                   // Determine if we should auto-preview (Live Edit)
+                   // 1. "On Page" + "Always" -> Auto play
+                   // 2. "While Opening" (Entrance) -> Auto play to show effect immediately
+                   let shouldPreview = false;
+                   let settingsPrefix = 'open';
+
+                   if (trigger === 'On Page' && action === 'Always') {
+                      shouldPreview = true;
+                      settingsPrefix = 'interact';
+                   } else if (trigger === 'While Opening' || trigger === 'While Open & Close' || !trigger) {
+                      shouldPreview = true;
+                      settingsPrefix = 'open';
+                   }
+
+                   if (shouldPreview) {
+                      const s = parseSettings(el, settingsPrefix);
+                      // Run immediately to preview changes
+                      runAnim(el, s.type, s, false);
+                   } else {
+                      // If switched to manual mode (Click/Hover) or disabled, stop any running loops
+                      if (attr === 'data-animation-trigger' || attr === 'data-animation-action' || attr.includes('-type')) {
+                         const currentAnims = el.getAnimations();
+                         currentAnims.forEach(a => a.cancel());
+                      }
+                   }
+                 }
+               }
+             });
+          });
+
+          if (document.body) {
+             observer.observe(document.body, { 
+               attributes: true, 
+               subtree: true, 
+               attributeFilter: [
+                 'data-animation-trigger', 'data-animation-action', 
+                 'data-animation-interact-type', 'data-animation-interact-duration', 
+                 'data-animation-interact-delay', 'data-animation-interact-speed', 
+                 'data-animation-interact-easing'
+               ] 
+             });
+          }
+          
+          window.addEventListener('message', (e) => {
+             if (e.data.type === 'flipbook-view-change') {
+                const amIVisible = e.data.view.includes(pageNumber);
+                if (amIVisible) handleTrigger(null, 'open'); 
+                else handleTrigger(null, 'close');
+             }
+          });
+
+           // Note: Direct Click/Hover listeners on document might miss if elements are added dynamically? 
+           // But since this script runs in the iframe where content is static (except for classes), it's fine.
+           document.addEventListener('click', (e) => {
+              const el = e.target.closest('[data-animation-trigger="On Page"][data-animation-action="Click"]');
+              if (el) {
+                  const s = parseSettings(el, 'interact');
+                  if (s.type && s.type !== 'none') {
+                     runAnim(el, s.type, s, false);
+                  }
+              }
+           });
+           
+           document.addEventListener('mouseover', (e) => {
+               const el = e.target.closest('[data-animation-trigger="On Page"][data-animation-action="Hover"]');
+               if (el) {
+                  // Prevent restart if moving within the same element
+                  if (el.contains(e.relatedTarget)) return;
+
+                  const s = parseSettings(el, 'interact');
+                  if (s.type && s.type !== 'none') {
+                     // Clear existing to restart
+                     const currentAnims = el.getAnimations();
+                     currentAnims.forEach(a => a.cancel());
+                     
+                     runAnim(el, s.type, s, false);
+                  }
+               }
+           });
+
+           // Initial Trigger: Run opening animations immediately for the first page
+           if (pageNumber === 1) {
+              handleTrigger(null, 'open');
+           }
+          };
+
+          // Async Theory: Defer init slightly to ensure stability but don't over-delay.
+          // Since handleTrigger uses RAF, we are safe to init.
+          if (document.readyState === 'loading') {
+             document.addEventListener('DOMContentLoaded', initAnim);
+          } else {
+             initAnim();
+          }
+        })();
+      </script>
+    `;
+
     const interactionScript = `
       <script>
         (function() {
@@ -500,6 +1029,12 @@ const FlipbookPreview = ({ pages, pageName = "Name of the Book", onClose, isMobi
     `;
 
     let content = html;
+    
+    // Fix CORS: Strip crossorigin attributes to allow standard opaque loading
+    // This resolves "Blocked by CORS policy" errors if the server lacks headers
+    if (content) {
+      content = content.replace(/\s+crossorigin(=["']?[a-zA-Z-]*["']?)?/gi, '');
+    }
 
     if (!html.includes('<!DOCTYPE') && !html.includes('<html')) {
       content = `
@@ -534,6 +1069,8 @@ const FlipbookPreview = ({ pages, pageName = "Name of the Book", onClose, isMobi
             </style>
             <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;600;700&family=Roboto:wght@400;500;700&family=Open+Sans:wght@400;600;700&display=swap" rel="stylesheet">
             ${interactionScript}
+            ${slideshowScript}
+            ${animationScript}
           </head>
           <body>${html}</body>
         </html>
@@ -561,6 +1098,8 @@ const FlipbookPreview = ({ pages, pageName = "Name of the Book", onClose, isMobi
             }
         </style>
         ${interactionScript}
+        ${slideshowScript}
+        ${animationScript}
         `;
 
       if (content.includes('</head>')) {
@@ -621,10 +1160,10 @@ const FlipbookPreview = ({ pages, pageName = "Name of the Book", onClose, isMobi
       const initId = ++currentInitIdRef.current;
       setSpreadZoom({ active: false, scale: 1, x: 0, y: 0, elementId: null });
 
-      if (pages.length === 0) return;
+      if (stablePages.length === 0) return;
 
       // Build pages
-      pages.forEach((pageHTML, index) => {
+      stablePages.forEach((pageHTML, index) => {
         const pageNumber = index + 1;
 
         const $page = $('<div />', {
@@ -695,7 +1234,7 @@ const FlipbookPreview = ({ pages, pageName = "Name of the Book", onClose, isMobi
         elevation: 50,
         duration: 800,
         page: 1,
-        pages: pages.length,
+        pages: stablePages.length,
         direction: 'ltr',
 
         when: {
@@ -760,7 +1299,7 @@ const FlipbookPreview = ({ pages, pageName = "Name of the Book", onClose, isMobi
       setLoadingError(error.message || 'Failed to initialize flipbook');
       initializationRef.current = false;
     }
-  }, [isSingleView, pages, loadScript, sanitizeHTML, playFlipSound]);
+  }, [isSingleView, stablePages, loadScript, sanitizeHTML, playFlipSound]);
 
   // Initialize on mount and view change
   useEffect(() => {
@@ -777,7 +1316,7 @@ const FlipbookPreview = ({ pages, pageName = "Name of the Book", onClose, isMobi
       clearTimeout(timer);
       destroyTurn();
     };
-  }, [isSingleView, pages]);
+  }, [isSingleView, stablePages]);
 
   // Navigation functions
   const goToPage = useCallback((page) => {
@@ -792,6 +1331,25 @@ const FlipbookPreview = ({ pages, pageName = "Name of the Book", onClose, isMobi
       turnInstanceRef.current.turn('next');
     }
   }, [isReady, isAnimating, currentPage, totalPages]);
+
+  // Broadcast View Changes for Animation
+  useEffect(() => {
+    // Async Theory: Defer broadcast slightly to ensure Turn.js and DOM are synced
+    const timer = setTimeout(() => {
+      if (!isReady || !flipbookRef.current) return;
+      
+      const iframes = flipbookRef.current.querySelectorAll('iframe');
+      iframes.forEach(iframe => {
+        if (iframe.contentWindow) {
+          iframe.contentWindow.postMessage({
+            type: 'flipbook-view-change',
+            view: currentView
+          }, '*');
+        }
+      });
+    }, 50);
+    return () => clearTimeout(timer);
+  }, [currentView, isReady]);
 
   // Listen for navigation messages from iframes
   useEffect(() => {

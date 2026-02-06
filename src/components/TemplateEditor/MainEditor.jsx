@@ -1,7 +1,7 @@
 // MainEditor.jsx - Updated Prop Passing for Double Page & Preview
 import React, { useState, useCallback, useRef, useEffect } from 'react';
 import axios from 'axios';
-import { useLocation, useOutletContext, useParams, useNavigate } from 'react-router-dom';
+import { useLocation, useOutletContext } from 'react-router-dom';
 import JSZip from 'jszip';
 import { jsPDF } from 'jspdf';
 import { saveAs } from 'file-saver';
@@ -40,10 +40,6 @@ const MainEditor = () => {
   const { generateThumbnail, getThumbnail } = useThumbnail();
   const { canUndo, canRedo, undo, redo, saveToHistory } = useHistory();
 
-  // React Router
-  const { folder: paramFolder, v_id: paramVId, id: paramId } = useParams();
-  const navigate = useNavigate();
-  
   // ==================== STATE ====================
   const [showTemplateModal, setShowTemplateModal] = useState(false);
   const [showPreview, setShowPreview] = useState(false);
@@ -52,12 +48,9 @@ const MainEditor = () => {
   const [isLoading, setIsLoading] = useState(false);
   const [loadingText, setLoadingText] = useState('Loading...');
 
+  // Hook up to Layout Navbar Export button
   // Hook up to Layout Navbar Export and Save buttons
-  const { setExportHandler, setSaveHandler, setHasUnsavedChanges, triggerSaveSuccess, isAutoSaveEnabled } = useOutletContext() || {};
-  
-  // Add isDirtyRef to track dirty state locally for auto-save
-  const isDirtyRef = useRef(false);
-  const autoSaveTimerRef = useRef(null);
+  const { setExportHandler, setSaveHandler } = useOutletContext() || {};
   
 
 
@@ -90,7 +83,6 @@ const MainEditor = () => {
      if (initialData.pageCount) {
          return Array.from({ length: initialData.pageCount }, (_, i) => ({
              id: i + 1,
-             v_id: 'page_' + Math.random().toString(36).substr(2, 9),
              name: `Page ${i + 1}`,
              html: '',
              thumbnail: null
@@ -102,7 +94,6 @@ const MainEditor = () => {
          if (tplPages.length > 0) {
              return tplPages.map((p, i) => ({
                  id: i + 1,
-                 v_id: p.v_id || 'page_' + Math.random().toString(36).substr(2, 9),
                  name: p.name || `Page ${i + 1}`,
                  html: p.html || '',
                  thumbnail: null
@@ -111,7 +102,6 @@ const MainEditor = () => {
      }
      return getRestoredState('pages', [{ 
        id: 1, 
-       v_id: 'page_' + Math.random().toString(36).substr(2, 9),
        name: 'Page 1', 
        html: '',
        thumbnail: null 
@@ -122,12 +112,11 @@ const MainEditor = () => {
   // Editor state
   const [pageName, setPageName] = useState(() => getRestoredState('pageName', "Untitled Document"));
   const [isEditingPageName, setIsEditingPageName] = useState(false);
-  const [isDoublePage, setIsDoublePage] = useState(() => getRestoredState('isDoublePage', false));
+  const [isDoublePage, setIsDoublePage] = useState(false);
   
   // Track the last successfully saved name
   const [lastSavedName, setLastSavedName] = useState(() => getRestoredState('lastSavedName', null));
-  const [lastSavedFolder, setLastSavedFolder] = useState(() => getRestoredState('lastSavedFolder', 'Recent Book'));
-  const [currentVId, setCurrentVId] = useState(() => getRestoredState('currentVId', null));
+  const [lastSavedFolder, setLastSavedFolder] = useState(() => getRestoredState('lastSavedFolder', 'Public Book'));
 
   // Panning State
   const [panOffset, setPanOffset] = useState({ x: 0, y: 0 });
@@ -137,18 +126,10 @@ const MainEditor = () => {
   // Element selection state
   const [selectedElement, setSelectedElement] = useState(null);
   const [selectedElementType, setSelectedElementType] = useState(null);
-  const [selectedPageIndex, setSelectedPageIndex] = useState(null);
+  const [selectedElementPage, setSelectedElementPage] = useState(null);
 
   // Page renaming state (for auto-rename after add/duplicate)
   const [editingPageId, setEditingPageId] = useState(null);
-  
-  // Menu expansion state for Double Page view
-  const [expandedMenuAction, setExpandedMenuAction] = useState(null);
-
-  const markAsDirty = useCallback(() => {
-      isDirtyRef.current = true;
-      if (setHasUnsavedChanges) setHasUnsavedChanges(true);
-  }, [setHasUnsavedChanges]);
 
   // Sync templateHTML with current page content on load/change/refresh
   useEffect(() => {
@@ -160,49 +141,6 @@ const MainEditor = () => {
      }
   }, [currentPage, pages]);
 
-  // Mark as dirty when creating a NEW flipbook (from Page Count or Template)
-  useEffect(() => {
-      if (initialData.pageCount || initialData.templateData) {
-          // Small timeout to ensure context is ready and initial render is done
-          setTimeout(markAsDirty, 100);
-      }
-  }, [initialData, markAsDirty]);
-
-  // Initial Auto-Save for New Flipbooks (Standardize default save)
-  useEffect(() => {
-    const handleInitialSave = async () => {
-        // Only if AutoSave is ON, we are creating a NEW book, and haven't saved yet
-        if (isAutoSaveEnabled && !initialData.loadBook && !lastSavedName && (initialData.pageCount || initialData.templateData)) {
-             try {
-                 // Generate Unique Name: Flipbook_YYYYMMDD_HHMMSS
-                 const now = new Date();
-                 const timeString = now.toISOString().replace(/[-:T.]/g, '').slice(0, 14); // Compact timestamp
-                 const uniqueName = `Flipbook_${timeString}`;
-                 const defaultFolder = 'My Flipbooks';
-                 
-                 // Update state to reflect this decision
-                 setPageName(uniqueName);
-                 setLastSavedFolder(defaultFolder);
-                 
-                 // Execute immediate save (overwrite=true because it's new, silent=true)
-                 // We need to pass the explicit name/folder because state updates are async
-                 if (executeSave) {
-                     if (pages.length > 0) {
-                         // We are inside useEffect[pages...], so pages is fresh.
-                         await executeSave(defaultFolder, true, true, uniqueName); 
-                     }
-                 }
-             } catch (e) {
-                 console.error("Initial auto-save failed", e);
-             }
-        }
-    };
-    
-    // Debounce slightly to ensure initialization
-    const timer = setTimeout(handleInitialSave, 500);
-    return () => clearTimeout(timer);
-  }, [isAutoSaveEnabled, initialData, lastSavedName, pages.length, navigate]); // Run once when these stabilize
-
   // Auto-save state on change
   useEffect(() => {
       if (pages.length > 0) {
@@ -210,17 +148,13 @@ const MainEditor = () => {
               pages,
               currentPage,
               pageName,
-              isDoublePage,
               lastSavedName,
               lastSavedFolder,
-              currentVId,
               timestamp: Date.now()
           };
           localStorage.setItem('editor_autosave', JSON.stringify(stateToSave));
       }
-  }, [pages, currentPage, pageName, isDoublePage, lastSavedName, lastSavedFolder, currentVId]);
-
- 
+  }, [pages, currentPage, pageName, lastSavedName, lastSavedFolder]);
 
   // Clear history for New Template / Page Count to allow autosave on refresh
   useEffect(() => {
@@ -229,92 +163,48 @@ const MainEditor = () => {
      }
   }, [initialData]);
 
-
-
-  // Load Book Logic (Open in Editor from URL or State)
+  // Load Book Logic (Open in Editor)
   useEffect(() => {
-    // Determine source: URL Params > Location State
-    const targetFolder = paramFolder ? decodeURIComponent(paramFolder) : initialData.loadBook?.folder;
-    // paramVId is the 2nd segment in /editor/Folder/v_id
-    const targetVal = paramVId ? decodeURIComponent(paramVId) : initialData.loadBook?.name;
-    const targetId = paramId; // Distinct /editor/:id route
-    if ((targetFolder && targetVal) || targetId) {
-        const loadBook = async () => {
-             setLoadingText('Loading Book...');
-             setIsLoading(true);
-             try {
-                 const storedUser = localStorage.getItem('user');
-                 if (!storedUser) return;
-                 const user = JSON.parse(storedUser);
-                 const backendUrl = import.meta.env.VITE_BACKEND_URL || 'http://localhost:5000';
-                 
-                 let res;
-                 let loadedByName = false;
-                 
-                 // Strategy: Try loading by ID (v_id) first.
-                 // targetVal (from URL) might be an ID or a Book Name.
-                 // paramId (from specific route) is definitely an ID.
-                 const idToTry = paramId || targetVal;
-
-                 try {
-                     res = await axios.get(`${backendUrl}/api/flipbook/get`, {
-                         params: { emailId: user.emailId, v_id: idToTry }
-                     });
-                 } catch (idErr) {
-                     // If ID lookup failed (404) AND we have a folder context (and no specific paramId), try Name lookup
-                     // This supports legacy URLs: /editor/Folder/My%20Book
-                     if (targetFolder && targetVal && !paramId) {
-                         res = await axios.get(`${backendUrl}/api/flipbook/get`, {
-                             params: { emailId: user.emailId, folderName: targetFolder, bookName: targetVal }
-                         });
-                         loadedByName = true;
-                     } else {
-                         throw idErr; // Propagate real error (Not Found)
-                     }
-                 }
-                 
-                 if (res && res.data.pages && res.data.pages.length > 0) {
-                      const loadedPages = res.data.pages.map((p, i) => ({
-                          id: i + 1,
-                          v_id: p.v_id,
-                          name: p.name || `Page ${i + 1}`,
-                          html: p.html,
-                          thumbnail: null
-                      }));
-                      setPages(loadedPages);
-                      
-                      const meta = res.data.meta || {};
-                      const resolvedName = meta.flipbookName || (loadedByName ? targetVal : "Untitled");
-                      const resolvedFolder = meta.folderName || (loadedByName ? targetFolder : "My Flipbooks");
-
-                      if (loadedByName && meta.v_id) {
-                           // Enforce v_id in URL
-                           navigate(`/editor/${encodeURIComponent(resolvedFolder)}/${meta.v_id}`, { replace: true });
-                           return;
-                      }
-
-                      setPageName(resolvedName);
-                      setLastSavedName(resolvedName);
-                      setLastSavedFolder(resolvedFolder);
-                      setCurrentVId(meta.v_id || null);
-                      setCurrentPage(0);
-                      
-                      // Clear dirty state
-                      isDirtyRef.current = false;
-                 }
-             } catch (err) {
-                 console.error("Failed to load book", err);
-                 // Show error as requested
-                 showAlert('error', 'Flipbook Not Found', 'The requested flipbook could not be found. Please check the URL.');
-                 // Optional: Redirect to home? 
-                 // navigate('/'); 
-             } finally {
-                 setIsLoading(false);
-             }
-        };
-        loadBook();
-    }
-  }, [paramFolder, paramVId, paramId, initialData.loadBook]);
+      if (initialData.loadBook) {
+          const { folder, name } = initialData.loadBook;
+          const loadBook = async () => {
+              setLoadingText('Loading Book...');
+              setIsLoading(true);
+              try {
+                  const storedUser = localStorage.getItem('user');
+                  if (!storedUser) return;
+                  const user = JSON.parse(storedUser);
+                  const backendUrl = import.meta.env.VITE_BACKEND_URL || 'http://localhost:5000';
+                  
+                  const res = await axios.get(`${backendUrl}/api/flipbook/get`, {
+                      params: { emailId: user.emailId, folderName: folder, bookName: name }
+                  });
+                  
+                  if (res.data.pages && res.data.pages.length > 0) {
+                       const loadedPages = res.data.pages.map((p, i) => ({
+                           id: i + 1,
+                           name: p.name || `Page ${i + 1}`,
+                           html: p.html,
+                           thumbnail: null
+                       }));
+                       setPages(loadedPages);
+                       setPageName(name);
+                       setLastSavedName(name);
+                       setLastSavedFolder(folder);
+                       setCurrentPage(0);
+                       
+                       window.history.replaceState({}, document.title); 
+                  }
+              } catch (err) {
+                  console.error("Failed to load book", err);
+                  // showAlert('error', 'Load Failed', 'Could not load flipbook.');
+              } finally {
+                  setIsLoading(false);
+              }
+          };
+          loadBook();
+      }
+  }, [initialData.loadBook]);
 
   // Save Modal State
   const [showSaveModal, setShowSaveModal] = useState(false);
@@ -326,7 +216,7 @@ const MainEditor = () => {
   // Fetch folders when modal opens
   useEffect(() => {
     if (showSaveModal) {
-        setTargetFolder(''); // Reset selection
+        setTargetFolder('Public Book'); // Default to Public Book
         setIsCreatingFolder(false);
         setNewFolderInput('');
 
@@ -341,13 +231,6 @@ const MainEditor = () => {
                     });
                     if (res.data.folders) {
                         setAvailableFolders(res.data.folders);
-                        
-                        // Auto-switch to "Create Folder" if no valid folders exist
-                        const validFolders = res.data.folders.filter(f => f !== 'Recent Book');
-                        if (validFolders.length === 0) {
-                            setIsCreatingFolder(true);
-                            setNewFolderInput('My Flipbooks');
-                        }
                     }
                 }
             } catch (err) {
@@ -382,29 +265,34 @@ const MainEditor = () => {
 
 
 
-  const [popupPreview, setPopupPreview] = useState({
-    isOpen: false,
-    content: '',
-    elementType: 'text',
-    elementSource: '',
-    styles: {}
-  });
-
   const [closePanelsSignal, setClosePanelsSignal] = useState(0);
 
-  // Memoize flipbook pages at top level to follow Rules of Hooks
-  const flipbookPages = React.useMemo(() => pages.map(p => p.html), [pages]);
+  // Lifted Popup state to manage global visibility over workspace only
+  const [popupPreviewState, setPopupPreviewState] = useState({
+    isOpen: false,
+    content: '',
+    styles: {},
+    elementType: 'image',
+    elementSource: '',
+    renderId: 0
+  });
+
+  const [activePopupElement, setActivePopupElement] = useState(null);
 
   const handlePopupPreviewUpdate = useCallback((data) => {
-    setPopupPreview(prev => ({
-      ...prev,
-      isOpen: data.isOpen,
-      content: data.content !== undefined ? data.content : prev.content,
-      elementType: data.elementType || prev.elementType,
-      elementSource: data.elementSource || prev.elementSource,
-      styles: data.styles ? { ...prev.styles, ...data.styles } : prev.styles
-    }));
+    setPopupPreviewState(prev => {
+      // Toggle logic: If we are opening a 'preview' and it's already open with 'preview', close it.
+      if (data.isOpen && data.mode === 'preview' && prev.isOpen && prev.mode === 'preview') {
+        return { ...prev, isOpen: false };
+      }
+      return {
+        ...prev,
+        ...data
+      };
+    });
   }, []);
+
+
 
   const showAlert = useCallback((type, title, message, options = {}) => {
     setAlertState({
@@ -428,19 +316,14 @@ const MainEditor = () => {
   const saveHandlerRef = useRef(null);
   const exportHandlerRef = useRef(null);
 
-  const executeSave = useCallback(async (folderName, overwrite = false, silent = false, overrideName = null) => {
-    // Determine the name to save as (use override if provided, else current state)
-    const nameToSave = overrideName || pageName;
-    
-    if (!silent) {
-        setShowSaveModal(false); // Close modal immediately for better UX
-        setLoadingText('Saving...');
-        setIsLoading(true);
-    }
+  const executeSave = useCallback(async (folderName, overwrite = false) => {
+    setShowSaveModal(false); // Close modal immediately for better UX
+    setLoadingText('Saving...');
+    setIsLoading(true);
     try {
       const storedUser = localStorage.getItem('user');
       if (!storedUser) {
-         if (!silent) showAlert('error', 'Authentication Error', 'User not found. Please log in again.');
+         showAlert('error', 'Authentication Error', 'User not found. Please log in again.');
          return;
       }
       const user = JSON.parse(storedUser);
@@ -453,9 +336,7 @@ const MainEditor = () => {
       // RENAME LOGIC: If saving exiting book to same folder with DIFFERENT name
       // Normalize strings for comparison (handle simple mismatches)
       const isSameFolder = lastSavedFolder && folderName && (lastSavedFolder.trim().toLowerCase() === folderName.trim().toLowerCase());
-      const isNameChanged = lastSavedName && (nameToSave.trim() !== lastSavedName.trim());
-
-      let pagesPayloadSource = pages;
+      const isNameChanged = lastSavedName && (pageName.trim() !== lastSavedName.trim());
 
       if (!overwrite && isSameFolder && isNameChanged) {
            // Attempt to rename the directory first
@@ -464,28 +345,11 @@ const MainEditor = () => {
                   emailId,
                   folderName: lastSavedFolder, // Use original casing for reliability
                   oldName: lastSavedName,
-                  newName: nameToSave.trim(),
-                  v_id: currentVId
+                  newName: pageName.trim()
                });
                // If rename successful, the "new" name now exists (it's the renamed folder).
                // We must overwrite it with the current content.
                shouldOverwrite = true;
-               
-               // UPDATE FRONTEND STATE & CONTENT
-               // We must update the asset URLs in the pages to match the new folder name
-               // otherwise the immediately following 'save' will write old URLs back to disk.
-               // We assume URLs contain /My_Flipbooks/{Folder}/{BookName}/
-               const oldPathSegment = `/My_Flipbooks/${lastSavedFolder}/${lastSavedName}/`;
-               const newPathSegment = `/My_Flipbooks/${lastSavedFolder}/${nameToSave.trim()}/`;
-               
-               const updatedPages = pages.map(p => ({
-                   ...p,
-                   html: p.html ? p.html.split(oldPathSegment).join(newPathSegment) : ''
-               }));
-               
-               setPages(updatedPages);
-               pagesPayloadSource = updatedPages;
-
            } catch (renameErr) {
                // If rename fails (e.g. name exists), we fall through to normal save (which handles conflicts)
                // But if it's a conflict, the Save call below will trigger the 409 flow.
@@ -494,117 +358,50 @@ const MainEditor = () => {
            }
       }
 
-      if (lastSavedName && (nameToSave.trim() === lastSavedName.trim()) && isSameFolder) {
+      if (lastSavedName && (pageName.trim() === lastSavedName.trim()) && isSameFolder) {
           shouldOverwrite = true;
       }
 
       // Prepare pages
-      const pagesToSave = pagesPayloadSource.map(p => ({
+      const pagesToSave = pages.map(p => ({
           pageName: p.name,
-          content: p.html,
-          v_id: p.v_id  // Include page v_id to preserve it across renames
+          content: p.html
       }));
       
-      // Reset dirty ref BEFORE async operation to capture any changes made DURING save
-      isDirtyRef.current = false;
-
-      const saveRes = await axios.post(`${backendUrl}/api/flipbook/save`, {
+      await axios.post(`${backendUrl}/api/flipbook/save`, {
           emailId,
-          flipbookName: nameToSave.trim(), 
+          flipbookName: pageName.trim(), 
           pages: pagesToSave,
           overwrite: shouldOverwrite,
-          folderName: folderName.trim(),
-          v_id: paramVId  // Include v_id for rename detection
+          folderName: folderName.trim()
       });
       
-      const savedVId = saveRes.data.v_id;
-      
-      setLastSavedName(nameToSave);
+      setLastSavedName(pageName);
       setLastSavedFolder(folderName);
-      setCurrentVId(savedVId);
-      if (setHasUnsavedChanges) setHasUnsavedChanges(false);
-      
-      // If we used an override name, ensure state matches (though caller usually sets it too)
-      if (overrideName && pageName !== overrideName) {
-           setPageName(overrideName);
-      }
-      
+      // setShowSaveModal(false); // Already closed at start
       closeAlert(); 
-      if (!silent) {
-          if (triggerSaveSuccess) {
-              triggerSaveSuccess({ name: nameToSave, folder: folderName });
-          } else {
-              showAlert('success', 'Saved Successfully', `Saved to ${folderName}/${nameToSave}`);
-          }
-      }
-      
-// Update URL if name/folder changed during save (e.g. Save As or Rename)
-      if (folderName && savedVId) {
-           navigate(`/editor/${encodeURIComponent(folderName)}/${savedVId}`, { replace: true });
-      } else if (folderName && nameToSave) {
-          navigate(`/editor/${encodeURIComponent(folderName)}/${encodeURIComponent(nameToSave)}`, { replace: true });
-      }
-      
-      return savedVId;
-
+      showAlert('success', 'Saved Successfully', `Saved to ${folderName}/${pageName}`);
     } catch (error) {
-      // Restore dirty state on failure so we retry
-      isDirtyRef.current = true;
-      
       if (error.response && error.response.status === 409) {
-          if (!silent) {
-              showAlert('warning', 'Flipbook Exists', 'A flipbook with this name already exists in this folder. Do you want to overwrite it?', {
-                  showCancel: true,
-                  confirmText: 'Overwrite',
-                  cancelText: 'Cancel',
-                  onConfirm: () => executeSave(folderName, true, false, overrideName)
-              });
-          } else {
-              // Even during silent save (auto-save), if name exists, we must revert and warn
-              showAlert('error', 'Name Already Exists', 'This name already exists in the folder. Please use a different name.');
-              
-              // Revert to old name
-              if (lastSavedName) {
-                  setPageName(lastSavedName);
-              }
-          }
+          showAlert('warning', 'Flipbook Exists', 'A flipbook with this name already exists in this folder. Do you want to overwrite it?', {
+              showCancel: true,
+              confirmText: 'Overwrite',
+              cancelText: 'Cancel',
+              onConfirm: () => executeSave(folderName, true)
+          });
           return;
       }
       console.error("Save failed:", error);
-      if (!silent) showAlert('error', 'Save Failed', `Failed to save flipbook. ${error.response?.data?.message || error.message}`);
+      showAlert('error', 'Save Failed', `Failed to save flipbook. ${error.response?.data?.message || error.message}`);
     } finally {
-      if (!silent) setIsLoading(false);
+      setIsLoading(false);
     }
-  }, [pages, pageName, showAlert, closeAlert, lastSavedName, lastSavedFolder, triggerSaveSuccess, setHasUnsavedChanges]);
-
-  // ==================== AUTO SAVE TO BACKEND ====================
-  useEffect(() => {
-    // Only auto-save if enabled, we have a context, and we have a previous save (to rename FROM)
-    if (isAutoSaveEnabled && lastSavedName && lastSavedFolder) {
-        if (autoSaveTimerRef.current) clearTimeout(autoSaveTimerRef.current);
-        
-        autoSaveTimerRef.current = setTimeout(() => {
-             const nameChanged = pageName !== lastSavedName;
-             // Trigger if content is dirty OR name has changed
-             if (isDirtyRef.current || nameChanged) {
-                 console.log(`[Auto-save] Triggering save. Dirty: ${isDirtyRef.current}, NameChanged: ${nameChanged}`);
-                 // Auto-save silently
-                 // If name changed, pass overwrite=false to allow executeSave's rename logic to run
-                 // If name same, pass overwrite=true to just save content
-                 executeSave(lastSavedFolder, !nameChanged, true);
-             }
-        }, 2000); // 2 seconds debounce
-        
-        return () => {
-            if (autoSaveTimerRef.current) clearTimeout(autoSaveTimerRef.current);
-        };
-    }
-  }, [pages, pageName, lastSavedName, lastSavedFolder, isAutoSaveEnabled, executeSave]);
+  }, [pages, pageName, showAlert, closeAlert, lastSavedName, lastSavedFolder]);
 
   const handleSaveFlipbook = useCallback(() => {
      // Quick Save condition: Name hasn't changed AND we have a last saved folder
      if (pageName === lastSavedName && lastSavedFolder) {
-         executeSave(lastSavedFolder, true, false);
+         executeSave(lastSavedFolder, true);
      } else {
          // Show options to select folder
          setShowSaveModal(true);
@@ -791,9 +588,8 @@ const MainEditor = () => {
       setCurrentPage(previousState.currentPage);
       setPageName(previousState.pageName);
       setTemplateHTML(previousState.pages[previousState.currentPage]?.html || '');
-      markAsDirty();
     }
-  }, [undo, markAsDirty]);
+  }, [undo]);
 
   const handleRedo = useCallback(() => {
     const nextState = redo();
@@ -802,9 +598,8 @@ const MainEditor = () => {
         setCurrentPage(nextState.currentPage);
         setPageName(nextState.pageName);
         setTemplateHTML(nextState.pages[nextState.currentPage]?.html || '');
-        markAsDirty();
     }
-  }, [redo, markAsDirty]);
+  }, [redo]);
 
   // ==================== PANNING LOGIC ====================
   useEffect(() => {
@@ -855,13 +650,6 @@ const MainEditor = () => {
     };
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, [showPageSettingsMenu]);
-
-  // Reset expanded menu action when menu closes
-  useEffect(() => {
-    if (!showPageSettingsMenu) {
-        setExpandedMenuAction(null);
-    }
   }, [showPageSettingsMenu]);
 
   const handleMouseDown = (e) => {
@@ -927,12 +715,11 @@ const MainEditor = () => {
       });
       // Immediate generation for loaded template (50ms wait for state, 100ms debounce)
       setTimeout(() => generateThumbnail(html, pages[currentPage].id, 100), 50);
-      markAsDirty();
     } catch (error) {
       console.error('Failed to load:', error);
       showAlert('error', 'Load Failed', 'Failed to load the selected template. Please try again.');
     }
-  }, [currentPage, generateThumbnail, pages, markAsDirty]);
+  }, [currentPage, generateThumbnail, pages]);
 
   // ==================== PAGE MANAGEMENT ====================
   const switchToPage = useCallback((index) => {
@@ -989,7 +776,6 @@ const MainEditor = () => {
         // Create new page with the pre-generated ID
         const newPage = { 
             id: newPageId, 
-            v_id: Date.now().toString(36) + Math.random().toString(36).substr(2),
             name: newName, 
             html: '', 
             thumbnail: null 
@@ -1006,8 +792,6 @@ const MainEditor = () => {
         setTemplateHTML(''); 
     }
     
-    markAsDirty();
-
     // Trigger rename mode for the newly added page
     setTimeout(() => {
       setEditingPageId(newPageId);
@@ -1101,13 +885,7 @@ const MainEditor = () => {
     }
 
     const newPageId = Date.now();
-    const newPage = { 
-        id: newPageId, 
-        v_id: Date.now().toString(36) + Math.random().toString(36).substr(2),
-        name: newName, 
-        html: sourcePage.html, 
-        thumbnail: sourcePage.thumbnail 
-    };
+    const newPage = { id: newPageId, name: newName, html: sourcePage.html, thumbnail: sourcePage.thumbnail };
     
     setPages(prev => {
         const newPages = [...prev];
@@ -1117,8 +895,6 @@ const MainEditor = () => {
     setCurrentPage(sourceIndex + 1);
     setTemplateHTML(sourcePage.html);
     
-    markAsDirty();
-
     // Trigger rename mode for the duplicated page
     setTimeout(() => {
       setEditingPageId(newPageId);
@@ -1137,7 +913,6 @@ const MainEditor = () => {
                 return newPages;
              });
              if (index === currentPage) setTemplateHTML(blankHTML);
-             markAsDirty();
              closeAlert();
           }
       });
@@ -1167,47 +942,49 @@ const MainEditor = () => {
             setPages(newPages);
             setCurrentPage(newCurrentPage);
             setTemplateHTML(newPages[newCurrentPage]?.html || '');
-            markAsDirty();
             closeAlert();
         }
     });
   }, [pages, currentPage, showAlert, closeAlert]);
 
   // ==================== TEMPLATE EDITING ====================
-  const handleTemplateChange = useCallback((newHTML) => {
-    setTemplateHTML(newHTML);
-    setPages(prev => {
-      const updated = [...prev];
-      updated[currentPage] = { ...updated[currentPage], html: newHTML };
-      return updated;
-    });
-    markAsDirty();
-    // Reduced debounce for faster typing feedback (800ms)
-    generateThumbnail(newHTML, pages[currentPage].id, 800);
-  }, [currentPage, generateThumbnail, pages]);
-
-  const handlePageUpdate = useCallback((index, newHTML, shouldRefresh = false) => {
-    setPages(prev => {
-        const updated = [...prev];
-        if (updated[index]) {
-            updated[index] = { ...updated[index], html: newHTML };
-        }
-        return updated;
-    });
-    if (index === currentPage) {
+  const handleTemplateChange = useCallback((newHTML, targetIdx = currentPage) => {
+    if (targetIdx === currentPage) {
         setTemplateHTML(newHTML);
     }
-    if (pages[index]) {
-       generateThumbnail(newHTML, pages[index].id, 800);
+    
+    setPages(prev => {
+      const updated = [...prev];
+      if (updated[targetIdx]) {
+          updated[targetIdx] = { ...updated[targetIdx], html: newHTML };
+      }
+      return updated;
+    });
+
+    if (pages[targetIdx]) {
+        generateThumbnail(newHTML, pages[targetIdx].id, 800);
     }
-    markAsDirty();
-  }, [currentPage, generateThumbnail, pages, markAsDirty]);
+  }, [currentPage, generateThumbnail, pages]);
 
   const handleElementSelect = useCallback((element, type, pageIndex) => {
+    // Remove tag from old selection
+    if (selectedElement && selectedElement.ownerDocument) {
+      try {
+        selectedElement.removeAttribute('data-selection-active');
+      } catch (e) {}
+    }
+
     setSelectedElement(element);
     setSelectedElementType(type);
-    setSelectedPageIndex(pageIndex !== undefined ? pageIndex : currentPage);
-  }, [currentPage]);
+    setSelectedElementPage(pageIndex);
+
+    // Tag new selection
+    if (element) {
+      try {
+        element.setAttribute('data-selection-active', 'true');
+      } catch (e) {}
+    }
+  }, [selectedElement]);
 
   // Debounce ref for element updates
   const elementUpdateDebounceRef = useRef(null);
@@ -1216,58 +993,76 @@ const MainEditor = () => {
     const targetElement = options?.newElement || selectedElement;
     
     if (targetElement) {
-      // Use the element's ownerDocument to ensure we get the correct page's HTML
       const doc = targetElement.ownerDocument;
       
       if (doc && doc.documentElement) {
         const html = doc.documentElement.outerHTML;
-        const targetIndex = selectedPageIndex !== null ? selectedPageIndex : currentPage;
+        
+        // Determine the correct page index for this element
+        let targetPageIndex = selectedElementPage;
+        
+        // Fallback: Check if we can find page index from the iframe title
+        if (targetPageIndex === null || targetPageIndex === undefined) {
+            const iframes = document.querySelectorAll('iframe');
+            const owningIframe = Array.from(iframes).find(iframe => iframe.contentDocument === doc);
+            if (owningIframe && owningIframe.title) {
+                const match = owningIframe.title.match(/Page (\d+)/);
+                if (match) targetPageIndex = parseInt(match[1]) - 1;
+            }
+        }
+
+        // If still not found, use currentPage
+        if (targetPageIndex === null || targetPageIndex === undefined) {
+            targetPageIndex = currentPage;
+        }
         
         // Prevent re-render of iframe by syncing internal ref first
         if (!options?.shouldRefresh && htmlEditorRef.current) {
-            htmlEditorRef.current.setInternalHTML(html);
+            htmlEditorRef.current.setInternalHTML(html, targetPageIndex);
         }
 
-        // If it's a structural refresh (like icon replacement), update immediately
         if (options?.shouldRefresh) {
             if (elementUpdateDebounceRef.current) clearTimeout(elementUpdateDebounceRef.current);
-            handlePageUpdate(targetIndex, html, options?.shouldRefresh);
+            handleTemplateChange(html, targetPageIndex);
             
-            // If a new element was created (icon replacement), re-select it after refresh
+            // Re-select logic...
             if (options?.newElement) {
-                // Wait for iframe to refresh and event listeners to be reattached
                 setTimeout(() => {
-                    const iframe = document.querySelector('iframe[title="Template Editor"]');
+                    const iframe = Array.from(document.querySelectorAll('iframe[title="Template Editor"], iframe[title^="Page"]'))
+                        .find(f => f.contentDocument && f.contentDocument.contains(options.newElement));
                     if (iframe && iframe.contentDocument) {
                         const doc = iframe.contentDocument;
-                        // Find the new element in the refreshed iframe
-                        // Use data-editable and position/attributes to locate it
                         const svgs = doc.querySelectorAll('svg[data-editable="true"]');
-                        // Find matching SVG by comparing key attributes
                         const newElementInIframe = Array.from(svgs).find(svg => {
-                            // Match by similar attributes (width, height, position)
                             return svg.getAttribute('width') === options.newElement.getAttribute('width') &&
                                    svg.getAttribute('height') === options.newElement.getAttribute('height');
-                        }) || svgs[0]; // Fallback to first SVG if no exact match
-                        
-                        if (newElementInIframe) {
-                            // Trigger selection
-                            newElementInIframe.click();
-                        }
+                        }) || svgs[0];
+                        if (newElementInIframe) newElementInIframe.click();
                     }
-                }, 150); // Wait for setupEditableElements to complete
+                }, 150);
             }
             return;
         }
         
-        // Otherwise, debounce the heavy state update (Sidebar re-render)
         if (elementUpdateDebounceRef.current) clearTimeout(elementUpdateDebounceRef.current);
         elementUpdateDebounceRef.current = setTimeout(() => {
-            handlePageUpdate(targetIndex, html);
+            handleTemplateChange(html, targetPageIndex);
         }, 500);
       }
     }
-  }, [selectedElement, selectedPageIndex, currentPage, handlePageUpdate]);
+  }, [selectedElement, selectedElementPage, currentPage, handleTemplateChange]);
+
+  const handlePopupUpdate = useCallback(() => {
+    if (activePopupElement?.ownerDocument?.documentElement) {
+      const newContent = activePopupElement.ownerDocument.documentElement.outerHTML;
+      handlePopupPreviewUpdate({ content: newContent });
+      if (selectedElement) {
+        selectedElement.setAttribute('data-interaction-content', newContent);
+        // Call handleElementUpdate to trigger state sync and history
+        handleElementUpdate();
+      }
+    }
+  }, [activePopupElement, selectedElement, handlePopupPreviewUpdate, handleElementUpdate]);
 
   const openPreview = useCallback(() => {
     setPages(pages.map((page, idx) => idx === currentPage ? { ...page, html: templateHTML } : page));
@@ -1278,8 +1073,7 @@ const MainEditor = () => {
 
   const renamePage = useCallback((pageId, newName) => {
     setPages(prev => prev.map(p => p.id === pageId ? { ...p, name: newName } : p));
-    markAsDirty();
-  }, [markAsDirty]);
+  }, []);
 
   // Handle pan start events bubbled up from iframe
   const handleIframePanStart = useCallback((event) => {
@@ -1310,8 +1104,6 @@ const MainEditor = () => {
         return newPages;
     });
 
-    markAsDirty();
-
     // Update current page selection if the current page was moved
     if (currentPage === fromIndex) {
         setCurrentPage(toIndex);
@@ -1336,7 +1128,21 @@ const MainEditor = () => {
   const movePageToFirst = useCallback((index) => movePage(index, 0), [movePage]);
   const movePageToLast = useCallback((index) => movePage(index, pages.length - 1), [movePage, pages.length]);
 
-
+  const handlePageUpdate = useCallback((index, newHTML) => {
+    setPages(prev => {
+        const updated = [...prev];
+        if (updated[index]) {
+            updated[index] = { ...updated[index], html: newHTML };
+        }
+        return updated;
+    });
+    if (index === currentPage) {
+        setTemplateHTML(newHTML);
+    }
+    if (pages[index]) {
+       generateThumbnail(newHTML, pages[index].id, 800);
+    }
+  }, [currentPage, generateThumbnail, pages]);
 
   const handlePreviousPage = useCallback(() => {
     if (!isDoublePage) {
@@ -1458,7 +1264,7 @@ const MainEditor = () => {
         <TopToolbar
           pageName={pageName}
           isEditingPageName={isEditingPageName}
-          setPageName={(name) => { setPageName(name); markAsDirty(); }}
+          setPageName={setPageName}
           setIsEditingPageName={setIsEditingPageName}
           canUndo={canUndo}
           canRedo={canRedo}
@@ -1487,7 +1293,7 @@ const MainEditor = () => {
               style={{
                 transform: `translate(${panOffset.x}px, ${panOffset.y}px)`,
                 transition: isPanning ? 'none' : 'transform 0.2s ease-out',
-                filter: popupPreview.isOpen ? 'blur(8px)' : 'none'
+                filter: popupPreviewState.isOpen ? 'blur(8px)' : 'none'
               }}
               className="transition-all duration-300"
             >
@@ -1619,192 +1425,99 @@ const MainEditor = () => {
                   className="bg-white hover:bg-gray-100 text-gray-700 p-2 rounded-lg shadow-md border border-gray-200 transition-all"
                   title="Page Settings"
                 >
-                  <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="lucide lucide-settings-icon lucide-settings"><path d="M9.671 4.136a2.34 2.34 0 0 1 4.659 0 2.34 2.34 0 0 0 3.319 1.915 2.34 2.34 0 0 1 2.33 4.033 2.34 2.34 0 0 0 0 3.831 2.34 2.34 0 0 1-2.33 4.033 2.34 2.34 0 0 0-3.319 1.915 2.34 2.34 0 0 1-4.659 0 2.34 2.34 0 0 0-3.32-1.915 2.34 2.34 0 0 1-2.33-4.033 2.34 2.34 0 0 0 0-3.831A2.34 2.34 0 0 1 6.35 6.051a2.34 2.34 0 0 0 3.319-1.915"/><circle cx="12" cy="12" r="3"/></svg>
+                  <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-settings-icon lucide-settings"><path d="M9.671 4.136a2.34 2.34 0 0 1 4.659 0 2.34 2.34 0 0 0 3.319 1.915 2.34 2.34 0 0 1 2.33 4.033 2.34 2.34 0 0 0 0 3.831 2.34 2.34 0 0 1-2.33 4.033 2.34 2.34 0 0 0-3.319 1.915 2.34 2.34 0 0 1-4.659 0 2.34 2.34 0 0 0-3.32-1.915 2.34 2.34 0 0 1-2.33-4.033 2.34 2.34 0 0 0 0-3.831A2.34 2.34 0 0 1 6.35 6.051a2.34 2.34 0 0 0 3.319-1.915"/><circle cx="12" cy="12" r="3"/></svg>
                 </button>
 
                 {/* Dropdown Menu */}
                 {showPageSettingsMenu && (
                   <div className="absolute top-full right-0 mt-2 w-48 bg-white rounded-xl shadow-xl border border-gray-100 p-2 z-[9999] flex flex-col gap-1">
-                    {isDoublePage && currentPage !== 0 ? (
-                      // Double Page Menu Layout
-                      <>
-                        <div className="px-2 py-1.5 text-sm font-bold text-gray-900 border-b border-gray-100 mb-1 flex items-center justify-between">
-                            Page Settings
-                            <div className="h-px bg-gray-200 w-8"></div>
-                        </div>
-
-                        {/* Helper vars for indices */}
-                        {(() => {
-                            const leftIdx = (currentPage % 2 !== 0) ? currentPage : currentPage - 1;
-                            const rightIdx = leftIdx + 1;
-                            const hasRight = rightIdx < pages.length;
-
-                            const ButtonRow = ({ onLeft, onRight }) => (
-                                <div className="flex gap-2 px-1 mb-2 animate-in slide-in-from-top-1 fade-in duration-200">
-                                    <button onClick={(e) => { e.stopPropagation(); onLeft(); setShowPageSettingsMenu(false); }} className="flex-1 bg-gray-100 hover:bg-gray-200 text-[#3b4190] font-bold py-1.5 rounded text-sm transition-colors">L</button>
-                                    <button onClick={(e) => { e.stopPropagation(); onRight(); setShowPageSettingsMenu(false); }} disabled={!hasRight} className="flex-1 bg-gray-100 hover:bg-gray-200 text-[#3b4190] font-bold py-1.5 rounded text-sm transition-colors disabled:opacity-40 disabled:cursor-not-allowed">R</button>
-                                </div>
-                            );
-                            
-                            const ExpandableMenuItem = ({ id, label, icon, onLeft, onRight }) => {
-                                const isExpanded = expandedMenuAction === id;
-                                return (
-                                    <>
-                                        <button
-                                            onClick={(e) => { 
-                                                e.stopPropagation(); 
-                                                setExpandedMenuAction(isExpanded ? null : id);
-                                            }}
-                                            className={`flex items-center justify-between w-full px-3 py-2 text-xs font-medium rounded-lg text-left transition-colors
-                                                ${isExpanded ? 'bg-gray-100 text-gray-900' : 'text-gray-700 hover:bg-gray-50'}
-                                            `}
-                                        >
-                                            <div className="flex items-center gap-2.5">
-                                                {icon}
-                                                {label}
-                                            </div>
-                                            <svg 
-                                                width="12" 
-                                                height="12" 
-                                                viewBox="0 0 24 24" 
-                                                fill="none" 
-                                                stroke="currentColor" 
-                                                strokeWidth="2" 
-                                                strokeLinecap="round" 
-                                                strokeLinejoin="round"
-                                                className={`transition-transform duration-200 ${isExpanded ? 'rotate-180' : ''}`}
-                                            >
-                                                <polyline points="6 9 12 15 18 9"></polyline>
-                                            </svg>
-                                        </button>
-                                        {isExpanded && <ButtonRow onLeft={onLeft} onRight={onRight} />}
-                                    </>
-                                );
-                            };
-
-                            return (
-                             <>
-                                {/* Add Page */}
-                                <ExpandableMenuItem 
-                                    id="add"
-                                    label="Add Page"
-                                    icon={<Plus size={14} />}
-                                    onLeft={() => addNewPage(leftIdx)}
-                                    onRight={() => addNewPage(rightIdx)}
-                                />
-
-                                {/* Duplicate */}
-                                <ExpandableMenuItem 
-                                    id="duplicate"
-                                    label="Duplicate"
-                                    icon={<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>}
-                                    onLeft={() => duplicatePage(leftIdx)}
-                                    onRight={() => duplicatePage(rightIdx)}
-                                />
-
-                                {/* Template */}
-                                <ExpandableMenuItem 
-                                    id="template"
-                                    label="Template"
-                                    icon={<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><line x1="3" y1="9" x2="21" y2="9"></line><line x1="9" y1="21" x2="9" y2="9"></line></svg>}
-                                    onLeft={() => { switchToPage(leftIdx); setShowTemplateModal(true); }}
-                                    onRight={() => { switchToPage(rightIdx); setShowTemplateModal(true); }}
-                                />
-
-                                <div className="h-px bg-gray-100 my-1"></div>
-
-                                {/* Clear */}
-                                <ExpandableMenuItem 
-                                    id="clear"
-                                    label="Clear"
-                                    icon={<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="4.93" y1="4.93" x2="19.07" y2="19.07"></line></svg>}
-                                    onLeft={() => clearPage(leftIdx)}
-                                    onRight={() => clearPage(rightIdx)}
-                                />
-
-                                {/* Delete */}
-                                <ExpandableMenuItem 
-                                    id="delete"
-                                    label="Delete"
-                                    icon={<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>}
-                                    onLeft={() => deletePage(leftIdx)}
-                                    onRight={() => deletePage(rightIdx)}
-                                />
-                             </>
-                            );
-                        })()}
-                      </>
-                    ) : (
-                      // Single Page Layout (Original)
-                      <>
-                        <button
-                          onClick={() => { addNewPage(currentPage); setShowPageSettingsMenu(false); }}
-                          className="flex items-center gap-2.5 px-3 py-2 text-xs font-medium text-gray-700 hover:bg-gray-50 rounded-lg text-left"
-                        >
-                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                            <line x1="12" y1="5" x2="12" y2="19"></line>
-                            <line x1="5" y1="12" x2="19" y2="12"></line>
-                          </svg>
-                          Add Page
-                        </button>
-                        <button
-                          onClick={() => { duplicatePage(currentPage); setShowPageSettingsMenu(false); }}
-                          className="flex items-center gap-2.5 px-3 py-2 text-xs font-medium text-gray-700 hover:bg-gray-50 rounded-lg text-left"
-                        >
-                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                            <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
-                            <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
-                          </svg>
-                          Duplicate
-                        </button>
-                        <button
-                          onClick={() => { setShowTemplateModal(true); setShowPageSettingsMenu(false); }}
-                          className="flex items-center gap-2.5 px-3 py-2 text-xs font-medium text-gray-700 hover:bg-gray-50 rounded-lg text-left"
-                        >
-                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                            <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
-                            <line x1="3" y1="9" x2="21" y2="9"></line>
-                            <line x1="9" y1="21" x2="9" y2="9"></line>
-                          </svg>
-                          Template
-                        </button>
-                        
-                        <div className="h-px bg-gray-100 my-1"></div>
-                        
-                        <button
-                          onClick={() => { clearPage(currentPage); setShowPageSettingsMenu(false); }}
-                          className="flex items-center gap-2.5 px-3 py-2 text-xs font-medium text-gray-700 hover:bg-gray-50 rounded-lg text-left"
-                        >
-                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                            <circle cx="12" cy="12" r="10"></circle>
-                            <line x1="4.93" y1="4.93" x2="19.07" y2="19.07"></line>
-                          </svg>
-                          Clear
-                        </button>
-                        <button
-                          onClick={() => { deletePage(currentPage); setShowPageSettingsMenu(false); }}
-                          className="flex items-center gap-2.5 px-3 py-2 text-xs font-medium text-red-500 hover:bg-red-50 rounded-lg text-left"
-                        >
-                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                            <polyline points="3 6 5 6 21 6"></polyline>
-                            <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
-                          </svg>
-                          Delete
-                        </button>
-                      </>
-                    )}
+                    <button
+                      onClick={() => { addNewPage(currentPage); setShowPageSettingsMenu(false); }}
+                      className="flex items-center gap-2.5 px-3 py-2 text-xs font-medium text-gray-700 hover:bg-gray-50 rounded-lg text-left"
+                    >
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <line x1="12" y1="5" x2="12" y2="19"></line>
+                        <line x1="5" y1="12" x2="19" y2="12"></line>
+                      </svg>
+                      Add Page
+                    </button>
+                    <button
+                      onClick={() => { duplicatePage(currentPage); setShowPageSettingsMenu(false); }}
+                      className="flex items-center gap-2.5 px-3 py-2 text-xs font-medium text-gray-700 hover:bg-gray-50 rounded-lg text-left"
+                    >
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+                        <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+                      </svg>
+                      Duplicate
+                    </button>
+                    <button
+                      onClick={() => { setShowTemplateModal(true); setShowPageSettingsMenu(false); }}
+                      className="flex items-center gap-2.5 px-3 py-2 text-xs font-medium text-gray-700 hover:bg-gray-50 rounded-lg text-left"
+                    >
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
+                        <line x1="3" y1="9" x2="21" y2="9"></line>
+                        <line x1="9" y1="21" x2="9" y2="9"></line>
+                      </svg>
+                      Template
+                    </button>
+                    
+                    <div className="h-px bg-gray-100 my-1"></div>
+                    
+                    <button
+                      onClick={() => { clearPage(currentPage); setShowPageSettingsMenu(false); }}
+                      className="flex items-center gap-2.5 px-3 py-2 text-xs font-medium text-gray-700 hover:bg-gray-50 rounded-lg text-left"
+                    >
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <circle cx="12" cy="12" r="10"></circle>
+                        <line x1="4.93" y1="4.93" x2="19.07" y2="19.07"></line>
+                      </svg>
+                      Clear
+                    </button>
+                    <button
+                      onClick={() => { deletePage(currentPage); setShowPageSettingsMenu(false); }}
+                      className="flex items-center gap-2.5 px-3 py-2 text-xs font-medium text-red-500 hover:bg-red-50 rounded-lg text-left"
+                    >
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <polyline points="3 6 5 6 21 6"></polyline>
+                        <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+                      </svg>
+                      Delete
+                    </button>
                   </div>
                 )}
               </div>
             </div>
 
-            {popupPreview.isOpen && (
+            {popupPreviewState.isOpen && (
               <PopupPreview
-                content={popupPreview.content}
-                styles={popupPreview.styles}
-                elementType={popupPreview.elementType}
-                elementSource={popupPreview.elementSource}
-                onClose={() => setPopupPreview({ ...popupPreview, isOpen: false })}
+                content={popupPreviewState.content}
+                elementSource={popupPreviewState.elementSource}
+                elementType={popupPreviewState.elementType}
+                styles={popupPreviewState.styles}
+                renderId={popupPreviewState.renderId}
+                mode={popupPreviewState.mode}
+                onSelectElement={setActivePopupElement}
+                onClose={() => {
+                  setPopupPreviewState(prev => ({ ...prev, isOpen: false }));
+                  setActivePopupElement(null);
+                }}
+                onUpdateContent={(newContent) => {
+                  handlePopupPreviewUpdate({ content: newContent });
+                  if (selectedElement) {
+                    selectedElement.setAttribute('data-interaction-content', newContent);
+                    handleElementUpdate();
+                  }
+                }}
+                onUpdateImage={(newSrc) => {
+                  handlePopupPreviewUpdate({ elementSource: newSrc });
+                  if (selectedElement) {
+                    selectedElement.setAttribute('data-popup-image-src', newSrc);
+                    handleElementUpdate();
+                  }
+                }}
+                isWorkspaceModal={true}
               />
             )}
           </div>
@@ -1815,15 +1528,14 @@ const MainEditor = () => {
         selectedElement={selectedElement}
         selectedElementType={selectedElementType}
         onUpdate={handleElementUpdate}
+        activePopupElement={activePopupElement}
+        onPopupUpdate={handlePopupUpdate}
+        pages={pages}
         isDoublePage={isDoublePage}
         setIsDoublePage={setIsDoublePage}
         openPreview={openPreview}
         onPopupPreviewUpdate={handlePopupPreviewUpdate}
         closePanelsSignal={closePanelsSignal}
-        currentPageVId={pages[currentPage]?.v_id || pages[currentPage]?.id}
-        flipbookVId={currentVId}
-        folderName={lastSavedFolder}
-        flipbookName={lastSavedName}
       />
 
       {showTemplateModal && (
@@ -1895,7 +1607,9 @@ const MainEditor = () => {
                   className="space-y-2 max-h-52 overflow-y-auto custom-scrollbar p-1 mb-4 scroll-smooth"
                >
                   {/* Folder List */}
-                  {(!isCreatingFolder ? (availableFolders && availableFolders.length > 0 ? availableFolders : []) : (availableFolders || [])).filter(f => f !== 'Recent Book').sort((a,b) => {
+                  {(!isCreatingFolder ? (availableFolders && availableFolders.length > 0 ? availableFolders : ['Public Book']) : (availableFolders || ['Public Book'])).sort((a,b) => {
+                      if (a === 'Public Book') return -1;
+                      if (b === 'Public Book') return 1;
                       return a.localeCompare(b);
                   }).map(folder => {
                       const isSelected = targetFolder === folder;

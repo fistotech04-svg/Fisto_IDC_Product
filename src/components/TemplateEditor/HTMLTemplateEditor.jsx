@@ -205,6 +205,26 @@ const HTMLTemplateEditor = forwardRef(({
       [contenteditable]:focus { background-color: rgba(99, 102, 241, 0.08); }
     `;
     doc.head.appendChild(style);
+    
+    // Auto-restore selection after iframe refresh
+    const activeSelection = doc.querySelector('[data-selection-active="true"]');
+    if (activeSelection) {
+        const tagName = activeSelection.tagName.toLowerCase();
+        let type = 'text';
+        if (tagName === 'img') type = 'image';
+        else if (tagName === 'video') type = 'video';
+        else if (tagName === 'svg') type = 'svg';
+        
+        // Use a timeout to ensure setup is fully complete and avoid React state update overlaps
+        setTimeout(() => {
+            if (activeSelection.isConnected && onElementSelect) {
+                onElementSelect(activeSelection, type, pageIndex);
+                activeSelection.removeAttribute('data-selection-active');
+                activeSelection.style.outline = '2px solid #6366f1';
+                activeSelection.style.outlineOffset = '2px';
+            }
+        }, 50);
+    }
   };
 
   const scale = zoom / 100;
@@ -282,9 +302,10 @@ const HTMLTemplateEditor = forwardRef(({
 
   useImperativeHandle(ref, () => ({
     deselectAll,
-    setInternalHTML: (html) => {
-        if (internalHtmlRefs.current[currentPage] !== undefined) {
-             internalHtmlRefs.current[currentPage] = html;
+    setInternalHTML: (html, pageIndex) => {
+        const targetIdx = pageIndex !== undefined ? pageIndex : currentPage;
+        if (internalHtmlRefs.current[targetIdx] !== undefined) {
+             internalHtmlRefs.current[targetIdx] = html;
         }
     }
   }));

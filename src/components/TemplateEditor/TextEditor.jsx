@@ -1,5 +1,7 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import InteractionPanel from './InteractionPanel';
+import AnimationPanel from './AnimationPanel';
+
 import { Icon } from '@iconify/react';
 import {
   ChevronDown, PencilLine, AlignLeft, Bold, Minus, List,
@@ -163,7 +165,22 @@ const parseGradient = (bgStr) => {
   return { type, stops };
 };
 
-const TextEditor = ({ selectedElement, selectedElementType, onUpdate, onPopupPreviewUpdate, closePanelsSignal, pages }) => {
+const TextEditor = ({
+  selectedElement,
+  selectedElementType,
+  onUpdate,
+  onPopupPreviewUpdate,
+  closePanelsSignal,
+  pages,
+  activePopupElement,
+  onPopupUpdate,
+  TextEditorComponent,
+  ImageEditorComponent,
+  VideoEditorComponent,
+  GifEditorComponent,
+  IconEditorComponent,
+  showInteraction = true
+}) => {
   // Accordian State: 'main' or 'interaction' or null
   const [activeSection, setActiveSection] = useState('main');
   const isTextOpen = activeSection === 'main';
@@ -1440,7 +1457,7 @@ const TextEditor = ({ selectedElement, selectedElementType, onUpdate, onPopupPre
           <div className="flex items-center justify-between px-4 py-4 border-b border-gray-50 cursor-pointer hover:bg-gray-50 transition-colors" onClick={() => setActiveSection(activeSection === 'main' ? null : 'main')}>
             <div className="flex items-center gap-2">
               <Edit3 size={20} className="text-gray-600" />
-              <span className="font-bold text-gray-900 text-sm">Text</span>
+              <span className="font-medium text-gray-700 text-sm">Text</span>
             </div>
             <ChevronUp size={20} className={`text-gray-900 transition-transform duration-200 ${activeSection === 'main' ? '' : 'rotate-180'}`} strokeWidth={2.5} />
           </div>
@@ -1777,14 +1794,31 @@ const TextEditor = ({ selectedElement, selectedElementType, onUpdate, onPopupPre
         </div>
 
         {/* INTERACTION SECTION */}
-        <InteractionPanel
+        {showInteraction && (
+          <InteractionPanel
+            selectedElement={selectedElement}
+            onUpdate={onUpdate}
+            onPopupPreviewUpdate={onPopupPreviewUpdate}
+            pages={pages}
+            activePopupElement={activePopupElement}
+            onPopupUpdate={onPopupUpdate}
+            TextEditorComponent={TextEditorComponent || TextEditor}
+            ImageEditorComponent={ImageEditorComponent}
+            VideoEditorComponent={VideoEditorComponent}
+            GifEditorComponent={GifEditorComponent}
+            IconEditorComponent={IconEditorComponent}
+            isOpen={activeSection === 'interaction'}
+            onToggle={() => setActiveSection(activeSection === 'interaction' ? null : 'interaction')}
+          />
+        )}
+
+        <AnimationPanel
           selectedElement={selectedElement}
           onUpdate={onUpdate}
-          onPopupPreviewUpdate={onPopupPreviewUpdate}
-          pages={pages}
-          isOpen={activeSection === 'interaction'}
-          onToggle={() => setActiveSection(activeSection === 'interaction' ? null : 'interaction')}
+          isOpen={activeSection === 'animation'}
+          onToggle={() => setActiveSection(activeSection === 'animation' ? null : 'animation')}
         />
+
 
       </div>
     </div >

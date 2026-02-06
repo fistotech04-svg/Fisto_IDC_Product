@@ -156,6 +156,19 @@ const GenericModel = React.memo(({ scene, wireframe, setModelStats, setMaterialL
       }
     });
 
+    // Filter Ungrouped Materials:
+    // If a material is present in ANY group, remove it from the 'ungrouped' list.
+    const allGroupedMaterialNames = new Set();
+    groupMap.forEach((matSet) => {
+        matSet.forEach(name => allGroupedMaterialNames.add(name));
+    });
+
+    for (const name of ungroupedMats) {
+        if (allGroupedMaterialNames.has(name)) {
+            ungroupedMats.delete(name);
+        }
+    }
+
     // Construct Structured List
     const structuredList = [];
     
@@ -235,6 +248,9 @@ const GenericModel = React.memo(({ scene, wireframe, setModelStats, setMaterialL
     // Logic: If selectedMaterial.name matches modelName, Blink ALL meshes.
     // If matches a material name, blink specific meshes.
     const targetName = selectedMaterial ? selectedMaterial.name : null;
+    const isGroup = selectedMaterial ? selectedMaterial.isGroup : false;
+    const groupMaterials = (isGroup && selectedMaterial.materials) ? selectedMaterial.materials : [];
+
     const isFullModelSelect = (targetName && modelName && targetName === modelName);
 
     // Initial Flash color
@@ -246,7 +262,14 @@ const GenericModel = React.memo(({ scene, wireframe, setModelStats, setMaterialL
     const processHighlight = (m) => {
         if (!m.emissive) return;
 
-        const isTarget = isFullModelSelect || (m.name === targetName);
+        let isTarget = isFullModelSelect;
+        if (!isTarget) {
+            if (isGroup) {
+                isTarget = groupMaterials.includes(m.name);
+            } else {
+                isTarget = m.name === targetName;
+            }
+        }
 
         if (isTarget) {
             // Save original state if not already saved
@@ -317,6 +340,22 @@ const GenericModel = React.memo(({ scene, wireframe, setModelStats, setMaterialL
     if (!targetName || (modelName && targetName === modelName)) {
         setTransformTarget(scene);
         return;
+    }
+
+    // Priority 0: Group Selection
+    if (selectedMaterial?.isGroup) {
+        let groupObj = null;
+        scene.traverse((child) => {
+            if (groupObj) return;
+            if (child.isGroup && child.name === targetName) {
+                groupObj = child;
+            }
+        });
+        
+        if (groupObj) {
+            setTransformTarget(groupObj);
+            return; 
+        }
     }
 
     // Otherwise, try to find the mesh with the selected material
@@ -829,7 +868,7 @@ export default function ThreedEditor() {
               onReset={handleResetView}
               targetPosition={targetPosition}
               materialList={materialList}
-              selectedMaterial={selectedMaterial?.name}
+              selectedMaterial={selectedMaterial}
               onSelectMaterial={(name) => setSelectedMaterial({ name, ts: Date.now() })}
               modelName={modelName} // Pass filename
             />
@@ -893,8 +932,9 @@ export default function ThreedEditor() {
                         setMaterialList={setMaterialList}
                         selectedMaterial={selectedMaterial}
                         onSelectMaterial={(val) => {
-                            if (typeof val === 'object' && val.name) {
-                                setSelectedMaterial({ name: val.name, uuid: val.uuid, ts: Date.now() });
+                            if (typeof val === 'object') {
+                                // Preserve full object (including isGroup, materials)
+                                setSelectedMaterial({ ...val, uuid: val.uuid || null, ts: Date.now() });
                             } else {
                                 setSelectedMaterial({ name: val, uuid: null, ts: Date.now() });
                             }

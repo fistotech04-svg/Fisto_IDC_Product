@@ -812,7 +812,8 @@ const useCanvas = () => {
         });
 
         canvas.renderAll();
-        URL.revokeObjectURL(url);
+        // Delay revocation to ensure the browser has fully finished processing the resource
+        setTimeout(() => URL.revokeObjectURL(url), 1000);
         setIsLoading(false);
         setLoadingMessage('');
       }, { crossOrigin: 'anonymous' });

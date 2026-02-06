@@ -27,10 +27,9 @@ const RightSidebar = ({
   openPreview,
   onPopupPreviewUpdate,
   closePanelsSignal,
-  currentPageVId,
-  flipbookVId,
-  folderName,
-  flipbookName
+  activePopupElement,
+  onPopupUpdate,
+  pages
 }) => {
   return (
     <aside className="w-[25vw] bg-white border-l border-gray-200 overflow-y-auto custom-scrollbar flex flex-col flex-shrink-0">
@@ -118,6 +117,14 @@ const RightSidebar = ({
             onUpdate={onUpdate} 
             onPopupPreviewUpdate={onPopupPreviewUpdate}
             closePanelsSignal={closePanelsSignal}
+            activePopupElement={activePopupElement}
+            onPopupUpdate={onPopupUpdate}
+            pages={pages}
+            TextEditorComponent={TextEditor}
+            ImageEditorComponent={ImageEditor}
+            VideoEditorComponent={VideoEditor}
+            GifEditorComponent={GifEditor}
+            IconEditorComponent={IconEditor}
           />
         )}
 
@@ -126,10 +133,14 @@ const RightSidebar = ({
             selectedElement={selectedElement} 
             onUpdate={onUpdate} 
             onPopupPreviewUpdate={onPopupPreviewUpdate}
-            currentPageVId={currentPageVId}
-            flipbookVId={flipbookVId}
-            folderName={folderName}
-            flipbookName={flipbookName}
+            activePopupElement={activePopupElement}
+            onPopupUpdate={onPopupUpdate}
+            pages={pages}
+            TextEditorComponent={TextEditor}
+            ImageEditorComponent={ImageEditor}
+            VideoEditorComponent={VideoEditor}
+            GifEditorComponent={GifEditor}
+            IconEditorComponent={IconEditor}
           />
         )}
 
@@ -139,10 +150,14 @@ const RightSidebar = ({
             selectedElement={selectedElement} 
             onUpdate={onUpdate} 
             onPopupPreviewUpdate={onPopupPreviewUpdate}
-            currentPageVId={currentPageVId}
-            flipbookVId={flipbookVId}
-            folderName={folderName}
-            flipbookName={flipbookName}
+            activePopupElement={activePopupElement}
+            onPopupUpdate={onPopupUpdate}
+            pages={pages}
+            TextEditorComponent={TextEditor}
+            ImageEditorComponent={ImageEditor}
+            VideoEditorComponent={VideoEditor}
+            GifEditorComponent={GifEditor}
+            IconEditorComponent={IconEditor}
           />
         )}
         
@@ -151,10 +166,14 @@ const RightSidebar = ({
             selectedElement={selectedElement} 
             onUpdate={onUpdate} 
             onPopupPreviewUpdate={onPopupPreviewUpdate}
-            currentPageVId={currentPageVId}
-            flipbookVId={flipbookVId}
-            folderName={folderName}
-            flipbookName={flipbookName}
+            activePopupElement={activePopupElement}
+            onPopupUpdate={onPopupUpdate}
+            pages={pages}
+            TextEditorComponent={TextEditor}
+            ImageEditorComponent={ImageEditor}
+            VideoEditorComponent={VideoEditor}
+            GifEditorComponent={GifEditor}
+            IconEditorComponent={IconEditor}
           />
         )}
 
@@ -163,10 +182,14 @@ const RightSidebar = ({
             selectedElement={selectedElement} 
             onUpdate={onUpdate} 
             onPopupPreviewUpdate={onPopupPreviewUpdate}
-            currentPageVId={currentPageVId}
-            flipbookVId={flipbookVId}
-            folderName={folderName}
-            flipbookName={flipbookName}
+            activePopupElement={activePopupElement}
+            onPopupUpdate={onPopupUpdate}
+            pages={pages}
+            TextEditorComponent={TextEditor}
+            ImageEditorComponent={ImageEditor}
+            VideoEditorComponent={VideoEditor}
+            GifEditorComponent={GifEditor}
+            IconEditorComponent={IconEditor}
           />
         )}
         

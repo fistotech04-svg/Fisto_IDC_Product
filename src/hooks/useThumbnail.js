@@ -73,8 +73,12 @@ const useThumbnail = () => {
           // Convert to data URL
           const dataUrl = canvas.toDataURL('image/png');
 
-          // Clean up
-          document.body.removeChild(iframe);
+          // Clean up with a small delay to allow dynamic resource fetches to settle
+          setTimeout(() => {
+            if (document.body.contains(iframe)) {
+              document.body.removeChild(iframe);
+            }
+          }, 500);
 
           // Cache the result
           cacheRef.current.set(cacheKey, dataUrl);

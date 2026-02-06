@@ -67,7 +67,24 @@ const autoPickThumbnailFromVideo = (selectedElement, onUpdate) => {
   }
 };
 
-const VideoEditor = ({ selectedElement, onUpdate, onPopupPreviewUpdate, currentPageVId, flipbookVId, folderName, flipbookName }) => {
+const VideoEditor = ({
+  selectedElement,
+  onUpdate,
+  onPopupPreviewUpdate,
+  currentPageVId,
+  flipbookVId,
+  folderName,
+  flipbookName,
+  activePopupElement,
+  onPopupUpdate,
+  TextEditorComponent,
+  ImageEditorComponent,
+  VideoEditorComponent,
+  GifEditorComponent,
+  IconEditorComponent,
+  showInteraction = true,
+  pages
+}) => {
   const { v_id: paramVId } = useParams();
   // Use either the prop or the URL param, with priority to the prop from MainEditor
   const activeVId = flipbookVId || paramVId;
@@ -736,13 +753,23 @@ const VideoEditor = ({ selectedElement, onUpdate, onPopupPreviewUpdate, currentP
       </div>
 
       {/* INTERACTION PANEL */}
-      <InteractionPanel
-        selectedElement={selectedElement}
-        onUpdate={onUpdate}
-        onPopupPreviewUpdate={onPopupPreviewUpdate}
-        isOpen={activeSection === 'interaction'}
-        onToggle={() => setActiveSection(activeSection === 'interaction' ? null : 'interaction')}
-      />
+      {showInteraction && (
+        <InteractionPanel
+          selectedElement={selectedElement}
+          onUpdate={onUpdate}
+          onPopupPreviewUpdate={onPopupPreviewUpdate}
+          pages={pages}
+          activePopupElement={activePopupElement}
+          onPopupUpdate={onPopupUpdate}
+          TextEditorComponent={TextEditorComponent}
+          ImageEditorComponent={ImageEditorComponent}
+          VideoEditorComponent={VideoEditorComponent || VideoEditor}
+          GifEditorComponent={GifEditorComponent}
+          IconEditorComponent={IconEditorComponent}
+          isOpen={activeSection === 'interaction'}
+          onToggle={() => setActiveSection(activeSection === 'interaction' ? null : 'interaction')}
+        />
+      )}
     </>
   );
 };

@@ -1,6 +1,4 @@
 import React, { useState, useEffect, useRef } from 'react';
-import axios from "axios";
-import { useParams } from "react-router-dom";
 import { renderToStaticMarkup } from 'react-dom/server';
 import { Upload, Replace, ChevronUp, ChevronDown, Edit3, X, Grid, ArrowLeft, ZoomIn, ZoomOut, Mail, Phone, Globe, Trash2, Save, Image, Folder, Move, Check, CheckCheck, Battery, Calendar, File, Settings, Search, Home, User, Users, Star, Heart, Share2, Download, Cloud, Clock, MapPin, Lock, Unlock, Menu, Play, Pause, AlertCircle, Info, HelpCircle, Facebook, Twitter, Instagram, Linkedin, Github, Youtube, Pipette } from 'lucide-react';
 
@@ -216,10 +214,23 @@ const CustomColorPicker = ({ color, onChange, onCommit, onClose, position, opaci
 };
 
 import InteractionPanel from './InteractionPanel';
+import AnimationPanel from './AnimationPanel';
 
-const IconEditor = ({ selectedElement, onUpdate, onPopupPreviewUpdate, currentPageVId, flipbookVId, folderName, flipbookName }) => {
-  const { v_id: paramVId } = useParams();
-  const activeVId = flipbookVId || paramVId;
+
+const IconEditor = ({
+  selectedElement,
+  onUpdate,
+  onPopupPreviewUpdate,
+  activePopupElement,
+  onPopupUpdate,
+  pages,
+  TextEditorComponent,
+  ImageEditorComponent,
+  VideoEditorComponent,
+  GifEditorComponent,
+  IconEditorComponent,
+  showInteraction = true
+}) => {
   const [iconColor, setIconColor] = useState('#000000');
   const [iconFill, setIconFill] = useState('none');
   const [strokeWidth, setStrokeWidth] = useState(2);
@@ -229,13 +240,7 @@ const IconEditor = ({ selectedElement, onUpdate, onPopupPreviewUpdate, currentPa
   const galleryInputRef = useRef(null);
   const [pickerTarget, setPickerTarget] = useState(null); // 'fill' or 'stroke'
   const [pickerPos, setPickerPos] = useState({ x: 0, y: 0 });
-
-  // Stabilize onUpdate with a ref to prevent infinite loops during parent re-renders
-  const onUpdateRef = useRef(onUpdate);
-  useEffect(() => {
-    onUpdateRef.current = onUpdate;
-  }, [onUpdate]);
-
+  
   const rgbToHex = (rgb) => {
     if (!rgb || rgb === 'none' || rgb === 'transparent') return 'none';
     if (!rgb.startsWith('rgb')) return rgb;
@@ -359,6 +364,7 @@ const IconEditor = ({ selectedElement, onUpdate, onPopupPreviewUpdate, currentPa
       
       // Sync sidebar preview SVG (instant, no iframe rewrite)
       setPreviewData(prev => ({ ...prev, html: selectedElement.innerHTML }));
+      // Removed immediate onUpdate() to prevent iframe rewrite during drag
     }
   };
 
@@ -387,11 +393,12 @@ const IconEditor = ({ selectedElement, onUpdate, onPopupPreviewUpdate, currentPa
 
       // Sync sidebar preview SVG (instant, no iframe rewrite)
       setPreviewData(prev => ({ ...prev, html: selectedElement.innerHTML }));
+      // Removed immediate onUpdate() to prevent iframe rewrite during drag
     }
   };
 
   const commitChanges = () => {
-    if (onUpdateRef.current) onUpdateRef.current();
+    if (onUpdate) onUpdate();
   };
 
   const updateStrokeWidth = (newWidth) => {
@@ -410,17 +417,16 @@ const IconEditor = ({ selectedElement, onUpdate, onPopupPreviewUpdate, currentPa
     
     setStrokeWidth(widthVal);
     setPreviewData(prev => ({ ...prev, html: selectedElement.innerHTML }));
-    commitChanges();
+    onUpdate && onUpdate();
   };
 
-  const handleOpacityChange = (e) => {
-    const val = parseInt(e.target.value);
-    setOpacity(val);
-    if (selectedElement) {
-       selectedElement.setAttribute('opacity', (val / 100).toString());
-       selectedElement.style.opacity = (val/100).toString();
-       if (onUpdateRef.current) onUpdateRef.current();
-    }
+  const updateOpacity = (newOpacity) => {
+    if (!selectedElement) return;
+    const val = newOpacity / 100;
+    selectedElement.style.opacity = val;
+    selectedElement.setAttribute('opacity', val);
+    setOpacity(newOpacity);
+    onUpdate && onUpdate();
   };
 
   const replaceIconContent = (newViewBox, newInnerHtml) => {
@@ -469,43 +475,9 @@ const IconEditor = ({ selectedElement, onUpdate, onPopupPreviewUpdate, currentPa
     e.target.value = '';
   };
 
-  const uploadIconToBackend = async (file) => {
-    const storedUser = localStorage.getItem('user');
-    if (!storedUser || (!activeVId && (!folderName || !flipbookName))) {
-        console.warn("Skipping icon upload: Missing project metadata");
-        return null;
-    }
-    
-    const user = JSON.parse(storedUser);
-    const formData = new FormData();
-    formData.append('emailId', user.emailId);
-    if (activeVId) formData.append('v_id', activeVId);
-    if (folderName) formData.append('folderName', folderName);
-    if (flipbookName) formData.append('flipbookName', flipbookName);
-    
-    formData.append('type', 'icon'); 
-    formData.append('page_v_id', currentPageVId || 'global');
-    // Append file LAST
-    formData.append('file', file);
-
-    try {
-        const backendUrl = import.meta.env.VITE_BACKEND_URL || 'http://localhost:5000';
-        const res = await axios.post(`${backendUrl}/api/flipbook/upload-asset`, formData);
-        if (res.data.url) {
-            return `${backendUrl}${res.data.url}`;
-        }
-    } catch (err) {
-        console.error("Icon upload failed detail:", err.response?.data || err);
-    }
-    return null;
-  };
-
-  const handleModalFileUpload = async (e) => {
+  const handleModalFileUpload = (e) => {
     const file = e.target.files[0];
     if (file && file.type === 'image/svg+xml') {
-        // Upload to backend
-        uploadIconToBackend(file);
-
         const reader = new FileReader();
         reader.onload = (event) => {
           const parser = new DOMParser();
@@ -594,7 +566,7 @@ const IconEditor = ({ selectedElement, onUpdate, onPopupPreviewUpdate, currentPa
         >
           <div className="flex items-center gap-2">
             <Edit3 size={16} className="text-gray-600" />
-            <span className="font-medium text-gray-800 text-[15px]">Icon</span>
+            <span className="font-medium text-gray-700 text-sm">Icon</span>
           </div>
           <ChevronUp size={16} className={`text-gray-500 transition-transform duration-200 ${isMainPanelOpen ? '' : 'rotate-180'}`} />
         </div>
@@ -868,6 +840,14 @@ const IconEditor = ({ selectedElement, onUpdate, onPopupPreviewUpdate, currentPa
         onToggle={() => setActiveSection(activeSection === 'interaction' ? null : 'interaction')}
       />
 
+      <AnimationPanel
+        selectedElement={selectedElement}
+        onUpdate={onUpdate}
+        isOpen={activeSection === 'animation'}
+        onToggle={() => setActiveSection(activeSection === 'animation' ? null : 'animation')}
+      />
+
+
 
       {showGallery && (
         <div
@@ -989,6 +969,24 @@ const IconEditor = ({ selectedElement, onUpdate, onPopupPreviewUpdate, currentPa
              </button>
            </div>
         </div>
+      )}
+
+      {showInteraction && (
+        <InteractionPanel
+          selectedElement={selectedElement}
+          onUpdate={onUpdate}
+          onPopupPreviewUpdate={onPopupPreviewUpdate}
+          pages={pages}
+          isOpen={activeSection === 'interaction'}
+          onToggle={() => setActiveSection(activeSection === 'interaction' ? null : 'interaction')}
+          activePopupElement={activePopupElement}
+          onPopupUpdate={onPopupUpdate}
+          TextEditorComponent={TextEditorComponent}
+          ImageEditorComponent={ImageEditorComponent}
+          VideoEditorComponent={VideoEditorComponent}
+          GifEditorComponent={GifEditorComponent}
+          IconEditorComponent={IconEditorComponent || IconEditor}
+        />
       )}
 
       {pickerTarget && (

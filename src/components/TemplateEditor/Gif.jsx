@@ -18,7 +18,24 @@ const galleryPreviewImages = [
   "https://psdgang.com//wp-content/uploads/2017/04/009.gif"
 ];
 
-const GifEditor = ({ selectedElement, onUpdate, onPopupPreviewUpdate, currentPageVId, flipbookVId, folderName, flipbookName }) => {
+const GifEditor = ({
+  selectedElement,
+  onUpdate,
+  onPopupPreviewUpdate,
+  currentPageVId,
+  flipbookVId,
+  folderName,
+  flipbookName,
+  activePopupElement,
+  onPopupUpdate,
+  TextEditorComponent,
+  ImageEditorComponent,
+  VideoEditorComponent,
+  GifEditorComponent,
+  IconEditorComponent,
+  showInteraction = true,
+  pages
+}) => {
   const { v_id: paramVId } = useParams();
   const activeVId = flipbookVId || paramVId;
 
@@ -266,13 +283,23 @@ const GifEditor = ({ selectedElement, onUpdate, onPopupPreviewUpdate, currentPag
       </div>
 
       {/* INTERACTION PANEL */}
-      <InteractionPanel
-        selectedElement={selectedElement}
-        onUpdate={onUpdate}
-        onPopupPreviewUpdate={onPopupPreviewUpdate}
-        isOpen={activeSection === 'interaction'}
-        onToggle={() => setActiveSection(activeSection === 'interaction' ? null : 'interaction')}
-      />
+      {showInteraction && (
+        <InteractionPanel
+          selectedElement={selectedElement}
+          onUpdate={onUpdate}
+          onPopupPreviewUpdate={onPopupPreviewUpdate}
+          pages={pages}
+          activePopupElement={activePopupElement}
+          onPopupUpdate={onPopupUpdate}
+          TextEditorComponent={TextEditorComponent}
+          ImageEditorComponent={ImageEditorComponent}
+          VideoEditorComponent={VideoEditorComponent}
+          GifEditorComponent={GifEditorComponent || GifEditor}
+          IconEditorComponent={IconEditorComponent}
+          isOpen={activeSection === 'interaction'}
+          onToggle={() => setActiveSection(activeSection === 'interaction' ? null : 'interaction')}
+        />
+      )}
 
       {/* GALLERY MODAL */}
       {openGallery && (
