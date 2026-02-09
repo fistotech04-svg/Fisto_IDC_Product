@@ -2,7 +2,7 @@ import React, { useState, Suspense, useEffect, useCallback, useRef } from "react
 import * as THREE from "three";
 import { Icon } from "@iconify/react";
 import { Canvas, useFrame } from "@react-three/fiber";
-import { OrbitControls, Environment, useProgress } from "@react-three/drei";
+import { OrbitControls, Environment, useProgress, ContactShadows } from "@react-three/drei";
 import RightPanel from "./ThreedRightpanel";
 import EditorInfoBox from "./EditorInfoBox";
 import EditorToolbar from "./EditorToolbar";
@@ -77,6 +77,7 @@ export default function ThreedEditor() {
     normal: 100,
     bump: 100,
     scale: 100,
+    scaleY: 100,
     rotation: 0,
     specular: 50,
     reflection: 50,
@@ -87,10 +88,18 @@ export default function ThreedEditor() {
     environment: 'city',
     color: '#000000',
     useFactorColor: false, // New Toggle
+    autoUnwrap: false,
+    envRotation: 0,
+    shadow: 50,
     
+    // Texture Placement
+    offset: { x: 0, y: 0 },
+
     // Light position controls (spherical coordinates)
     lightPosition: { x: 10, y: 10, z: 10 }
   });
+
+  const [resetKey, setResetKey] = useState(0);
 
   const updateMaterialSetting = useCallback((key, val) => {
     setMaterialSettings((prev) => {
@@ -194,6 +203,43 @@ export default function ThreedEditor() {
             [axis]: numVal
         };
         
+        return next;
+    });
+  };
+
+  const originalTransformRef = useRef(null);
+
+  const [sceneResetTrigger, setSceneResetTrigger] = useState(0);
+  const [uvUnwrapTrigger, setUvUnwrapTrigger] = useState(0);
+
+  const handleResetTransform = (type) => {
+    if (type === 'all') {
+        setSceneResetTrigger(prev => prev + 1);
+    }
+
+    setTransformValues(prev => {
+        const next = { ...prev };
+        
+        // Use stored original values if available, otherwise default to 0/0/0
+        const defaults = originalTransformRef.current || {
+            position: { x: 0, y: 0, z: 0 },
+            rotation: { x: 0, y: 0, z: 0 },
+            scale: { x: 1, y: 1, z: 1 }
+        };
+
+        const getXYZ = (obj) => ({ x: obj.x, y: obj.y, z: obj.z });
+
+        if (!type || type === 'all') {
+             next.position = getXYZ(defaults.position);
+             next.rotation = getXYZ(defaults.rotation);
+             next.scale = getXYZ(defaults.scale);
+        } else if (type === 'position') {
+             next.position = getXYZ(defaults.position);
+        } else if (type === 'rotation') {
+             next.rotation = getXYZ(defaults.rotation);
+        } else if (type === 'scale') {
+             next.scale = getXYZ(defaults.scale);
+        }
         return next;
     });
   };
@@ -319,7 +365,7 @@ export default function ThreedEditor() {
             <Canvas camera={{ position: [0, 1, 5] }} shadows>
               <color attach="background" args={[settings.backgroundColor]} />
               
-              <ambientLight intensity={0.6} />
+              <ambientLight intensity={0.6 * ((materialSettings.specular ?? 50) / 50)} />
               <spotLight 
                 position={[
                   materialSettings.lightPosition.x, 
@@ -328,8 +374,9 @@ export default function ThreedEditor() {
                 ]} 
                 angle={0.15} 
                 penumbra={1} 
-                intensity={1} 
+                intensity={1.5 * ((materialSettings.specular ?? 50) / 50)} 
                 castShadow 
+                shadow-bias={-0.0001}
               />
               <directionalLight 
                 position={[
@@ -337,11 +384,9 @@ export default function ThreedEditor() {
                   materialSettings.lightPosition.y / 2, 
                   materialSettings.lightPosition.z / 2
                 ]} 
-                intensity={0.5} 
+                intensity={0.5 * ((materialSettings.specular ?? 50) / 50)} 
+                castShadow
               />
-              <Suspense fallback={null}>
-                <Environment preset="city" />
-              </Suspense>
 
               <Suspense fallback={null}>
                   {modelUrl && (
@@ -362,14 +407,21 @@ export default function ThreedEditor() {
                         }}
                         modelName={modelName}
                         transformMode={transformMode}
+                        transformValues={transformValues}
                         materialSettings={materialSettings}
                         onUpdateMaterialSetting={updateMaterialSetting}
                         selectedTexture={selectedTexture}
+                        resetKey={resetKey}
+                        sceneResetTrigger={sceneResetTrigger}
+                        uvUnwrapTrigger={uvUnwrapTrigger}
                         onTextureApplied={() => setSelectedTexture(null)}
                         onTextureIdentified={(id) => setSelectedTextureId(id)}
                         onTransformChange={(t) => {
-                            // Convert Euler/Vector3 to plain objects if needed, or structured state
-                            // ThreeJS Euler is radians. We might want degrees for UI.
+                            if (t.original) {
+                                originalTransformRef.current = t.original;
+                            } else {
+                                originalTransformRef.current = null; // Clear if not provided (e.g. wrapper)
+                            }
                             setTransformValues({
                                 position: { x: t.position.x, y: t.position.y, z: t.position.z },
                                 rotation: { x: t.rotation.x, y: t.rotation.y, z: t.rotation.z },
@@ -418,7 +470,7 @@ export default function ThreedEditor() {
               )}
               
               {settings.base && (
-                 <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -0.01, 0]} receiveShadow>
+                 <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -0.015, 0]} receiveShadow>
                     <planeGeometry args={[30, 30]} />
                     <meshStandardMaterial color={settings.baseColor} />
                  </mesh>
@@ -450,7 +502,23 @@ export default function ThreedEditor() {
               {/* GIZMO HELPER */}
               {modelUrl && <AnimatedGizmo isTextureOpen={isTextureOpen} />}
               
-              <Environment preset={materialSettings.environment} />
+              {modelUrl && (
+                  <ContactShadows 
+                      position={[0, -0.01, 0]} 
+                      opacity={(materialSettings.shadow ?? 50) / 100} 
+                      scale={50} 
+                      blur={2} 
+                      far={5} 
+                      resolution={512} 
+                      color="#000000" 
+                  />
+              )}
+              
+              <Environment 
+                  preset={materialSettings.environment} 
+                  rotation={[0, (materialSettings.envRotation || 0) * (Math.PI / 180), 0]}
+                  environmentIntensity={(materialSettings.reflection ?? 50) / 50}
+              />
             </Canvas>
           </div>
         </div>
@@ -471,6 +539,25 @@ export default function ThreedEditor() {
             setActiveAccordion={setActiveAccordion}
             transformValues={transformValues}
             onManualTransformChange={handleManualTransformChange}
+            onResetTransform={handleResetTransform}
+            onResetFactorSettings={() => {
+                setMaterialSettings(prev => ({
+                    ...prev,
+                    alpha: 100,
+                    metallic: 0,
+                    roughness: 50,
+                    normal: 100,
+                    bump: 100,
+                    scale: 100,
+                    scaleY: 100,
+                    rotation: 0,
+                    offset: { x: 0, y: 0 },
+                    color: '#000000',
+                    useFactorColor: false
+                }));
+                setResetKey(prev => prev + 1);
+            }}
+            onUvUnwrap={() => setUvUnwrapTrigger(prev => prev + 1)}
           />
         </div>
       </div>

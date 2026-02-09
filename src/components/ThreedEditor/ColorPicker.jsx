@@ -56,7 +56,7 @@ const hsvToHex = ({ h, s, v }) => {
   return `#${toHex(r)}${toHex(g)}${toHex(b)}`;
 };
 
-export default function ColorPicker({ color, onChange, opacity, onOpacityChange, onClose }) {
+export default function ColorPicker({ color, onChange, opacity, onOpacityChange, onClose, className, style, ...props }) {
   const [hsv, setHsv] = useState(() => hexToHsv(color));
 
 
@@ -119,7 +119,11 @@ export default function ColorPicker({ color, onChange, opacity, onOpacityChange,
   const hueColor = hsvToHex({ h: hsv.h, s: 100, v: 100 });
 
   return (
-    <div className="absolute top-10 right-0 z-50 w-[280px] bg-white rounded-2xl shadow-xl border border-gray-100 p-4 animate-in fade-in zoom-in-95 duration-200 select-none">
+    <div 
+        className={`z-50 w-[280px] bg-white rounded-2xl shadow-xl border border-gray-100 p-4 animate-in fade-in zoom-in-95 duration-200 select-none ${className || "absolute top-10 right-0"}`}
+        style={style}
+        {...props}
+    >
        {/* Close Button if standalone, but here we usually control from outside. Added just in case. */}
        {/* Main Area */}
        <div className="flex gap-3 h-[200px] mb-4">

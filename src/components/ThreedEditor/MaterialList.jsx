@@ -115,7 +115,7 @@ export default function MaterialList({ isCollapsed, setIsCollapsed, isTextureOpe
 
             {/* DROPDOWN CONTENT */}
             <div
-                className={`absolute top-full left-0 w-full bg-white border border-gray-200 border-t-0 transition-all duration-500 ease-in-out overflow-hidden flex flex-col pointer-events-auto shadow-lg shadow-gray-200/50 ${isCollapsed ? "max-h-0 opacity-0 -translate-y-2 scale-95 pointer-events-none rounded-xl" : "opacity-100 translate-y-0 scale-100 rounded-b-xl rounded-t-none"
+                className={`absolute top-full left-0 w-full bg-white border border-gray-200 border-t-0 transition-all duration-500 ease-in-out overflow-hidden flex flex-col pointer-events-auto ${isCollapsed ? "max-h-0 opacity-0 -translate-y-2 scale-95 pointer-events-none rounded-xl" : "opacity-100 translate-y-0 scale-100 rounded-b-xl rounded-t-none"
                     }`}
                 style={{
                     maxHeight: isCollapsed ? "0" : (isTextureOpen ? "calc(92vh - 410px)" : "calc(92vh - 270px)")

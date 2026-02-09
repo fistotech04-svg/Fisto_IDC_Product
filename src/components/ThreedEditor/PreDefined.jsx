@@ -1,10 +1,11 @@
-import React, { useState } from "react";
+import React, { useState, useRef } from "react";
+import { createPortal } from "react-dom";
 import { Icon } from "@iconify/react";
 import ColorPicker from "./ColorPicker";
 
 // --- Reusable UI Components ---
 
-const Accordion = ({ title, icon: iconName, children, isOpen, onToggle, iconSize = 20 }) => {
+const Accordion = ({ title, icon: iconName, children, isOpen, onToggle, iconSize = 20, onReset }) => {
   return (
     <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden mb-3 transition-all duration-200 hover:shadow-md">
       <div
@@ -22,6 +23,7 @@ const Accordion = ({ title, icon: iconName, children, isOpen, onToggle, iconSize
             className="hover:text-[#5d5efc] hover:bg-indigo-50 p-1 rounded-md transition-all duration-200"
             onClick={(e) => {
               e.stopPropagation();
+              if (onReset) onReset();
             }}
           >
             <Icon icon="ix:reset" width={16} height={16} />
@@ -55,7 +57,9 @@ const SectionHeader = ({ label, showLine = true }) => (
   </div>
 );
 
-const CustomSlider = ({ label, value, onChange, unit = "%" }) => {
+const CustomSlider = ({ label, value, onChange, unit = "%", min = 0, max = 100, step = 1 }) => {
+  const percentage = ((value - min) / (max - min)) * 100;
+  
   return (
     <div className="flex items-center justify-between mb-5 last:mb-0 h-7">
       <div className="w-24 text-[13px] font-medium text-gray-600 shrink-0 flex items-center justify-between pr-2">
@@ -65,25 +69,26 @@ const CustomSlider = ({ label, value, onChange, unit = "%" }) => {
         {/* Fill */}
         <div
           className="absolute top-0 left-0 h-full bg-[#5d5efc] rounded-full transition-all duration-75"
-          style={{ width: `${value}%` }}
+          style={{ width: `${Math.max(0, Math.min(100, percentage))}%` }}
         ></div>
         {/* Thumb */}
         <div
           className="absolute top-1/2 -translate-y-1/2 w-3.5 h-3.5 bg-[#5d5efc] border-2 border-white rounded-full shadow-md hover:scale-110 transition-transform duration-100"
-          style={{ left: `${value}%`, marginLeft: "-6px" }}
+          style={{ left: `${Math.max(0, Math.min(100, percentage))}%`, marginLeft: "-6px" }}
         ></div>
         {/* Input Range (Hidden overlay for functionality) */}
         <input
           type="range"
-          min="0"
-          max="100"
+          min={min}
+          max={max}
+          step={step}
           value={value}
-          onChange={(e) => onChange(parseInt(e.target.value))}
+          onChange={(e) => onChange(Number(e.target.value))}
           className="absolute inset-0 w-full opacity-0 cursor-pointer z-10"
         />
       </div>
       <div className="w-10 text-right text-[12px] font-medium text-gray-500 tabular-nums">
-        {value} <span className="text-[10px] ml-0.5 text-gray-400">{unit}</span>
+        {typeof value === 'number' ? value.toFixed(step < 1 ? 1 : 0) : value} <span className="text-[10px] ml-0.5 text-gray-400">{unit}</span>
       </div>
     </div>
   );
@@ -225,12 +230,19 @@ const CustomDropdown = ({ label, value, options, onChange }) => {
 
 // --- Main Application ---
 
-// --- Main Application ---
-
-// --- Main Application ---
-
-export default function SettingsPanel({ controls, updateControl, activePanel, setActivePanel, transformValues, onManualTransformChange }) {
+export default function SettingsPanel({ controls, updateControl, activePanel, setActivePanel, transformValues, onManualTransformChange, onResetFactor, onResetTransform, onUvUnwrap }) {
   const [showColorPicker, setShowColorPicker] = useState(false);
+  const [pickerPos, setPickerPos] = useState({ top: 0, right: 0 });
+
+  const handleColorClick = (e) => {
+      const rect = e.currentTarget.getBoundingClientRect();
+      const topPos = Math.max(10, rect.top - 80);
+      setPickerPos({ 
+          top: topPos, 
+          right: window.innerWidth - rect.left + 16 
+      });
+      setShowColorPicker(!showColorPicker);
+  };
   
   const togglePanel = (panel) => {
     setActivePanel(activePanel === panel ? null : panel);
@@ -248,15 +260,8 @@ export default function SettingsPanel({ controls, updateControl, activePanel, se
         icon="icon-park-outline:texture-two"
         isOpen={activePanel === "factor"}
         onToggle={() => togglePanel("factor")}
+        onReset={onResetFactor}
       >
-        {/* Reset Texture Row */}
-        {/* Reset Texture Row */}
-        <div className="flex justify-end mb-6">
-            <button className="flex items-center gap-2 px-3 py-1.5 bg-gray-50 hover:bg-gray-100 text-gray-600 text-[11px] font-semibold rounded-md border border-gray-200 transition-all shadow-sm hover:shadow active:scale-95">
-                Reset Texture :
-                <Icon icon="heroicons:arrow-path" width={12} height={12} className="stroke-2" />
-            </button>
-        </div>
 
         <div className="space-y-6">
           {/* Color & Transparency */}
@@ -271,32 +276,40 @@ export default function SettingsPanel({ controls, updateControl, activePanel, se
                 <div 
                     className="w-8 h-8 rounded-[6px] border border-gray-200 shadow-sm cursor-pointer hover:border-[#5d5efc] transition-colors"
                     style={{ backgroundColor: controls.color || '#000000' }}
-                    onClick={() => setShowColorPicker(!showColorPicker)}
+                    onClick={handleColorClick}
                 >
                 </div>
                 <div 
                     className="flex-1 flex items-center justify-between border border-gray-200 rounded-[6px] px-3 py-1.5 bg-white hover:border-gray-300 transition-colors shadow-sm cursor-pointer"
-                    onClick={() => setShowColorPicker(!showColorPicker)}
+                    onClick={handleColorClick}
                 >
                   <span className="text-[12px] text-gray-600 font-medium tracking-wide font-mono uppercase">{controls.color || '#000000'}</span>
                   <span className="text-[12px] text-gray-400 font-medium">{controls.alpha}%</span>
                 </div>
               </div>
 
-              {showColorPicker && (
+              {showColorPicker && createPortal(
                   <>
-                    <div className="fixed inset-0 z-40 bg-transparent" onClick={() => setShowColorPicker(false)}></div>
+                    <div className="fixed inset-0 z-[9998] bg-transparent" onClick={() => setShowColorPicker(false)}></div>
                     <ColorPicker 
                         color={controls.color || '#000000'} 
                         onChange={(c) => {
                              updateControl('color', c);
-                             updateControl('useFactorColor', true); // Automagic activation
+                             updateControl('useFactorColor', true);
                         }}
                         opacity={controls.alpha}
                         onOpacityChange={(val) => updateControl('alpha', val)}
                         onClose={() => setShowColorPicker(false)}
+                        className=""
+                        style={{ 
+                            position: 'fixed', 
+                            top: pickerPos.top, 
+                            right: pickerPos.right, 
+                            zIndex: 9999 
+                        }}
                     />
-                  </>
+                  </>,
+                  document.body
               )}
             </div>
 
@@ -344,27 +357,58 @@ export default function SettingsPanel({ controls, updateControl, activePanel, se
           {/* Texture Placement */}
           <div>
             <SectionHeader label="Texture Placement" />
+            
+            <div className="mb-4 px-1 flex items-center gap-1.5 text-xs text-green-600 font-medium bg-green-50 p-2 rounded-md border border-green-100">
+                 <Icon icon="fluent:checkmark-circle-20-filled" width={14} />
+                 <span>UV Unwrapped</span>
+            </div>
+
             <div className="space-y-1">
                 <CustomSlider
-                label="Scale"
+                label="Scale X"
                 value={controls.scale}
                 onChange={(v) => updateControl("scale", v)}
+                min={-100}
+                max={100}
+                unit=""
+                />
+                <CustomSlider
+                label="Scale Y"
+                value={controls.scaleY !== undefined ? controls.scaleY : controls.scale}
+                onChange={(v) => updateControl("scaleY", v)}
+                min={-100}
+                max={100}
+                unit=""
                 />
                 <CustomSlider
                 label="Rotation"
                 value={controls.rotation}
+                min={-180}
+                max={180}
                 onChange={(v) => updateControl("rotation", v)}
+                unit="°"
                 />
-            </div>
-
-            <div className="flex items-center justify-between mt-6">
-              <span className="text-xs font-medium text-gray-600 w-24">
-                Offset :
-              </span>
-              <div className="flex gap-1.5 flex-1 justify-end">
-                <NumberStepper value={210} axisLabel="X" compact />
-                <NumberStepper value={210} axisLabel="Y" compact />
-              </div>
+            
+                <div className="mt-6 space-y-1">
+                    <CustomSlider
+                        label="Offset X"
+                        value={controls.offset?.x || 0}
+                        onChange={(val) => updateControl('offset', { ...(controls.offset || {x:0,y:0}), x: val })}
+                        min={-100}
+                        max={100}
+                        step={0.1}
+                        unit=""
+                    />
+                    <CustomSlider
+                        label="Offset Y"
+                        value={controls.offset?.y || 0}
+                        onChange={(val) => updateControl('offset', { ...(controls.offset || {x:0,y:0}), y: val })}
+                        min={-100}
+                        max={100}
+                        step={0.1}
+                        unit=""
+                    />
+                </div>
             </div>
           </div>
         </div>
@@ -377,11 +421,17 @@ export default function SettingsPanel({ controls, updateControl, activePanel, se
         iconSize={24}
         isOpen={activePanel === "position"}
         onToggle={() => togglePanel("position")}
+        onReset={() => onResetTransform('all')}
       >
         <div className="flex flex-col gap-1 pb-2">
            {/* Move Row */}
            <div className="flex flex-col items-start gap-2 mb-2 w-full">
-              <span className="text-[13px] font-medium text-black mb-1 ml-1">Move :</span>
+              <div className="flex items-center w-full pr-1">
+                 <span className="text-[13px] font-medium text-black ml-1">Move :</span>
+                 <button onClick={() => onResetTransform('position')} className="text-gray-400 hover:text-[#5d5efc] transition-colors p-1 rounded-md hover:bg-gray-100" title="Reset Move">
+                    <Icon icon="ix:reset" width={14} height={14} />
+                 </button>
+              </div>
               <div className="grid grid-cols-3 gap-2 w-full">
                  <div className="flex flex-col items-center gap-1.5">
                     <span className="text-[10px] font-semibold text-gray-400 uppercase">X</span>
@@ -400,7 +450,12 @@ export default function SettingsPanel({ controls, updateControl, activePanel, se
 
            {/* Rotate Row */}
            <div className="flex flex-col items-start gap-2 mb-2 bg-gray-50 rounded-lg py-2 w-full">
-              <span className="text-[13px] font-medium text-black mb-1 ml-1">Rotate :</span>
+              <div className="flex items-center w-full pr-1">
+                 <span className="text-[13px] font-medium text-black ml-1">Rotate :</span>
+                 <button onClick={() => onResetTransform('rotation')} className="text-gray-400 hover:text-[#5d5efc] transition-colors p-1 rounded-md hover:bg-gray-100" title="Reset Rotation">
+                    <Icon icon="ix:reset" width={14} height={14} />
+                 </button>
+              </div>
               <div className="grid grid-cols-3 gap-2 w-full">
                  <div className="flex flex-col items-center gap-1.5">
                     <span className="text-[10px] font-semibold text-gray-400 uppercase">X</span>
@@ -419,7 +474,12 @@ export default function SettingsPanel({ controls, updateControl, activePanel, se
 
            {/* Scale Row */}
            <div className="flex flex-col items-start gap-2 w-full">
-              <span className="text-[13px] font-medium text-black mb-1 ml-1">Scale :</span>
+              <div className="flex items-center w-full pr-1">
+                 <span className="text-[13px] font-medium text-black ml-1">Scale :</span>
+                 <button onClick={() => onResetTransform('scale')} className="text-gray-400 hover:text-[#5d5efc] transition-colors p-1 rounded-md hover:bg-gray-100" title="Reset Scale">
+                    <Icon icon="ix:reset" width={14} height={14} />
+                 </button>
+              </div>
               <div className="grid grid-cols-3 gap-2 w-full">
                  <div className="flex flex-col items-center gap-1.5">
                     <span className="text-[10px] font-semibold text-gray-400 uppercase">X</span>
@@ -461,7 +521,6 @@ export default function SettingsPanel({ controls, updateControl, activePanel, se
 
           <div className="flex flex-col items-center text-gray-300 group-hover:text-gray-400 transition-colors">
             <Icon icon="heroicons:cube" width={40} height={40} className="stroke-1" />
-            <span className="text-[11px] mt-2 font-medium tracking-wide uppercase">Model Preview</span>
           </div>
 
           {/* Light Effect */}
@@ -513,6 +572,16 @@ export default function SettingsPanel({ controls, updateControl, activePanel, se
                         { label: 'Warehouse', value: 'warehouse' },
                     ]}
                  />
+                 <div className="mt-2">
+                     <CustomSlider
+                        label="Rotation"
+                        value={controls.envRotation || 0}
+                        min={0}
+                        max={360}
+                        onChange={(v) => updateControl("envRotation", v)}
+                        unit="°"
+                     />
+                 </div>
             </div>
 
 

@@ -60,11 +60,37 @@ export default function EditorToolbar({ hasModel, settings, setSettings, onClear
 
                     {/* Toggles */}
                     <div className="space-y-4 pt-2">
-                        <ToggleRow 
-                            label="Base" 
-                            isActive={settings?.base} 
-                            onToggle={() => updateSetting("base", !settings?.base)} 
-                        />
+                        <div>
+                            <ToggleRow 
+                                label="Base" 
+                                isActive={settings?.base} 
+                                onToggle={() => updateSetting("base", !settings?.base)} 
+                            />
+                            {settings?.base && (
+                                <div className="mt-3 flex items-center gap-2 pl-0.5 relative">
+                                    <div 
+                                        className="w-8 h-8 rounded-[8px] border border-gray-200 shadow-sm cursor-pointer hover:border-gray-300 transition-colors"
+                                        style={{ backgroundColor: settings.baseColor || '#000000' }}
+                                        onClick={(e) => {
+                                            e.stopPropagation();
+                                            setActiveColorPicker(activeColorPicker === 'base' ? null : 'base');
+                                        }}
+                                    ></div>
+                                    
+                                    <div 
+                                        className="flex-1 flex items-center justify-between border border-gray-200 rounded-[8px] px-2.5 py-1.5 bg-white hover:border-gray-300 transition-colors shadow-sm cursor-pointer"
+                                        onClick={(e) => {
+                                            e.stopPropagation();
+                                            setActiveColorPicker(activeColorPicker === 'base' ? null : 'base');
+                                        }}
+                                    >
+                                        <span className="text-[11px] text-gray-600 font-medium tracking-wide font-mono uppercase">{settings.baseColor || '#000000'}</span>
+                                        <span className="text-[11px] text-gray-400 font-medium">100%</span>
+                                    </div>
+
+                                </div>
+                            )}
+                        </div>
                         
                         <ToggleRow 
                             label="Grid lines" 
@@ -91,6 +117,18 @@ export default function EditorToolbar({ hasModel, settings, setSettings, onClear
                             Clear 3D Model
                         </button>
                     </div>
+
+                    {/* Color Picker Sidebar */}
+                    {activeColorPicker === 'base' && (
+                        <div className="absolute left-full top-0 ml-3 z-[100] color-picker-popover">
+                            <ColorPicker 
+                                color={settings.baseColor || '#2c2c2c'}
+                                onChange={(c) => updateSetting('baseColor', c)}
+                                onClose={() => setActiveColorPicker(null)}
+                                className="relative"
+                            />
+                        </div>
+                    )}
                 </div>
             )}
 

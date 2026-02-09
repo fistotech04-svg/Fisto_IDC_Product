@@ -16,7 +16,10 @@ export default function RightPanel({
     activeAccordion,
     setActiveAccordion,
     transformValues,
-    onManualTransformChange
+    onManualTransformChange,
+    onResetTransform,
+    onResetFactorSettings,
+    onUvUnwrap
 }) {
   const fileRef = useRef(null);
   const [isDragOver, setIsDragOver] = useState(false);
@@ -200,6 +203,9 @@ export default function RightPanel({
                     setActivePanel={setActiveAccordion}
                     transformValues={transformValues}
                     onManualTransformChange={onManualTransformChange}
+                    onResetTransform={onResetTransform}
+                    onResetFactor={onResetFactorSettings}
+                    onUvUnwrap={onUvUnwrap}
                 />
               </div>
 
