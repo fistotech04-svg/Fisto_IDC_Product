@@ -1,4 +1,5 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
+import * as LucideIcons from 'lucide-react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { Upload, Replace, ChevronUp, ChevronDown, Edit3, X, Grid, ArrowLeft, ZoomIn, ZoomOut, Mail, Phone, Globe, Trash2, Save, Image, Folder, Move, Check, CheckCheck, Battery, Calendar, File, Settings, Search, Home, User, Users, Star, Heart, Share2, Download, Cloud, Clock, MapPin, Lock, Unlock, Menu, Play, Pause, AlertCircle, Info, HelpCircle, Facebook, Twitter, Instagram, Linkedin, Github, Youtube, Pipette } from 'lucide-react';
 
@@ -215,6 +216,7 @@ const CustomColorPicker = ({ color, onChange, onCommit, onClose, position, opaci
 
 import InteractionPanel from './InteractionPanel';
 import AnimationPanel from './AnimationPanel';
+import { Icon } from '@iconify/react';
 
 
 const IconEditor = ({
@@ -261,47 +263,32 @@ const IconEditor = ({
   const [activeTab, setActiveTab] = useState('gallery');
   const [tempSelectedIcon, setTempSelectedIcon] = useState(null);
 
-  const galleryIcons = [
-    { name: 'Zoom In', Component: ZoomIn },
-    { name: 'Zoom Out', Component: ZoomOut },
-    { name: 'Recycle Bin', Component: Trash2 },
-    { name: 'Save', Component: Save },
-    { name: 'Image', Component: Image },
-    { name: 'Folder', Component: Folder },
-    { name: 'Arrows', Component: Move },
-    { name: 'Tick', Component: Check },
-    { name: 'Double Tick', Component: CheckCheck },
-    { name: 'Replace', Component: Replace },
-    { name: 'Battery', Component: Battery },
-    { name: 'Calendar', Component: Calendar },
-    { name: 'File', Component: File },
-    { name: 'Settings', Component: Settings },
-    { name: 'Search', Component: Search },
-    { name: 'Home', Component: Home },
-    { name: 'User', Component: User },
-    { name: 'Users', Component: Users },
-    { name: 'Star', Component: Star },
-    { name: 'Heart', Component: Heart },
-    { name: 'Share', Component: Share2 },
-    { name: 'Download', Component: Download },
-    { name: 'Cloud', Component: Cloud },
-    { name: 'Clock', Component: Clock },
-    { name: 'Location', Component: MapPin },
-    { name: 'Lock', Component: Lock },
-    { name: 'Unlock', Component: Unlock },
-    { name: 'Menu', Component: Menu },
-    { name: 'Play', Component: Play },
-    { name: 'Pause', Component: Pause },
-    { name: 'Alert', Component: AlertCircle },
-    { name: 'Info', Component: Info },
-    { name: 'Help', Component: HelpCircle },
-    { name: 'Facebook', Component: Facebook },
-    { name: 'Twitter', Component: Twitter },
-    { name: 'Instagram', Component: Instagram },
-    { name: 'LinkedIn', Component: Linkedin },
-    { name: 'GitHub', Component: Github },
-    { name: 'YouTube', Component: Youtube },
-  ];
+  const [searchQuery, setSearchQuery] = useState('');
+  const [visibleCount, setVisibleCount] = useState(50);
+  
+  // Reset visible count when search or gallery availability changes
+  useEffect(() => {
+    setVisibleCount(50);
+  }, [searchQuery, showGallery]);
+
+  const handleScroll = (e) => {
+    const { scrollTop, scrollHeight, clientHeight } = e.currentTarget;
+    if (scrollHeight - scrollTop <= clientHeight + 100) {
+      setVisibleCount(prev => prev + 50);
+    }
+  };
+
+  const lucideList = useMemo(() => {
+    return Object.keys(LucideIcons)
+      .filter(key => key !== 'createLucideIcon' && key !== 'default' && key !== 'icons' && key !== 'Icon' && /^[A-Z]/.test(key))
+      .map(key => ({ name: key, Component: LucideIcons[key] }));
+  }, []);
+
+  const filteredIcons = useMemo(() => {
+    if (!searchQuery) return lucideList;
+    const lower = searchQuery.toLowerCase();
+    return lucideList.filter(icon => icon.name.toLowerCase().includes(lower));
+  }, [searchQuery, lucideList]);
 
   const [uploadedIcons, setUploadedIcons] = useState([
      { name: 'Mail', Component: Mail },
@@ -558,14 +545,14 @@ const IconEditor = ({
         }
       `}</style>
 
-      <div className="bg-white border space-y-4 border-gray-200 rounded-lg shadow-sm overflow-hidden relative font-sans">
+      <div className="bg-white border space-y-4 border-gray-200 rounded-[15px] shadow-sm overflow-hidden relative font-sans">
         
         <div 
-          className="flex items-center justify-between px-4 py-3 border-b border-gray-50 cursor-pointer hover:bg-gray-50 transition-colors"
+          className="flex items-center justify-between px-4 py-4 border-b border-gray-50 cursor-pointer hover:bg-gray-50 transition-colors"
           onClick={() => setActiveSection(activeSection === 'main' ? null : 'main')}
         >
           <div className="flex items-center gap-2">
-            <Edit3 size={16} className="text-gray-600" />
+            <Icon icon="uil:icons"  className="text-gray-600" width="16" height="16" />
             <span className="font-medium text-gray-700 text-sm">Icon</span>
           </div>
           <ChevronUp size={16} className={`text-gray-500 transition-transform duration-200 ${isMainPanelOpen ? '' : 'rotate-180'}`} />
@@ -618,7 +605,7 @@ const IconEditor = ({
                 {/* Background with icon previews */}
                 <div className="absolute inset-0 bg-gradient-to-br from-gray-300 via-gray-400 to-gray-500 p-4">
                   <div className="grid grid-cols-3 gap-3 h-10% pb-6 px-4 opacity-70 grayscale group-hover:grayscale-0 transition-all duration-300 transform group-hover:scale-105">
-                    {[...uploadedIcons, ...galleryIcons].slice(0, 6).map((icon, i) => (
+                    {[...uploadedIcons, ...lucideList].slice(0, 6).map((icon, i) => (
                       <div key={i} className="aspect-square rounded-lg shadow-lg overflow-hidden bg-white border-2 border-gray-300 p-3 flex items-center justify-center h-50%">
                         {icon.Component ? (
                           <icon.Component className="w-full h-full text-gray-700" strokeWidth={1.5} />
@@ -719,7 +706,14 @@ const IconEditor = ({
                         }}
                         className="text-[14px] font-medium text-gray-600 uppercase w-full outline-none bg-transparent"
                       />
-                      <span className="text-[14px] font-medium text-gray-500 ml-2">{opacity}%</span>
+                      <input
+                        type="number"
+                        min="0"
+                        max="100"
+                        value={opacity}
+                        onChange={(e) => updateOpacity(Number(e.target.value))}
+                        className="text-[14px] font-medium text-gray-500 ml-2 w-12 text-right outline-none bg-transparent"
+                      />
                     </div>
                   </div>
 
@@ -759,7 +753,14 @@ const IconEditor = ({
                         }}
                         className="text-[14px] font-medium text-gray-600 uppercase w-full outline-none bg-transparent"
                       />
-                      <span className="text-[14px] font-medium text-gray-500 ml-2">{opacity}%</span>
+                      <input
+                        type="number"
+                        min="0"
+                        max="100"
+                        value={opacity}
+                        onChange={(e) => updateOpacity(Number(e.target.value))}
+                        className="text-[14px] font-medium text-gray-500 ml-2 w-12 text-right outline-none bg-transparent"
+                      />
                     </div>
                   </div>
 
@@ -832,21 +833,6 @@ const IconEditor = ({
         )}
       </div>
 
-      <InteractionPanel 
-        selectedElement={selectedElement} 
-        onUpdate={onUpdate} 
-        onPopupPreviewUpdate={onPopupPreviewUpdate}
-        isOpen={activeSection === 'interaction'}
-        onToggle={() => setActiveSection(activeSection === 'interaction' ? null : 'interaction')}
-      />
-
-      <AnimationPanel
-        selectedElement={selectedElement}
-        onUpdate={onUpdate}
-        isOpen={activeSection === 'animation'}
-        onToggle={() => setActiveSection(activeSection === 'animation' ? null : 'animation')}
-      />
-
 
 
       {showGallery && (
@@ -875,12 +861,37 @@ const IconEditor = ({
              </button>
            </div>
            
-           <div className="flex-1 overflow-y-auto px-6 py-6 custom-scrollbar">
+           {activeTab === 'gallery' && (
+             <div className="px-6 py-4 border-b bg-white">
+                <div className="relative">
+                  <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+                  <input 
+                    type="text" 
+                    placeholder="Search icons..." 
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    className="w-full h-9 pl-9 pr-8 text-xs bg-gray-50 border border-gray-200 rounded-full outline-none focus:border-black  transition-colors"
+                  />
+                  {searchQuery && (
+                    <button 
+                      onClick={() => setSearchQuery('')}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                    >
+                      <X size={14} />
+                    </button>
+                  )}
+                </div>
+             </div>
+           )}
+           
+           <div 
+             className="flex-1 overflow-y-auto px-6 py-6 custom-scrollbar"
+             onScroll={handleScroll}
+           >
              {activeTab === 'gallery' && (
                  <>
-                    <h3 className="text-[12px] font-bold text-black mb-4">Recent</h3>
-                    <div className="grid grid-cols-5 gap-3">
-                        {[...uploadedIcons, ...galleryIcons].map((icon, index) => (
+                     <div className="grid grid-cols-5 gap-3">
+                         {filteredIcons.slice(0, visibleCount).map((icon, index) => (
                             <div 
                                 key={index} 
                                 onClick={() => setTempSelectedIcon(icon)}
@@ -971,6 +982,7 @@ const IconEditor = ({
         </div>
       )}
 
+
       {showInteraction && (
         <InteractionPanel
           selectedElement={selectedElement}
@@ -988,6 +1000,13 @@ const IconEditor = ({
           IconEditorComponent={IconEditorComponent || IconEditor}
         />
       )}
+
+      <AnimationPanel
+        selectedElement={selectedElement}
+        onUpdate={onUpdate}
+        isOpen={activeSection === 'animation'}
+        onToggle={() => setActiveSection(activeSection === 'animation' ? null : 'animation')}
+      />
 
       {pickerTarget && (
         <CustomColorPicker 

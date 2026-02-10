@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect } from "react";
+import { createPortal } from "react-dom";
 import { Icon } from "@iconify/react";
 import ColorPicker from "./ColorPicker";
 
@@ -13,6 +14,7 @@ export default function EditorToolbar({ hasModel, settings, setSettings, onClear
         }
     };
     const [activeColorPicker, setActiveColorPicker] = useState(null); // 'bg' | 'base' | null
+    const [pickerPos, setPickerPos] = useState({ top: 0, left: 0 });
     const settingsRef = useRef(null);
 
     // Close settings when clicking outside
@@ -35,8 +37,24 @@ export default function EditorToolbar({ hasModel, settings, setSettings, onClear
         setSettings((prev) => ({ ...prev, [key]: value }));
     };
 
+    const handleBasePickerToggle = (e) => {
+        e.stopPropagation();
+        if (activeColorPicker === 'base') {
+            setActiveColorPicker(null);
+        } else {
+            if (settingsRef.current) {
+                const rect = settingsRef.current.getBoundingClientRect();
+                setPickerPos({
+                    top: rect.top,
+                    left: rect.right + 12
+                });
+            }
+            setActiveColorPicker('base');
+        }
+    };
+
     return (
-        <div className={`absolute right-4 z-50 flex flex-col items-center gap-3 transition-all duration-500 ease-in-out ${hasModel ? "top-20" : "top-10"}`}>
+        <div className={`absolute right-4 z-49 flex flex-col items-center gap-3 transition-all duration-500 ease-in-out ${hasModel ? "top-20" : "top-10"}`}>
             
             {/* SETTINGS POPOVER */}
             {showSettings && (
@@ -71,18 +89,12 @@ export default function EditorToolbar({ hasModel, settings, setSettings, onClear
                                     <div 
                                         className="w-8 h-8 rounded-[8px] border border-gray-200 shadow-sm cursor-pointer hover:border-gray-300 transition-colors"
                                         style={{ backgroundColor: settings.baseColor || '#000000' }}
-                                        onClick={(e) => {
-                                            e.stopPropagation();
-                                            setActiveColorPicker(activeColorPicker === 'base' ? null : 'base');
-                                        }}
+                                        onClick={handleBasePickerToggle}
                                     ></div>
                                     
                                     <div 
                                         className="flex-1 flex items-center justify-between border border-gray-200 rounded-[8px] px-2.5 py-1.5 bg-white hover:border-gray-300 transition-colors shadow-sm cursor-pointer"
-                                        onClick={(e) => {
-                                            e.stopPropagation();
-                                            setActiveColorPicker(activeColorPicker === 'base' ? null : 'base');
-                                        }}
+                                        onClick={handleBasePickerToggle}
                                     >
                                         <span className="text-[11px] text-gray-600 font-medium tracking-wide font-mono uppercase">{settings.baseColor || '#000000'}</span>
                                         <span className="text-[11px] text-gray-400 font-medium">100%</span>
@@ -119,15 +131,19 @@ export default function EditorToolbar({ hasModel, settings, setSettings, onClear
                     </div>
 
                     {/* Color Picker Sidebar */}
-                    {activeColorPicker === 'base' && (
-                        <div className="absolute left-full top-0 ml-3 z-[100] color-picker-popover">
+                    {activeColorPicker === 'base' && createPortal(
+                        <div 
+                            className="fixed z-[9999] color-picker-popover"
+                            style={{ top: pickerPos.top, left: pickerPos.left }}
+                        >
                             <ColorPicker 
                                 color={settings.baseColor || '#2c2c2c'}
                                 onChange={(c) => updateSetting('baseColor', c)}
                                 onClose={() => setActiveColorPicker(null)}
-                                className="relative"
+                                className="block"
                             />
-                        </div>
+                        </div>,
+                        document.body
                     )}
                 </div>
             )}

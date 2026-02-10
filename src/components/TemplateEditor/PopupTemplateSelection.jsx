@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import ReactDOM from 'react-dom';
 import { Search, SlidersHorizontal } from 'lucide-react';
 import { popupTemplates } from '../../data/popupTemplates';
 
@@ -26,13 +27,13 @@ const PopupTemplateSelection = ({ onClose, onSelect }) => {
     }
   };
 
-  return (
+  return ReactDOM.createPortal(
     <div
-      className="fixed inset-0 z-[10000] flex items-center justify-center bg-[#eaeff5]/60 backdrop-blur-[1px]"
+      className="fixed inset-0 z-[100001] bg-black/50 backdrop-blur-sm flex items-center justify-center p-4 transition-all duration-300"
       onClick={onClose}
     >
       <div
-        className="bg-white rounded-[24px] w-full max-w-[1000px] h-[750px] max-h-[90vh] shadow-[0_10px_40px_-15px_rgba(0,0,0,0.1)] flex flex-col relative overflow-hidden animate-in fade-in zoom-in-95 duration-300"
+        className="bg-[#f9fafb] rounded-[16px] w-full max-w-[1000px] h-[750px] max-h-[90vh] shadow-2xl border border-white/20 flex flex-col relative overflow-hidden animate-in fade-in zoom-in-95 duration-200"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header Section */}
@@ -184,11 +185,7 @@ const PopupTemplateSelection = ({ onClose, onSelect }) => {
               </div>
             ))}
           </div>
-
         </div>
-
-        {/* Vertical Scroll Indicator (Dark bar on the right) */}
-        <div className="absolute right-3 top-1/2 -translate-y-1/2 w-1.5 h-24 bg-[#333333] rounded-full z-10" />
       </div>
 
       <style>{`
@@ -199,7 +196,8 @@ const PopupTemplateSelection = ({ onClose, onSelect }) => {
           width: 0px;
         }
       `}</style>
-    </div>
+    </div>,
+    document.body
   );
 };
 

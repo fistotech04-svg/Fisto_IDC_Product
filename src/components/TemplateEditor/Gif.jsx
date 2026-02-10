@@ -8,6 +8,7 @@ import {
   ChevronUp,
   ChevronDown,
   Edit3,
+  ImagePlay,
 } from "lucide-react";
 import GalleryGif from "./GalleryGif";
 import InteractionPanel from './InteractionPanel';
@@ -164,14 +165,14 @@ const GifEditor = ({
 
   return (
     <>
-      <div className="bg-white border border-gray-200 rounded-lg shadow-sm overflow-hidden relative font-sans mb-3">
+      <div className="bg-white border border-gray-200 rounded-[15px] shadow-sm overflow-hidden relative font-sans mb-3">
         {/* HEADER */}
         <div
           onClick={() => setActiveSection(activeSection === 'main' ? null : 'main')}
-          className="flex items-center justify-between px-4 py-3 border-b border-gray-50 cursor-pointer hover:bg-gray-50 transition-colors"
+          className="flex items-center justify-between px-4 py-4 border-b border-gray-50 cursor-pointer hover:bg-gray-50 transition-colors"
         >
           <div className="flex items-center gap-2">
-            <Edit3 size={16} className="text-gray-600" />
+            <ImagePlay size={16} className="text-gray-600"/>
             <span className="font-medium text-gray-800 text-[15px]">Gif</span>
           </div>
           <ChevronUp size={16} className={`text-gray-500 transition-transform duration-200 ${open ? '' : 'rotate-180'}`} />

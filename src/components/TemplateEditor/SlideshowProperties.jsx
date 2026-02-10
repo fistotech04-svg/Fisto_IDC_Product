@@ -62,6 +62,8 @@ const SectionHeader = ({ title }) => (
 const SlideshowProperties = ({ selectedElement, onUpdate, isOpen, onToggle, opacity, onUpdateOpacity, setPreviewSrc, setIsUpdatingDOM }) => {
   const [showEffectDropdown, setShowEffectDropdown] = useState(false);
   const [showFitDropdown, setShowFitDropdown] = useState(false);
+  const [showModeDropdown, setShowModeDropdown] = useState(false);
+  const [dropUp, setDropUp] = useState(false);
   const [openContextMenu, setOpenContextMenu] = useState(null);
   const [showGallery, setShowGallery] = useState(false);
   const fileInputRef = useRef(null);
@@ -586,29 +588,59 @@ const SlideshowProperties = ({ selectedElement, onUpdate, isOpen, onToggle, opac
       </div>
 
       {/* Properties Accordion */}
-      <div className="border border-gray-100 rounded-xl overflow-hidden shadow-sm bg-white">
+      <div className="border border-gray-100 rounded-[15px] shadow-sm bg-white">
         <button 
           onClick={onToggle} 
-          className="w-full flex items-center justify-between px-4 py-3.5 text-[13px] font-bold text-gray-800 hover:bg-gray-50 transition-colors"
+          className={`w-full flex items-center justify-between px-4 py-4 text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors ${isOpen ? 'rounded-t-[15px]' : 'rounded-[15px]'}`}
         >
           <span>Slideshow Properties</span>
-          <ChevronDown size={14} className={`text-gray-400 transition-transform duration-300 ${isOpen ? 'rotate-180' : ''}`} />
+          <ChevronDown size={16} className={`text-gray-400 transition-transform duration-300 ${isOpen ? 'rotate-180' : ''}`} />
         </button>
 
         {isOpen && (
           <div className="relative px-6 pb-5 pt-3 border-t border-gray-100">
           <div className="space-y-4 animate-in slide-in-from-top-2 duration-300">
             {/* Mode Toggle */}
-            <div className="flex justify-start pt-1">
-              <button 
-                onClick={() => updateSetting('autoPlay', !slideshowSettings.autoPlay)}
-                className="flex items-center gap-2.5 px-3 py-2 bg-gray-50 border border-gray-100 rounded-lg hover:bg-gray-100 hover:border-indigo-200 transition-all group"
-              >
-                <span className="text-[11px] font-semibold text-gray-600">
-                  {slideshowSettings.autoPlay ? 'Auto Slide Mode' : 'Manual Slide Mode'}
-                </span>
-                <ArrowRightLeft size={14} className="text-gray-400 group-hover:text-indigo-500 group-hover:rotate-180 transition-all duration-500" />
-              </button>
+            {/* Mode Select Dropdown */}
+            <div className="flex justify-start pt-1 relative z-20">
+              <div className="relative">
+                <button 
+                  onClick={(e) => {
+                    if (!showModeDropdown) {
+                       const rect = e.currentTarget.getBoundingClientRect();
+                       const spaceBelow = window.innerHeight - rect.bottom;
+                       setDropUp(spaceBelow < 120);
+                    }
+                    setShowModeDropdown(!showModeDropdown);
+                  }}
+                  className="flex items-center justify-between w-[160px] px-3 py-2 bg-white border border-gray-200 rounded-xl shadow-sm hover:border-indigo-300 transition-all text-[12px] font-semibold text-gray-700"
+                >
+                  <span>{slideshowSettings.autoPlay ? 'Auto Slide Mode' : 'Manual Slide Mode'}</span>
+                  <ArrowRightLeft size={14} className={`text-gray-400 transition-transform ${showModeDropdown ? 'rotate-180' : ''}`} />
+                </button>
+                {showModeDropdown && (
+                  <>
+                    <div className="fixed inset-0 z-[90]" onClick={() => setShowModeDropdown(false)} />
+                    <div className={`absolute left-0 w-full min-w-[160px] bg-white border border-gray-100 rounded-xl shadow-2xl overflow-hidden z-[100] py-1 animate-in fade-in zoom-in-95 duration-150 ${dropUp ? 'bottom-full mb-2 origin-bottom' : 'top-full mt-2 origin-top'}`}>
+                      {[
+                        { label: 'Auto Slide Mode', value: true },
+                        { label: 'Manual Slide Mode', value: false }
+                      ].map((mode) => (
+                        <button 
+                          key={mode.label}
+                          onClick={() => {
+                            updateSetting('autoPlay', mode.value);
+                            setShowModeDropdown(false);
+                          }}
+                          className={`w-full px-4 py-2 text-[12px] font-medium text-left hover:bg-gray-50 transition-colors ${slideshowSettings.autoPlay === mode.value ? 'text-indigo-600 bg-indigo-50/50' : 'text-gray-600 hover:text-indigo-600'}`}
+                        >
+                          {mode.label}
+                        </button>
+                      ))}
+                    </div>
+                  </>
+                )}
+              </div>
             </div>
 
             {/* Slide Effect */}

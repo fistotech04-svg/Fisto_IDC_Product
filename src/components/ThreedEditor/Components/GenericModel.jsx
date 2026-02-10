@@ -1,12 +1,70 @@
 import React, { useState, useEffect, useLayoutEffect } from "react";
 import * as THREE from "three";
 import { TransformControls } from "@react-three/drei";
+import { GLTFExporter } from "three-stdlib";
+import { OBJExporter } from "three-stdlib";
+import { STLExporter } from "three-stdlib";
 
-const GenericModel = React.memo(({ scene, wireframe, setModelStats, setMaterialList, selectedMaterial, onSelectMaterial, modelName, transformMode, materialSettings, onTransformChange, transformValues, selectedTexture, onTextureApplied, onTextureIdentified, onUpdateMaterialSetting, resetKey, sceneResetTrigger, uvUnwrapTrigger }) => {
+const GenericModel = React.memo(React.forwardRef(({ scene, wireframe, setModelStats, setMaterialList, selectedMaterial, onSelectMaterial, modelName, transformMode, materialSettings, onTransformChange, onTransformEnd, transformValues, selectedTexture, onTextureApplied, onTextureIdentified, onUpdateMaterialSetting, resetKey, sceneResetTrigger, uvUnwrapTrigger }, ref) => {
   const [position, setPosition] = useState([0, 0, 0]);
   const [scale, setScale] = useState(1);
   const groupRef = React.useRef(null);
   const [modelGroup, setModelGroup] = useState(null);
+  const syncedSelectionSignature = React.useRef(null);
+
+
+  // Expose Export Functionality
+  React.useImperativeHandle(ref, () => ({
+      exportModel: (format) => {
+          if (!scene) return;
+          
+          const exporterOptions = {
+             binary: true // for GLB
+          };
+
+          const download = (blob, filename) => {
+               const link = document.createElement('a');
+               link.style.display = 'none';
+               link.href = URL.createObjectURL(blob);
+               link.download = filename;
+               document.body.appendChild(link);
+               link.click();
+               document.body.removeChild(link);
+          };
+
+          const saveString = (text, filename) => {
+               const blob = new Blob([text], { type: 'text/plain' });
+               download(blob, filename);
+          };
+
+          const saveArrayBuffer = (buffer, filename) => {
+               const blob = new Blob([buffer], { type: 'application/octet-stream' });
+               download(blob, filename);
+          };
+          
+          const name = modelName || "model";
+
+          if (format === 'glb') {
+              const exporter = new GLTFExporter();
+              exporter.parse(scene, (result) => {
+                   if (result instanceof ArrayBuffer) {
+                       saveArrayBuffer(result, `${name}.glb`);
+                   } else {
+                       const output = JSON.stringify(result, null, 2);
+                       saveString(output, `${name}.gltf`);
+                   }
+              }, (err) => console.error(err), exporterOptions);
+          } else if (format === 'obj') {
+              const exporter = new OBJExporter();
+              const result = exporter.parse(scene);
+              saveString(result, `${name}.obj`);
+          } else if (format === 'stl') {
+              const exporter = new STLExporter();
+              const result = exporter.parse(scene);
+              saveString(result, `${name}.stl`);
+          }
+      }
+  }));
     
   // 0. Apply Texture to Selected Material
   useEffect(() => {
@@ -109,75 +167,7 @@ const GenericModel = React.memo(({ scene, wireframe, setModelStats, setMaterialL
   }, [selectedTexture, scene, selectedMaterial, onTextureApplied, onTextureIdentified]);
 
   // 0.6. Sync UI with Selected Material (Fetch existing values)
-  useEffect(() => {
-    if (!scene || !selectedMaterial || !onUpdateMaterialSetting) return;
-    
-    // Skip if full model is selected explicitly (maybe? or use first mat?)
-    // If Full Model is selected, it's ambiguous which material to read. 
-    // Usually, we don't sync back for full model to avoid jumping UI.
-    // BUT user asked "in base color fetch already applied color".
-    
-    const targetMatName = selectedMaterial.name;
-    // Don't sync if selecting Model Node itself (Full Model) 
-    if (modelName && targetMatName === modelName) return;
 
-    let foundMat = null;
-    const isGroup = selectedMaterial.isGroup;
-    const groupMats = selectedMaterial.materials || [];
-
-    // Find first matching material
-    scene.traverse((child) => {
-        if (foundMat) return;
-        if (child.isMesh && child.material) {
-             const mats = Array.isArray(child.material) ? child.material : [child.material];
-             for (let m of mats) {
-                 if (isGroup) {
-                     if (groupMats.includes(m.name)) { foundMat = m; break; }
-                 } else {
-                     if (m.name === targetMatName) { foundMat = m; break; }
-                 }
-             }
-        }
-    });
-
-    if (foundMat && foundMat.isMeshStandardMaterial) {
-        // Sync values to UI - ONLY if distinct to prevent loops
-        // We use the current materialSettings prop (closest available value) to check if update is needed
-        
-        // Color
-        const hex = '#' + foundMat.color.getHexString();
-        if (materialSettings.color !== hex) {
-             onUpdateMaterialSetting('color', hex);
-        }
-        
-        // Alpha
-        const alphaVal = Math.round(foundMat.opacity * 100);
-        if (Math.abs(materialSettings.alpha - alphaVal) > 1) {
-             onUpdateMaterialSetting('alpha', alphaVal);
-        }
-        
-        // Metallic
-        const metalVal = Math.round(foundMat.metalness * 100);
-        if (Math.abs(materialSettings.metallic - metalVal) > 1) {
-             onUpdateMaterialSetting('metallic', metalVal);
-        }
-        
-        // Roughness
-        const roughVal = Math.round(foundMat.roughness * 100);
-        if (Math.abs(materialSettings.roughness - roughVal) > 1) {
-             onUpdateMaterialSetting('roughness', roughVal);
-        }
-        
-        // Normal Scale (if exists)
-        if (foundMat.normalMap) {
-            const normVal = Math.round(foundMat.normalScale.x * 100);
-            if (Math.abs(materialSettings.normal - normVal) > 1) {
-                onUpdateMaterialSetting('normal', normVal);
-            }
-        }
-    }
-
-  }, [selectedMaterial, scene, modelName, onUpdateMaterialSetting]); // materialSettings excluded to avoid loop
 
   // 0.5 Detect Current Texture on Selection Change
   useEffect(() => {
@@ -493,95 +483,152 @@ const GenericModel = React.memo(({ scene, wireframe, setModelStats, setMaterialL
   // 3.5. Apply Material Settings (Factor Adjustment - Scope Aware)
   // 3.5. New Approach: Split Load (Selection -> UI) and Apply (UI -> Material)
 
+  // Use a ref to access the sync function without triggering effects
+  const onUpdateMaterialSettingRef = React.useRef(onUpdateMaterialSetting);
+  useEffect(() => {
+      onUpdateMaterialSettingRef.current = onUpdateMaterialSetting;
+  });
+
   // A. Load Settings when Selection Changes
   useEffect(() => {
-      if (!scene || !onUpdateMaterialSetting) return;
+      // Don't check !onUpdateMaterialSetting here as we use ref, checking scene is enough
+      if (!scene) return;
 
-      const targetMatName = selectedMaterial ? selectedMaterial.name : modelName;
-      const isFullModel = !selectedMaterial || (modelName && selectedMaterial.name === modelName);
-
-      // Helper to safely update if different
-      const safeUpdate = (key, val) => {
-           onUpdateMaterialSetting(key, val);
-      };
-
-      if (isFullModel) {
-          // Optional: You could reset to defaults here if you want "Clean Slate" for full model
-          // OR iterate scene, find first material, and load its settings?
-          // Let's load the FIRST available material to populate UI so it's not stale
-          let firstMat = null;
+      const timerId = setTimeout(() => {
+          const targetMatName = selectedMaterial ? selectedMaterial.name : modelName;
+          const isFullModel = !selectedMaterial || (modelName && selectedMaterial.name === modelName);
+    
+          // Helper via ref
+          const safeUpdate = (key, val) => {
+               if (onUpdateMaterialSettingRef.current) {
+                   onUpdateMaterialSettingRef.current(key, val);
+               }
+          };
+    
+          if (isFullModel) {
+              // Optional: You could reset to defaults here if you want "Clean Slate" for full model
+              // OR iterate scene, find first material, and load its settings?
+              // Let's load the FIRST available material to populate UI so it's not stale
+              let firstMat = null;
+              scene.traverse((child) => {
+                  if (firstMat) return;
+                  if (child.isMesh && child.material) {
+                       firstMat = Array.isArray(child.material) ? child.material[0] : child.material;
+                  }
+              });
+              
+               if (firstMat) {
+                    // Load from first mat as representative
+                    if (firstMat.opacity !== undefined) safeUpdate('alpha', Math.round(firstMat.opacity * 100));
+                    
+                    if (firstMat.isMeshStandardMaterial || firstMat.isMeshPhysicalMaterial) {
+                         if (firstMat.metalness !== undefined) safeUpdate('metallic', Math.round(firstMat.metalness * 100));
+                         if (firstMat.roughness !== undefined) safeUpdate('roughness', Math.round(firstMat.roughness * 100));
+                    } else {
+                         safeUpdate('metallic', 0);
+                         safeUpdate('roughness', 50);
+                    }
+                    
+                    if (firstMat.normalMap && firstMat.normalScale) safeUpdate('normal', Math.round(firstMat.normalScale.x * 100));
+                    if (firstMat.bumpMap && firstMat.bumpScale !== undefined) safeUpdate('bump', Math.round(firstMat.bumpScale * 100));
+         
+                    if (firstMat.map) {
+                        safeUpdate('scale', Math.round(firstMat.map.repeat.x * 100));
+                        safeUpdate('scaleY', Math.round(firstMat.map.repeat.y * 100));
+                        safeUpdate('rotation', Math.round(firstMat.map.rotation * (180/Math.PI)));
+                        safeUpdate('offset', { x: firstMat.map.offset.x, y: firstMat.map.offset.y });
+                    } else {
+                        safeUpdate('scale', 100);
+                        safeUpdate('scaleY', 100);
+                        safeUpdate('rotation', 0);
+                        safeUpdate('offset', { x: 0, y: 0 });
+                    }
+         
+                    if (firstMat.color) {
+                        if (firstMat.userData.originalColor && !firstMat.color.equals(firstMat.userData.originalColor)) {
+                            safeUpdate('color', '#' + firstMat.color.getHexString());
+                            safeUpdate('useFactorColor', true);
+                        } else {
+                            safeUpdate('color', '#' + firstMat.color.getHexString());
+                            safeUpdate('useFactorColor', false); // Do not force factor use if same
+                        }
+                    }
+               }
+              return;
+          }
+    
+          // Search for specific material
+          let foundMat = null;
           scene.traverse((child) => {
-              if (firstMat) return;
+              if (foundMat) return;
               if (child.isMesh && child.material) {
-                   firstMat = Array.isArray(child.material) ? child.material[0] : child.material;
+                  const m = Array.isArray(child.material) ? child.material[0] : child.material;
+                  if (m.name === targetMatName) {
+                      foundMat = m;
+                  }
               }
           });
-          
-          if (firstMat) {
-               // Load from first mat as representative
-               if (firstMat.opacity !== undefined) safeUpdate('alpha', Math.round(firstMat.opacity * 100));
-               // ... other defaults can stay as is or be read
-          }
-          return;
-      }
-
-      // Search for specific material
-      let foundMat = null;
-      scene.traverse((child) => {
-          if (foundMat) return;
-          if (child.isMesh && child.material) {
-              const m = Array.isArray(child.material) ? child.material[0] : child.material;
-              if (m.name === targetMatName) {
-                  foundMat = m;
-              }
-          }
-      });
-
-      if (foundMat) {
-           const m = foundMat;
-
-           if (m.opacity !== undefined) safeUpdate('alpha', Math.round(m.opacity * 100));
-           
-           if (m.isMeshStandardMaterial || m.isMeshPhysicalMaterial) {
-                if (m.metalness !== undefined) safeUpdate('metallic', Math.round(m.metalness * 100));
-                if (m.roughness !== undefined) safeUpdate('roughness', Math.round(m.roughness * 100));
-           } else {
-                safeUpdate('metallic', 0);
-                safeUpdate('roughness', 50);
-           }
-           
-           if (m.normalMap && m.normalScale) safeUpdate('normal', Math.round(m.normalScale.x * 100));
-           if (m.bumpMap && m.bumpScale !== undefined) safeUpdate('bump', Math.round(m.bumpScale * 100));
-
-           if (m.map) {
-               safeUpdate('scale', Math.round(m.map.repeat.x * 100));
-               safeUpdate('scaleY', Math.round(m.map.repeat.y * 100));
-               safeUpdate('rotation', Math.round(m.map.rotation * (180/Math.PI)));
-               safeUpdate('offset', { x: m.map.offset.x, y: m.map.offset.y });
-           } else {
-               safeUpdate('scale', 100);
-               safeUpdate('scaleY', 100);
-               safeUpdate('rotation', 0);
-               safeUpdate('offset', { x: 0, y: 0 });
-           }
-
-           if (m.color) {
-               if (m.userData.originalColor && !m.color.equals(m.userData.originalColor)) {
-                   safeUpdate('color', '#' + m.color.getHexString());
-                   safeUpdate('useFactorColor', true);
+    
+          if (foundMat) {
+               const m = foundMat;
+    
+               if (m.opacity !== undefined) safeUpdate('alpha', Math.round(m.opacity * 100));
+               
+               if (m.isMeshStandardMaterial || m.isMeshPhysicalMaterial) {
+                    if (m.metalness !== undefined) safeUpdate('metallic', Math.round(m.metalness * 100));
+                    if (m.roughness !== undefined) safeUpdate('roughness', Math.round(m.roughness * 100));
                } else {
-                   safeUpdate('color', '#' + m.color.getHexString());
-                   safeUpdate('useFactorColor', false);
+                    safeUpdate('metallic', 0);
+                    safeUpdate('roughness', 50);
                }
-           }
-      }
+               
+               if (m.normalMap && m.normalScale) safeUpdate('normal', Math.round(m.normalScale.x * 100));
+               if (m.bumpMap && m.bumpScale !== undefined) safeUpdate('bump', Math.round(m.bumpScale * 100));
+    
+               if (m.map) {
+                   safeUpdate('scale', Math.round(m.map.repeat.x * 100));
+                   safeUpdate('scaleY', Math.round(m.map.repeat.y * 100));
+                   safeUpdate('rotation', Math.round(m.map.rotation * (180/Math.PI)));
+                   safeUpdate('offset', { x: m.map.offset.x, y: m.map.offset.y });
+               } else {
+                   safeUpdate('scale', 100);
+                   safeUpdate('scaleY', 100);
+                   safeUpdate('rotation', 0);
+                   safeUpdate('offset', { x: 0, y: 0 });
+               }
+    
+               if (m.color) {
+                   if (m.userData.originalColor && !m.color.equals(m.userData.originalColor)) {
+                       safeUpdate('color', '#' + m.color.getHexString());
+                       safeUpdate('useFactorColor', true);
+                   } else {
+                       safeUpdate('color', '#' + m.color.getHexString());
+                       safeUpdate('useFactorColor', false);
+                   }
+               }
+          }
+          
+          // Mark this selection as synced so the "Apply" effect can proceed
+          const sig = `${modelName || ''}_${selectedMaterial ? (selectedMaterial.uuid || selectedMaterial.name) : 'FULL'}`;
+          syncedSelectionSignature.current = sig;
 
-  }, [selectedMaterial, scene, modelName, onUpdateMaterialSetting]);
+      }, 50);
+
+      return () => clearTimeout(timerId);
+
+  }, [selectedMaterial, scene, modelName]); // Removed onUpdateMaterialSetting from dependencies
 
 
   // B. Apply Settings when UI changes (or initially applied)
   useEffect(() => {
     if (!scene || !materialSettings) return;
+
+    // Prevent applying default/stale settings if we haven't synced with the model yet
+    const currentSig = `${modelName || ''}_${selectedMaterial ? (selectedMaterial.uuid || selectedMaterial.name) : 'FULL'}`;
+    if (syncedSelectionSignature.current !== currentSig) {
+         return;
+    }
+
 
     const alpha = materialSettings.alpha / 100;
     const metallic = materialSettings.metallic / 100;
@@ -940,24 +987,25 @@ const GenericModel = React.memo(({ scene, wireframe, setModelStats, setMaterialL
 
   return (
     <>
-        {transformMode && transformTarget && (
-             <TransformControls 
-                key={transformTarget.uuid}
-                object={transformTarget} 
-                mode={transformMode} 
-                size={0.8} 
-                space="local" 
-                onChange={() => {
-                    if (onTransformChange && transformTarget) {
-                        onTransformChange({
-                            position: transformTarget.position,
-                            rotation: transformTarget.rotation,
-                            scale: transformTarget.scale
-                        });
-                    }
-                }}
-             />
-        )}
+         {transformMode && transformTarget && (
+              <TransformControls 
+                 key={transformTarget.uuid}
+                 object={transformTarget} 
+                 mode={transformMode} 
+                 size={0.8} 
+                 space="local" 
+                 onChange={() => {
+                     if (onTransformChange && transformTarget) {
+                         onTransformChange({
+                             position: transformTarget.position,
+                             rotation: transformTarget.rotation,
+                             scale: transformTarget.scale
+                         });
+                     }
+                 }}
+                 onMouseUp={onTransformEnd}
+              />
+         )}
         <group ref={setModelGroup}>
             <primitive 
                 object={scene} 
@@ -983,6 +1031,6 @@ const GenericModel = React.memo(({ scene, wireframe, setModelStats, setMaterialL
         </group>
     </>
   );
-});
+}));
 
 export default GenericModel;

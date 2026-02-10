@@ -17,6 +17,7 @@ import {
   ChevronUp,
   ChevronDown,
   Edit3,
+  Video,
 } from "lucide-react";
 import VideoGalleryModal from "./VideoGalleryModal";
 import InteractionPanel from "./InteractionPanel";
@@ -445,14 +446,14 @@ const VideoEditor = ({
 
   return (
     <>
-      <div className="border border-gray-200 rounded-lg overflow-hidden  bg-white shadow-sm mb-4">
+      <div className="border border-gray-200 rounded-[15px] overflow-hidden  bg-white shadow-sm mb-4">
         {/* SECTION HEADER WITH TOGGLE */}
         <div
-          className="flex items-center justify-between px-4 py-3 border-b border-gray-50 cursor-pointer hover:bg-gray-50 transition-colors"
+          className="flex items-center justify-between px-4 py-4 border-b border-gray-50 cursor-pointer hover:bg-gray-50 transition-colors"
           onClick={toggleMainPanel}
         >
           <div className="flex items-center gap-2">
-            <Edit3 size={16} className="text-gray-600" />
+            <Video size={16} className="text-gray-600" />
             <span className="font-medium text-gray-800 text-[15px]">Video</span>
           </div>
 

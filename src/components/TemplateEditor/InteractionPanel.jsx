@@ -3,6 +3,8 @@ import ReactDOM from 'react-dom';
 import {
   MousePointerClick,
   ChevronUp,
+  ChevronDown,
+  Trash2,
   ArrowRightLeft,
   ChevronLeft,
   ChevronRight,
@@ -27,7 +29,9 @@ import {
   RotateCcw,
   Pipette,
   ScanEye,
-  SlidersHorizontal
+  SlidersHorizontal,
+  Box,
+  Layers
 } from 'lucide-react';
 import { Icon } from '@iconify/react';
 import PopupTemplateSelection from './PopupTemplateSelection';
@@ -306,7 +310,10 @@ const InteractionPanel = ({
   VideoEditorComponent,
   GifEditorComponent,
   IconEditorComponent,
-  pages
+  pages,
+  isFrame,
+  frameLabel,
+  forceHidden
 }) => {
   const popupFileInputRef = React.useRef(null);
   const downloadFileInputRef = React.useRef(null);
@@ -360,11 +367,62 @@ const InteractionPanel = ({
   const [showStrokePositionDropdown, setShowStrokePositionDropdown] = useState(false);
   const dashedRef = React.useRef(null);
   const strokePositionRef = React.useRef(null);
+  const typeTriggerRef = React.useRef(null);
+  const triggerTriggerRef = React.useRef(null);
+  const [dropdownRect, setDropdownRect] = useState(null);
+
+  const handleToggleTypeDropdown = (e) => {
+    e.stopPropagation();
+    if (!showTypeDropdown && typeTriggerRef.current) {
+      setDropdownRect(typeTriggerRef.current.getBoundingClientRect());
+    }
+    setShowTypeDropdown(!showTypeDropdown);
+    setShowTriggerDropdown(false);
+  };
+
+  const handleToggleTriggerDropdown = (e) => {
+    e.stopPropagation();
+    if (!showTriggerDropdown && triggerTriggerRef.current) {
+      setDropdownRect(triggerTriggerRef.current.getBoundingClientRect());
+    }
+    setShowTriggerDropdown(!showTriggerDropdown);
+    setShowTypeDropdown(false);
+  };
 
 
   const [tooltipText, setTooltipText] = useState('');
   const [tooltipTextColor, setTooltipTextColor] = useState('#ffffff');
   const [tooltipFillColor, setTooltipFillColor] = useState('#000000'); // Default black background for tooltip
+
+  // Frames state (for when selectedElement is an image/container)
+  const [frames, setFrames] = useState([]);
+
+  useEffect(() => {
+    if (!selectedElement || isFrame) return;
+
+    const scanFrames = () => {
+      const doc = selectedElement.ownerDocument;
+      if (!doc) return;
+      const frameEls = doc.querySelectorAll('[data-interaction-type="frame"]');
+      setFrames(Array.from(frameEls).map(el => ({
+        id: el.id,
+        label: el.getAttribute('data-frame-label') || `Frame ${el.id.slice(-2)}`,
+        interaction: el.getAttribute('data-interaction') || 'none',
+        element: el
+      })));
+    };
+
+    scanFrames();
+    const observer = new MutationObserver(scanFrames);
+    observer.observe(selectedElement.ownerDocument.body, {
+      childList: true,
+      subtree: true,
+      attributes: true,
+      attributeFilter: ['data-interaction', 'id']
+    });
+
+    return () => observer.disconnect();
+  }, [selectedElement, isFrame]);
 
   // Sync state with selected element attributes on mount/change
   useEffect(() => {
@@ -469,6 +527,11 @@ const InteractionPanel = ({
 
   useEffect(() => {
     const handleClickOutside = (event) => {
+      // Ignore clicks on triggers
+      if (typeTriggerRef.current && typeTriggerRef.current.contains(event.target)) return;
+      if (triggerTriggerRef.current && triggerTriggerRef.current.contains(event.target)) return;
+      if (dashedRef.current && dashedRef.current.contains(event.target)) return;
+
       if (dropdownRef.current && !dropdownRef.current.contains(event.target)) {
         setShowTypeDropdown(false);
         setShowTriggerDropdown(false);
@@ -694,6 +757,21 @@ const InteractionPanel = ({
 
     applyInteraction(type, value, content, null, null, styleOverrides, forceRefresh);
   };
+
+  // ================= HANDLE ACTIONS =================
+
+  const handleReset = () => {
+    applyInteraction('none');
+  };
+
+  const handleDelete = () => {
+    if (!selectedElement) return;
+    const id = selectedElement.id;
+    selectedElement.remove();
+    // Use onUpdate to notify parent that the element is gone
+    if (onUpdate) onUpdate(id, { deleted: true });
+  };
+
 
   const handleTypeChange = (newType) => {
     // If we are changing types, we should clear stale state for the NEW type
@@ -1185,11 +1263,12 @@ const InteractionPanel = ({
     switch (interactionType) {
       case 'none':
         return (
-          <div className="w-[2.5vw] h-[2.5vw] bg-gray-100 rounded-[0.4vw] flex items-center justify-center text-gray-400">
+          <div className={`w-[2.5vw] h-[2.5vw] flex items-center justify-center text-gray-400 font-medium bg-white rounded-full border border-gray-300 shadow-sm ${isFrame ? 'scale-110' : ''}`}>
             ?
           </div>
         );
 
+      case 'zoom':
         return (
           <div className="flex items-center gap-[0.5vw]">
             <button
@@ -1222,7 +1301,7 @@ const InteractionPanel = ({
 
       case 'link':
         return (
-          <div className="flex flex-col items-end gap-[0.5vw] flex-grow min-w-[10.5vw]">
+          <div className={`flex flex-col items-end gap-[0.5vw] flex-grow ${isFrame ? 'min-w-[120px]' : 'min-w-[10.5vw]'}`}>
             <div className="relative w-full">
               <input
                 type="text"
@@ -1230,7 +1309,7 @@ const InteractionPanel = ({
                 onChange={(e) => setLinkUrl(e.target.value)}
                 onBlur={() => applyInteraction('link', linkUrl)}
                 placeholder="https://example.com"
-                className="w-full border border-gray-400 rounded-lg px-3 py-1.5 text-sm text-gray-700 placeholder-gray-400 focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500 outline-none"
+                className={`w-full border border-gray-400 rounded-lg text-sm text-gray-700 placeholder-gray-400 focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500 outline-none ${isFrame ? 'px-2 py-1 text-xs' : 'px-3 py-1.5'}`}
               />
             </div>
           </div>
@@ -1238,14 +1317,14 @@ const InteractionPanel = ({
 
       case 'navigation':
         return (
-          <div className="border border-gray-400 rounded-[0.4vw] px-[0.5vw] py-[0.4vw] bg-white flex items-center gap-[0.5vw] min-w-[5.2vw]">
+          <div className={`border border-gray-400 rounded-[0.4vw] bg-white flex items-center gap-[0.5vw] ${isFrame ? 'pl-2 pr-1 py-1 min-w-[90px]' : 'px-[0.5vw] py-[0.4vw] min-w-[5.2vw]'}`}>
             <select
               value={navPage}
               onChange={(e) => {
                 setNavPage(e.target.value);
                 applyInteraction('navigation', e.target.value);
               }}
-              className="appearance-none bg-transparent text-sm text-gray-700 font-medium outline-none w-full pr-4"
+              className={`appearance-none bg-transparent text-gray-700 font-medium outline-none w-full ${isFrame ? 'text-xs pr-1' : 'text-sm pr-4'}`}
               style={{ backgroundImage: 'none' }}
             >
               <option value="" disabled>Select Page</option>
@@ -1641,188 +1720,330 @@ const InteractionPanel = ({
     }
   }
 
+
+
+  const getIconForType = (type) => {
+    switch (type) {
+      case 'link': return <ExternalLink size={16} className="text-gray-600" />;
+      case 'navigation': return <Zap size={16} className="text-gray-600" />;
+      case 'call': return <Phone size={16} className="text-gray-600" />;
+      case 'zoom': return <ZoomIn size={16} className="text-gray-600" />;
+      case 'popup': return <MessageSquare size={16} className="text-gray-600" />;
+      case 'tooltip': return <Info size={16} className="text-gray-600" />;
+      case 'download': return <Download size={16} className="text-gray-600" />;
+      case '3dviewer': return <Box size={16} className="text-gray-600" />;
+      case 'slideshow': return <Layers size={16} className="text-gray-600" />;
+      default: return <MousePointerClick size={16} className="text-gray-600" />;
+    }
+  }
+
   const getTriggerLabel = () => {
     return interactionTrigger === 'click' ? 'On Click' : 'On Hover';
   }
 
 
+  if (forceHidden) return null;
+
+
   return (
-    <div className="bg-white border border-gray-200 rounded-[15px] shadow-sm relative">
+    <div className={`bg-white border ${isFrame ? 'border-gray-100 shadow-md' : 'border-gray-200 shadow-sm'} ${isFrame ? 'rounded-2xl' : 'rounded-[15px]'} relative transition-all duration-300`}>
 
       {/* ================= HEADER ================= */}
       <div
-        className="flex items-center justify-between px-4 py-4 cursor-pointer hover:bg-gray-50 transition-colors border-b border-gray-50"
+        className={`flex items-center justify-between px-4 py-4 cursor-pointer hover:bg-gray-50 transition-colors border-b border-gray-50 group/header ${isInteractionsOpen ? (isFrame ? 'rounded-t-2xl' : 'rounded-t-[15px]') : (isFrame ? 'rounded-2xl' : 'rounded-[15px]')}`}
         onClick={() => {
           if (onToggle) onToggle();
           else setInternalIsOpen(!internalIsOpen);
         }}
       >
         <div className="flex items-center gap-2">
-          <Icon icon="lucide:hand-click" className="text-gray-600" size={20} />
-          <span className="font-medium text-gray-700 text-sm">
-            Interaction
-          </span>
+          {getIconForType(interactionType)}
+
+          {!isFrame ? (
+            <span className="text-sm font-semibold text-gray-700">Interaction</span>
+          ) : (
+            <div className="flex items-center gap-2" onClick={e => e.stopPropagation()}>
+              <div className="relative">
+                <button
+                  ref={typeTriggerRef}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    handleToggleTypeDropdown(e);
+                  }}
+                  className="flex items-center gap-1.5 px-3 py-1 bg-gray-100/50 hover:bg-gray-200/50 rounded-lg transition-all group relative z-[100001]"
+                >
+                  <span className="text-[13px] font-bold text-gray-700">{getInteractionLabel()}</span>
+                  <ChevronDown size={16} className={`text-gray-500 transition-transform duration-300 ${showTypeDropdown ? 'rotate-180' : ''}`} />
+                </button>
+
+                {showTypeDropdown && dropdownRect && ReactDOM.createPortal(
+                  <>
+                    <div className="fixed inset-0 z-[100000] cursor-default" onClick={(e) => {
+                      e.stopPropagation();
+                      setShowTypeDropdown(false);
+                    }} />
+                    <div
+                      ref={dropdownRef}
+                      style={{
+                        position: 'fixed',
+                        left: Math.min(dropdownRect.left, window.innerWidth - 180),
+                        zIndex: 100001,
+                        ...(dropdownRect.bottom + 8 + 300 > window.innerHeight
+                          ? { bottom: window.innerHeight - dropdownRect.top + 8 }
+                          : { top: dropdownRect.bottom + 8 })
+                      }}
+                      className="w-44 bg-white border border-gray-100 rounded-xl shadow-2xl overflow-y-auto max-h-[400px] flex flex-col py-1 animate-in fade-in zoom-in-95 duration-150 pointer-events-auto"
+                      onClick={e => e.stopPropagation()}
+                    >
+                      {[
+                        { id: 'none', label: 'None', icon: X },
+                        { id: 'link', label: 'Open Link', icon: ExternalLink },
+                        { id: 'navigation', label: 'Navigate to', icon: Zap },
+                        { id: 'call', label: 'Call', icon: Phone },
+                        { id: 'zoom', label: 'Zoom', icon: ZoomIn },
+                        { id: 'popup', label: 'Popup', icon: MessageSquare },
+                        { id: 'tooltip', label: 'Tooltip', icon: Info },
+                        { id: 'download', label: 'Download', icon: Download }
+                      ].map((opt) => {
+                        const IconComp = opt.icon;
+                        return (
+                          <button
+                            key={opt.id}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleTypeChange(opt.id);
+                              setShowTypeDropdown(false);
+                              if (!isInteractionsOpen) {
+                                if (onToggle) onToggle();
+                                else setInternalIsOpen(true);
+                              }
+                            }}
+                            className={`px-4 py-2.5 text-[13px] font-medium transition-colors text-left w-full flex items-center gap-2.5 ${interactionType === opt.id ? 'bg-indigo-50 text-indigo-600' : 'text-gray-600 hover:bg-gray-50'}`}
+                          >
+                            <IconComp size={16} className={interactionType === opt.id ? 'text-indigo-600' : 'text-gray-400'} />
+                            {opt.label}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </>,
+                  document.body
+                )}
+              </div>
+              {interactionType !== 'none' && interactionType === 'download' && (
+                <ArrowRightLeft size={14} className="text-gray-400 rotate-90" />
+              )}
+            </div>
+          )}
         </div>
-        <ChevronUp
-          size={16}
-          className={`text-gray-400 transition-transform duration-200 ${isInteractionsOpen ? '' : 'rotate-180'}`}
-        />
+
+        <div className="flex items-center gap-2">
+          {isFrame && (
+            <button
+              onClick={(e) => { e.stopPropagation(); handleReset(); }}
+              className="p-1.5 text-gray-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-all"
+              title="Reset Interaction"
+            >
+              <RotateCcw size={16} />
+            </button>
+          )}
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              if (onToggle) onToggle();
+              else setInternalIsOpen(!internalIsOpen);
+            }}
+            className="p-1 rounded-md hover:bg-gray-100 transition-colors"
+            aria-label={isInteractionsOpen ? "Collapse" : "Expand"}
+          >
+            <ChevronUp
+              size={16}
+              className={`text-gray-400 transition-transform duration-200 ${isInteractionsOpen ? '' : 'rotate-180'}`}
+            />
+          </button>
+        </div>
       </div>
 
       {isInteractionsOpen && (
         <div className="p-4 pt-0 animate-fadeIn space-y-4">
 
           {/* ================= TOP SELECTORS ================= */}
-          <div className="flex items-center gap-3 mb-6" ref={dropdownRef}>
-            {/* Type Selector */}
-            <div className="relative">
-              <button
-                onClick={() => { setShowTypeDropdown(!showTypeDropdown); setShowTriggerDropdown(false); }}
-                className="flex items-center gap-2 px-3 py-1.5 bg-gray-50 border border-transparent rounded-lg hover:bg-gray-100 transition-colors"
-              >
-                <span className="text-[13px] font-medium text-gray-600">{getInteractionLabel()}</span>
-                {interactionType === 'none' ? (
-                  <ChevronUp size={14} className="text-gray-400 rotate-180" />
-                ) : (
-                  <ArrowRightLeft size={14} className="text-gray-400" />
-                )}
-              </button>
-
-              {showTypeDropdown && (
-                <>
-                  <div className="fixed inset-0 z-[9998]" onClick={() => setShowTypeDropdown(false)} />
-                  <div className="absolute top-full left-0 mt-2 w-36 bg-white border border-gray-100 rounded-xl shadow-2xl overflow-hidden z-[9999] flex flex-col py-1 animate-in fade-in zoom-in-95 duration-150">
-                    {[
-                      { id: 'none', label: 'None' },
-                      { id: 'link', label: 'Open Link' },
-                      { id: 'navigation', label: 'Navigate to' },
-                      { id: 'call', label: 'Call' },
-                      { id: 'zoom', label: 'Zoom' },
-                      { id: 'popup', label: 'Popup' },
-                      { id: 'tooltip', label: 'Tooltip' },
-                      { id: 'download', label: 'Download' }
-                    ].map((opt) => (
-                      <button
-                        key={opt.id}
-                        onClick={() => { handleTypeChange(opt.id); setShowTypeDropdown(false); }}
-                        className={`px-4 py-2 text-[13px] font-medium transition-colors text-left w-full ${interactionType === opt.id ? 'bg-gray-50 text-indigo-600' : 'text-gray-600 hover:bg-gray-50'}`}
-                      >
-                        {opt.label}
-                      </button>
-                    ))}
-                  </div>
-                </>
-              )}
-            </div>
-
-            {/* Trigger Selector */}
-            {interactionType !== 'none' && (
+          {!isFrame && (
+            <div className="flex items-center justify-between gap-3 mb-6">
+              {/* Type Selector */}
               <div className="relative">
                 <button
-                  onClick={() => interactionType === 'tooltip' && setShowTriggerDropdown(!showTriggerDropdown)}
-                  className={`flex items-center gap-2 px-4 py-1.5 bg-gray-50 border border-transparent rounded-lg transition-colors ${interactionType === 'tooltip' ? 'hover:bg-gray-100 cursor-pointer' : 'cursor-default group'}`}
+                  ref={typeTriggerRef}
+                  onClick={handleToggleTypeDropdown}
+                  className="flex items-center gap-2 px-4 py-1.5 bg-gray-50 border border-transparent hover:bg-gray-100 rounded-lg transition-colors group cursor-pointer relative z-[100001]"
                 >
-                  <span className={`text-[13px] font-medium transition-colors ${interactionType === 'tooltip' ? 'text-gray-600' : 'text-gray-600 group-hover:text-indigo-600'}`}>
-                    {interactionTrigger === 'click' ? 'On Click' : 'On Hover'}
+                  <span className="text-[13px] font-medium text-gray-600 group-hover:text-indigo-600 transition-colors">
+                    {getInteractionLabel()}
                   </span>
-                  {interactionType === 'tooltip' && (
-                    <ChevronUp size={14} className="text-gray-400 rotate-180" />
-                  )}
+                  <ChevronDown size={14} className={`text-gray-400 transition-transform duration-300 ${showTypeDropdown ? 'rotate-180' : ''}`} />
                 </button>
 
-                {interactionType === 'tooltip' && showTriggerDropdown && (
+                {showTypeDropdown && dropdownRect && ReactDOM.createPortal(
                   <>
-                    <div className="fixed inset-0 z-[9998]" onClick={() => setShowTriggerDropdown(false)} />
-                    <div className="absolute top-full left-0 mt-2 w-32 bg-white border border-gray-100 rounded-xl shadow-2xl overflow-hidden z-[9999] flex flex-col py-1 animate-in fade-in zoom-in-95 duration-150">
+                    <div className="fixed inset-0 z-[100000]" onClick={(e) => { e.stopPropagation(); setShowTypeDropdown(false); }} />
+                    <div
+                      ref={dropdownRef}
+                      style={{
+                        position: 'fixed',
+                        top: Math.min(dropdownRect.bottom + 8, window.innerHeight - 340),
+                        left: Math.min(dropdownRect.left, window.innerWidth - 180),
+                        zIndex: 100001
+                      }}
+                      className="w-44 bg-white border border-gray-100 rounded-xl shadow-2xl overflow-hidden flex flex-col py-1 animate-in fade-in zoom-in-95 duration-150"
+                    >
                       {[
-                        { id: 'click', label: 'On Click' },
-                        ...(interactionType === 'tooltip' ? [{ id: 'hover', label: 'On Hover' }] : [])
+                        { id: 'none', label: 'None', icon: 'lucide:prohibit' },
+                        { id: 'link', label: 'Open Link', icon: 'lucide:external-link' },
+                        { id: 'navigation', label: 'Navigate to', icon: 'lucide:zap' },
+                        { id: 'call', label: 'Call', icon: 'lucide:phone' },
+                        { id: 'zoom', label: 'Zoom', icon: 'lucide:zoom-in' },
+                        { id: 'popup', label: 'Popup', icon: 'lucide:message-square' },
+                        { id: 'tooltip', label: 'Tooltip', icon: 'lucide:info' },
+                        { id: 'download', label: 'Download', icon: 'lucide:download' }
                       ].map((opt) => (
                         <button
                           key={opt.id}
-                          onClick={() => { handleTriggerChange(opt.id); setShowTriggerDropdown(false); }}
-                          className={`px-4 py-2 text-[13px] font-medium transition-colors text-left w-full ${interactionTrigger === opt.id ? 'bg-gray-50 text-indigo-600' : 'text-gray-600 hover:bg-gray-50'}`}
+                          onClick={() => { handleTypeChange(opt.id); setShowTypeDropdown(false); }}
+                          className={`px-4 py-2.5 text-[13px] font-medium transition-colors text-left w-full flex items-center gap-2.5 ${interactionType === opt.id ? 'bg-indigo-50 text-indigo-600' : 'text-gray-600 hover:bg-gray-50'}`}
                         >
+                          <Icon icon={opt.icon} size={16} />
                           {opt.label}
                         </button>
                       ))}
                     </div>
-                  </>
+                  </>,
+                  document.body
                 )}
               </div>
-            )}
+              {/* Trigger Selector */}
+              {interactionType !== 'none' && (
+                <div className="relative">
+                  <button
+                    ref={triggerTriggerRef}
+                    onClick={(e) => interactionType === 'tooltip' && handleToggleTriggerDropdown(e)}
+                    className={`flex items-center gap-2 px-4 py-1.5 bg-gray-50 border border-transparent rounded-lg transition-colors relative z-[100001] ${interactionType === 'tooltip' ? 'hover:bg-gray-100 cursor-pointer' : 'cursor-default group'}`}
+                  >
+                    <span className={`text-[13px] font-medium transition-colors ${interactionType === 'tooltip' ? 'text-gray-600' : 'text-gray-600 group-hover:text-indigo-600'}`}>
+                      {interactionTrigger === 'click' ? 'On Click' : 'On Hover'}
+                    </span>
+                    {interactionType === 'tooltip' && (
+                      <ChevronDown size={14} className={`text-gray-400 transition-transform duration-300 ${showTriggerDropdown ? 'rotate-180' : ''}`} />
+                    )}
+                  </button>
 
+                  {interactionType !== 'none' && showTriggerDropdown && dropdownRect && ReactDOM.createPortal(
+                    <>
+                      <div className="fixed inset-0 z-[100000]" onClick={(e) => { e.stopPropagation(); setShowTriggerDropdown(false); }} />
+                      <div
+                        ref={dropdownRef}
+                        style={{
+                          position: 'fixed',
+                          top: Math.min(dropdownRect.bottom + 8, window.innerHeight - 200),
+                          left: Math.min(dropdownRect.left, window.innerWidth - 140),
+                          zIndex: 100001
+                        }}
+                        className="w-32 bg-white border border-gray-100 rounded-xl shadow-2xl overflow-hidden z-[9999] flex flex-col py-1 animate-in fade-in zoom-in-95 duration-150">
+                        {[
+                          { id: 'click', label: 'On Click' },
+                          ...(interactionType === 'tooltip' ? [{ id: 'hover', label: 'On Hover' }] : [])
+                        ].map((opt) => (
+                          <button
+                            key={opt.id}
+                            onClick={() => { handleTriggerChange(opt.id); setShowTriggerDropdown(false); }}
+                            className={`px-4 py-2 text-[13px] font-medium transition-colors text-left w-full ${interactionTrigger === opt.id ? 'bg-gray-50 text-indigo-600' : 'text-gray-600 hover:bg-gray-50'}`}
+                          >
+                            {opt.label}
+                          </button>
+                        ))}
+                      </div>
+                    </>,
+                    document.body
+                  )}
+                </div>
+              )}
 
-            {/* Show Preview Button - Aligned with On Click */}
-            {interactionType === 'popup' && popupText && (
-              <button
-                onClick={() => {
-                  // Decode content if it's encoded
-                  let content = selectedElement.getAttribute('data-interaction-content') || '';
-                  if (
-                    selectedElement.getAttribute('data-interaction-content-encoded') === 'true' ||
-                    content.startsWith('ENCODED:::')
-                  ) {
-                    try {
-                      const raw = content.startsWith('ENCODED:::') ? content.substring(10) : content;
-                      content = decodeURIComponent(raw);
-                    } catch (e) {
-                      console.warn('Failed to decode interaction content', e);
-                      if (content.startsWith('ENCODED:::')) {
-                        content = content.substring(10);
+              {/* Show Preview Button */}
+              {interactionType === 'popup' && popupText && (
+                <button
+                  onClick={() => {
+                    // Decode content if it's encoded
+                    let content = selectedElement.getAttribute('data-interaction-content') || '';
+                    if (
+                      selectedElement.getAttribute('data-interaction-content-encoded') === 'true' ||
+                      content.startsWith('ENCODED:::')
+                    ) {
+                      try {
+                        const raw = content.startsWith('ENCODED:::') ? content.substring(10) : content;
+                        content = decodeURIComponent(raw);
+                      } catch (e) {
+                        console.warn('Failed to decode interaction content', e);
+                        if (content.startsWith('ENCODED:::')) {
+                          content = content.substring(10);
+                        }
                       }
                     }
-                  }
 
-                  onPopupPreviewUpdate({
-                    isOpen: true,
-                    content: content,
-                    elementSource: (selectedElement.tagName.toLowerCase() === 'img' ? selectedElement.src : null),
-                    elementType: 'image',
-                    renderId: Date.now(),
-                    mode: 'preview',
-                    styles: {
-                      font: popupFont,
-                      size: popupSize,
-                      weight: popupWeight,
-                      fill: popupFillColor,
-                      fillOpacity: popupFillOpacity,
-                      stroke: popupStrokeColor,
-                      strokeOpacity: popupStrokeOpacity,
-                      strokeType: popupStrokeType,
-                      strokeWidth: popupStrokeWidth,
-                      strokeDashLength: popupStrokeDashLength,
-                      strokeDashGap: popupStrokeDashGap,
-                      strokePosition: popupStrokePosition,
-                      strokeRoundCorners: popupStrokeRoundCorners,
-                      fit: popupFit,
-                      autoWidth: popupAutoWidth,
-                      autoHeight: popupAutoHeight
-                    }
-                  });
-                }}
-                className="flex items-center justify-center w-10 h-10 bg-indigo-50 border-1 border-indigo-600 rounded-xl text-indigo-600 hover:bg-indigo-200 transition-all ml-auto"
-                title="Preview"
-              >
-                <Icon icon="lucide:scan-eye" size={24} />
-              </button>
-            )}
-          </div>
+                    onPopupPreviewUpdate({
+                      isOpen: true,
+                      content: content,
+                      elementSource: (selectedElement.tagName.toLowerCase() === 'img' ? selectedElement.src : null),
+                      elementType: 'image',
+                      renderId: Date.now(),
+                      mode: 'preview',
+                      styles: {
+                        font: popupFont,
+                        size: popupSize,
+                        weight: popupWeight,
+                        fill: popupFillColor,
+                        fillOpacity: popupFillOpacity,
+                        stroke: popupStrokeColor,
+                        strokeOpacity: popupStrokeOpacity,
+                        strokeType: popupStrokeType,
+                        strokeWidth: popupStrokeWidth,
+                        strokeDashLength: popupStrokeDashLength,
+                        strokeDashGap: popupStrokeDashGap,
+                        strokePosition: popupStrokePosition,
+                        strokeRoundCorners: popupStrokeRoundCorners,
+                        fit: popupFit,
+                        autoWidth: popupAutoWidth,
+                        autoHeight: popupAutoHeight
+                      }
+                    });
+                  }}
+                  className="flex items-center justify-center w-10 h-10 bg-indigo-50 border border-indigo-100 rounded-xl text-indigo-600 hover:bg-indigo-100 transition-all ml-auto"
+                  title="Preview"
+                >
+                  <Icon icon="lucide:scan-eye" size={20} />
+                </button>
+              )}
+            </div>
+          )}
 
 
           {/* ================= SOURCE -> TARGET PREVIEW ================= */}
-          <div className="flex items-center justify-between gap-4 py-2 mb-4">
+          <div className={`flex items-center justify-between gap-4 ${isFrame ? 'py-4 mb-2 border-b border-gray-50 border-t border-gray-50' : 'py-3 mb-2'}`}>
             {/* Source */}
-            <div className="bg-gray-100 text-gray-600 px-4 py-2 rounded-lg text-sm font-medium">
-              {formattedElementName}
+            <div className={`${isFrame ? 'bg-[#F2F4F7] text-[#667085] px-3 py-1.5 rounded-lg text-[13px] font-medium shadow-sm' : 'bg-gray-100 text-gray-600 px-4 py-1.5 rounded-lg text-[11px] font-bold uppercase tracking-widest border border-gray-200/50 shadow-sm'} flex-shrink-0`}>
+              {isFrame ? (frameLabel || 'Frame') : formattedElementName}
             </div>
 
             {/* Arrow */}
-            <div className="flex-1 flex items-center justify-center pointer-events-none">
-              <div className="w-full relative py-6">
-                <div className="absolute left-0 right-0 top-1/2 border-t border-dashed border-gray-300"></div>
-                <div className="absolute right-0 top-1/2 -translate-y-1/2 border-t-4 border-l-4 border-transparent border-l-gray-300"></div>
-              </div>
+            <div className="flex-1 flex items-center justify-center pointer-events-none px-2">
+              {isFrame ? (
+                <div className="w-full h-[1px] border-t border-dashed border-gray-300 relative">
+                  <div className="absolute right-[-1px] top-[-3.5px] border-t-[4px] border-l-[6px] border-b-[4px] border-t-transparent border-b-transparent border-l-gray-300"></div>
+                </div>
+              ) : (
+                <div className="w-full relative py-4">
+                  <div className="w-full h-0 border-t border-dashed border-gray-300"></div>
+                  <div className="absolute right-0 top-1/2 -translate-y-1/2 w-1.5 h-1.5 border-t-2 border-r-2 border-gray-300 rotate-45"></div>
+                </div>
+              )}
             </div>
 
             {/* Target */}
@@ -1830,6 +2051,7 @@ const InteractionPanel = ({
               {renderTargetInput()}
             </div>
           </div>
+
 
           {interactionType === 'popup' && activePopupElement === 'background' && (
             <div className="space-y-4 animate-in fade-in slide-in-from-top-2 duration-300">
@@ -2161,34 +2383,75 @@ const InteractionPanel = ({
           {renderAdvancedEditor()}
 
           {/* ================= FOOTER ================= */}
-          <div className="pt-6 mt-4 border-t border-gray-100 flex items-center gap-4">
-            <div
-              onClick={() => {
-                const newVal = !isHighlighted;
-                setIsHighlighted(newVal);
-                // Trigger an update to save this state
-                const currentValue =
-                  interactionType === 'link' ? linkUrl :
-                    interactionType === 'navigation' ? navPage :
-                      interactionType === 'call' ? phoneNumber :
-                        interactionType === 'zoom' ? zoomLevel :
-                          interactionType === 'download' ? downloadUrl : null;
+          {!isFrame ? (
+            <div className="pt-6 mt-4 border-t border-gray-100 flex items-center gap-3">
+              <span className="text-[13px] text-gray-600 font-semibold">
+                Highlight the Component
+              </span>
+              <div
+                onClick={() => {
+                  const newVal = !isHighlighted;
+                  setIsHighlighted(newVal);
+                  const currentValue =
+                    interactionType === 'link' ? linkUrl :
+                      interactionType === 'navigation' ? navPage :
+                        interactionType === 'call' ? phoneNumber :
+                          interactionType === 'zoom' ? zoomLevel :
+                            interactionType === 'download' ? downloadUrl : null;
 
-                const currentContent =
-                  interactionType === 'popup' ? popupText :
-                    interactionType === 'tooltip' ? tooltipText : '';
+                  const currentContent =
+                    interactionType === 'popup' ? popupText :
+                      interactionType === 'tooltip' ? tooltipText : '';
 
-                // Apply immediately
-                setTimeout(() => applyInteraction(interactionType, currentValue, currentContent, null, newVal), 0);
-              }}
-              className={`relative w-8 h-4 rounded-full transition-colors duration-200 cursor-pointer ${isHighlighted ? 'bg-indigo-600' : 'bg-gray-300'}`}
-            >
-              <div className={`absolute top-[2px] left-[2px] w-3 h-3 bg-white rounded-full transition-transform duration-200 shadow-sm ${isHighlighted ? 'translate-x-4' : 'translate-x-0'}`} />
+                  setTimeout(() => applyInteraction(interactionType, currentValue, currentContent, null, newVal), 0);
+                }}
+                className={`relative w-8 h-4.5 rounded-full transition-colors duration-200 cursor-pointer ${isHighlighted ? 'bg-indigo-600' : 'bg-gray-300'}`}
+              >
+                <div className={`absolute top-[2px] left-[2px] w-3.5 h-3.5 bg-white rounded-full transition-transform duration-200 shadow-sm ${isHighlighted ? 'translate-x-3.5' : 'translate-x-0'}`} />
+              </div>
             </div>
-            <span className="text-[13px] text-gray-500 font-medium">
-              Highlight the Component
-            </span>
-          </div>
+          ) : (
+            <div className="pt-4 flex items-center justify-between">
+              <div
+                className="flex items-center gap-3 cursor-pointer group"
+                onClick={() => {
+                  const newVal = !isHighlighted;
+                  setIsHighlighted(newVal);
+                  const currentValue =
+                    interactionType === 'link' ? linkUrl :
+                      interactionType === 'navigation' ? navPage :
+                        interactionType === 'call' ? phoneNumber :
+                          interactionType === 'zoom' ? zoomLevel :
+                            interactionType === 'download' ? downloadUrl : null;
+
+                  const currentContent =
+                    interactionType === 'popup' ? popupText :
+                      interactionType === 'tooltip' ? tooltipText : '';
+
+                  setTimeout(() => applyInteraction(interactionType, currentValue, currentContent, null, newVal), 0);
+                }}
+              >
+                <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center transition-all ${isHighlighted ? 'border-indigo-600' : 'border-gray-300'}`}>
+                  {isHighlighted && <div className="w-2.5 h-2.5 bg-indigo-600 rounded-full" />}
+                </div>
+                <span className="text-[14px] font-medium text-gray-700">Highlight the Component</span>
+              </div>
+
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  if (selectedElement && selectedElement.remove) {
+                    selectedElement.remove();
+                    if (onUpdate) onUpdate(selectedElement.id, { isDeleted: true });
+                  }
+                }}
+                className="p-2 text-red-500 hover:bg-red-50 rounded-lg transition-all"
+                title="Delete Frame"
+              >
+                <Trash2 size={18} strokeWidth={2.5} />
+              </button>
+            </div>
+          )}
 
         </div>
       )}

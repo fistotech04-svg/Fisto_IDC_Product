@@ -1454,12 +1454,12 @@ const TextEditor = ({
 
         {/* TEXT SECTION */}
         <div className="bg-white border border-gray-200 rounded-[15px] shadow-sm">
-          <div className="flex items-center justify-between px-4 py-4 border-b border-gray-50 cursor-pointer hover:bg-gray-50 transition-colors" onClick={() => setActiveSection(activeSection === 'main' ? null : 'main')}>
+          <div className={`flex items-center justify-between px-4 py-4 border-b border-gray-50 cursor-pointer hover:bg-gray-50 transition-colors ${activeSection === 'main' ? 'rounded-t-[15px]' : 'rounded-[15px]'}`} onClick={() => setActiveSection(activeSection === 'main' ? null : 'main')}>
             <div className="flex items-center gap-2">
-              <Edit3 size={20} className="text-gray-600" />
+              <Type  size={16} className="text-gray-600"/>
               <span className="font-medium text-gray-700 text-sm">Text</span>
             </div>
-            <ChevronUp size={20} className={`text-gray-900 transition-transform duration-200 ${activeSection === 'main' ? '' : 'rotate-180'}`} strokeWidth={2.5} />
+            <ChevronUp size={16} className={`text-gray-500 transition-transform duration-200 ${activeSection === 'main' ? '' : 'rotate-180'}`} />
           </div>
 
           {activeSection === 'main' && (

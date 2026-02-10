@@ -1,8 +1,44 @@
-import React from "react";
+import React, { useState } from "react";
 import { Icon } from "@iconify/react";
 import MaterialList from "./MaterialList";
 
-const TopToolbar = ({ isSidebarCollapsed, setIsSidebarCollapsed, isTextureOpen, onReset, targetPosition, materialList, selectedMaterial, onSelectMaterial, modelName }) => {
+const TopToolbar = ({ 
+    isSidebarCollapsed, 
+    setIsSidebarCollapsed, 
+    isTextureOpen, 
+    onReset, 
+    targetPosition, 
+    materialList, 
+    selectedMaterial, 
+    onSelectMaterial, 
+    modelName, 
+    onRename,
+    onUndo,
+    onRedo,
+    canUndo,
+    canRedo
+}) => {
+    const [isEditingName, setIsEditingName] = useState(false);
+    const [tempName, setTempName] = useState("");
+
+    const startEditing = () => {
+        setTempName(modelName || "");
+        setIsEditingName(true);
+    };
+
+    const stopEditing = () => {
+        if (isEditingName && tempName !== modelName) {
+            if (onRename) onRename(tempName);
+        }
+        setIsEditingName(false);
+    };
+
+    const handleKeyDown = (e) => {
+        if (e.key === 'Enter') {
+            stopEditing();
+        }
+    };
+
     return (
         <div className="absolute inset-x-0 left-5 z-30 pointer-events-none">
             {/* Left Section: Materials + Undo/Redo */}
@@ -18,10 +54,18 @@ const TopToolbar = ({ isSidebarCollapsed, setIsSidebarCollapsed, isTextureOpen, 
                 />
                 
                 <div className="flex items-center bg-white h-[42px] px-1.5 rounded-[12px] border border-gray-200 gap-1 shadow-sm">
-                    <button className="w-9 h-8 flex items-center justify-center rounded-lg hover:bg-gray-50 transition-all text-gray-700">
+                    <button 
+                        onClick={onUndo} 
+                        disabled={!canUndo}
+                        className={`w-9 h-8 flex items-center justify-center rounded-lg hover:bg-gray-50 transition-all text-gray-700 ${!canUndo ? "opacity-50 cursor-not-allowed" : ""}`}
+                    >
                         <Icon icon="lucide:undo-dot" width={18} />
                     </button>
-                    <button className="w-9 h-8 flex items-center justify-center rounded-lg hover:bg-gray-50 transition-all text-gray-700">
+                    <button 
+                        onClick={onRedo} 
+                        disabled={!canRedo}
+                        className={`w-9 h-8 flex items-center justify-center rounded-lg hover:bg-gray-50 transition-all text-gray-700 ${!canRedo ? "opacity-50 cursor-not-allowed" : ""}`}
+                    >
                         <Icon icon="lucide:redo-dot" width={18} />
                     </button>
                 </div>
@@ -29,9 +73,26 @@ const TopToolbar = ({ isSidebarCollapsed, setIsSidebarCollapsed, isTextureOpen, 
 
             {/* Center: Model Name Section (Individual Item) */}
             <div className="absolute top-5 left-1/2 -translate-x-1/2 pointer-events-auto">
-                <div className="flex items-center bg-white h-[42px] px-5  gap-2.5 rounded-[12px]  group cursor-pointer">
-                    <span className="text-[14px] font-semibold text-gray-600 tracking-tight">Name of the Model</span>
-                    <Icon icon="heroicons:pencil-square" width={16} className="text-gray-400 group-hover:text-gray-900 transition-colors" />
+                <div 
+                    onClick={!isEditingName ? startEditing : undefined}
+                    className={`flex items-center bg-white h-[42px] px-5 gap-2.5 rounded-[12px] ${!isEditingName ? "cursor-pointer hover:bg-gray-50 group border border-transparent hover:border-gray-200" : "border border-blue-500 ring-2 ring-blue-100"} transition-all`}
+                >
+                    {isEditingName ? (
+                        <input 
+                            autoFocus
+                            type="text"
+                            value={tempName}
+                            onChange={(e) => setTempName(e.target.value)}
+                            onBlur={stopEditing}
+                            onKeyDown={handleKeyDown}
+                            className="text-[14px] font-semibold text-gray-800 tracking-tight outline-none bg-transparent w-[200px] text-center"
+                        />
+                    ) : (
+                        <>
+                            <span className="text-[14px] font-semibold text-gray-600 tracking-tight">{modelName || "Untitled Model"}</span>
+                            <Icon icon="heroicons:pencil-square" width={16} className="text-gray-400 group-hover:text-gray-900 transition-colors" />
+                        </>
+                    )}
                 </div>
             </div>
 

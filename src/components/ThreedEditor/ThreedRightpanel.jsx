@@ -6,6 +6,7 @@ import Customized from "./Customized";
 export default function RightPanel({ 
     onFileProcess, 
     hasModel, 
+    onExport,
     autoRotate, 
     setAutoRotate, 
     isLoading, 
@@ -78,6 +79,7 @@ export default function RightPanel({
 
         {/* Export Button */}
         <button 
+          onClick={onExport}
           disabled={!hasModel}
           className={`py-2.5 px-6 rounded-lg text-[14px] font-semibold flex items-center gap-2 transition-all ${
             hasModel 

@@ -223,7 +223,7 @@ const AnimationSection = React.memo(({
   const galleryItem = ANIMATION_GALLERY_ITEMS.find(a => a.id === settings.type);
   
   return (
-    <div className="space-y-5 transition-all duration-300">
+    <div className="space-y-4 transition-all duration-300">
       {/* Top Dropdowns (for On Page mode) */}
       {showTopDropdowns && (
         <div className="flex gap-3 mb-4">
@@ -643,30 +643,33 @@ const AnimationPanel = ({ selectedElement, onUpdate, isOpen: externalIsOpen, onT
         input[type='range']::-webkit-slider-runnable-track { height: 4px; border-radius: 2px; }
         input[type='range']::-webkit-slider-thumb { -webkit-appearance: none; height: 14px; width: 14px; border-radius: 50%; background: #6366f1; border: 2px solid #ffffff; box-shadow: 0 1px 3px rgba(0,0,0,0.2); margin-top: -5px; cursor: pointer; }
       `}</style>
-      <div className="bg-white border border-gray-200 rounded-lg shadow-sm overflow-visible mb-4">
+      <div className="bg-white border border-gray-200 rounded-[15px] shadow-sm overflow-visible">
         {/* Panel Header */}
         <div 
-          className="flex items-center justify-between px-3 py-4 cursor-pointer hover:bg-gray-50 transition-colors"
+          className={`flex items-center justify-between px-4 py-4 cursor-pointer hover:bg-gray-50 transition-colors border-b border-gray-50 ${isOpen ? 'rounded-t-[15px]' : 'rounded-[15px]'}`}
           onClick={onToggle || (() => setInternalIsOpen(!internalIsOpen))}
         >
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2">
             <Sparkles size={16} className="text-gray-600" />
             <span className="font-medium text-gray-700 text-sm">Animation</span>
           </div>
           <div className="flex items-center gap-2">
             <button 
               onClick={handleReset}
-              className="p-1.5 rounded-lg text-gray-400 hover:text-indigo-500 hover:bg-indigo-50 transition-all duration-200"
+              className=" rounded-lg text-gray-400 hover:text-indigo-500 hover:bg-indigo-50 transition-all duration-200"
               title="Reset All Animations"
             >
               <RotateCcw size={16} strokeWidth={2} />
             </button>
-            {isOpen ? <ChevronUp size={14} className="text-gray-500" strokeWidth={2} /> : <ChevronDown size={16} className="text-gray-500" strokeWidth={2} />}
+            <ChevronUp 
+              size={16} 
+              className={`text-gray-500 transition-transform duration-200 ${isOpen ? '' : 'rotate-180'}`} 
+            />
           </div>
         </div>
 
         {isOpen && (
-          <div className="p-5 pt-2 space-y-6">
+          <div className="p-4 pt-0 space-y-4">
             {mainType === 'While Opening' && (
               <>
                 {/* Mode Dropdown */}

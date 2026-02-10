@@ -11,25 +11,29 @@ import GenericModel from "./GenericModel";
 import { LoadingSpinner } from "./GlobalLoader";
 
 // GLB Loader Component
-export function GLBModel({ url, ...props }) {
+// GLB Loader Component
+export const GLBModel = React.forwardRef(({ url, ...props }, ref) => {
   const { scene } = useGLTF(url);
-  return <GenericModel scene={scene} {...props} />;
-}
+  return <GenericModel ref={ref} scene={scene} {...props} />;
+});
 
 // OBJ Loader Component
-export function OBJModel({ url, ...props }) {
+// OBJ Loader Component
+export const OBJModel = React.forwardRef(({ url, ...props }, ref) => {
   const scene = useLoader(OBJLoader, url);
-  return <GenericModel scene={scene} {...props} />;
-}
+  return <GenericModel ref={ref} scene={scene} {...props} />;
+});
 
 // FBX Loader Component
-export function FBXModel({ url, ...props }) {
+// FBX Loader Component
+export const FBXModel = React.forwardRef(({ url, ...props }, ref) => {
   const scene = useLoader(FBXLoader, url);
-  return <GenericModel scene={scene} {...props} />;
-}
+  return <GenericModel ref={ref} scene={scene} {...props} />;
+});
 
 // STL Loader Component
-export function STLModel({ url, ...props }) {
+// STL Loader Component
+export const STLModel = React.forwardRef(({ url, ...props }, ref) => {
   const geom = useLoader(STLLoader, url);
   
   const scene = useMemo(() => {
@@ -43,11 +47,12 @@ export function STLModel({ url, ...props }) {
       return group;
   }, [geom]);
 
-  return <GenericModel scene={scene} {...props} />;
-}
+  return <GenericModel ref={ref} scene={scene} {...props} />;
+});
 
 // STEP Loader Component
-export function StepModel({ url, ...props }) {
+// STEP Loader Component
+export const StepModel = React.forwardRef(({ url, ...props }, ref) => {
     const [scene, setScene] = useState(null);
     const [loading, setLoading] = useState(true);
 
@@ -115,8 +120,7 @@ export function StepModel({ url, ...props }) {
                          geometry.computeVertexNormals();
                     }
 
-                    // Bake rotation
-                    geometry.rotateX(-Math.PI / 2);
+                    // Bake rotation removed to fix orientation issue
 
                     // Material
                     let color = '#a0a0a0';
@@ -170,16 +174,19 @@ export function StepModel({ url, ...props }) {
 
     if (loading || !scene) return null; // Or return loading indicator inside canvas?
 
-    return <GenericModel scene={scene} {...props} />;
-}
+    return <GenericModel ref={ref} scene={scene} {...props} />;
+});
 
 // Helper component to choose the right model component
-export default function RenderModel({ type, ...props }) {
+// Helper component to choose the right model component
+const RenderModel = React.forwardRef(({ type, ...props }, ref) => {
     switch(type) {
-        case 'obj': return <OBJModel {...props} />;
-        case 'fbx': return <FBXModel {...props} />;
-        case 'stl': return <STLModel {...props} />;
-        case 'step': return <StepModel {...props} />;
-        default: return <GLBModel {...props} />;
+        case 'obj': return <OBJModel ref={ref} {...props} />;
+        case 'fbx': return <FBXModel ref={ref} {...props} />;
+        case 'stl': return <STLModel ref={ref} {...props} />;
+        case 'step': return <StepModel ref={ref} {...props} />;
+        default: return <GLBModel ref={ref} {...props} />;
     }
-}
+});
+
+export default RenderModel;

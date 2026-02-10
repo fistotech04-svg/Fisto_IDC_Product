@@ -25,7 +25,8 @@ const LeftSidebar = ({
   onOpenTemplateModal,
   editingPageIdProp,
   onEditingPageIdChange,
-  isDoublePage
+  isDoublePage,
+  onOpenUploadModal
 }) => {
   // Menu State
   const [activeMenuPageId, setActiveMenuPageId] = useState(null);
@@ -166,7 +167,7 @@ const LeftSidebar = ({
       <div className="p-4 flex items-center justify-between border-b border-gray-100">
         <h2 className="text-xl font-bold text-gray-800">Pages</h2>
         <button
-          onClick={() => addNewPage()} 
+          onClick={onOpenUploadModal} 
           className="flex items-center gap-1 bg-transparent hover:bg-gray-100 text-gray-700 px-3 py-1.5 rounded-md text-sm font-medium transition-colors"
         >
           <Plus size={16} />

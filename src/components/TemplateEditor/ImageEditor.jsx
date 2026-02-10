@@ -27,6 +27,7 @@ import {
   RotateCcw,
   Minus,
   MoreVertical,
+  Image,
 } from 'lucide-react';
 import InteractionPanel from './InteractionPanel';
 import AnimationPanel from './AnimationPanel';
@@ -851,7 +852,7 @@ const ImageEditor = ({
         input[type='range']::-webkit-slider-runnable-track { height: 4px; border-radius: 2px; }
         input[type='range']::-webkit-slider-thumb { -webkit-appearance: none; height: 14px; width: 14px; border-radius: 50%; background: #6366f1; border: 2px solid #ffffff; box-shadow: 0 1px 3px rgba(0,0,0,0.2); margin-top: -5px; cursor: pointer; }
       `}</style>
-      <div className="bg-white border space-y-4 border-gray-200 rounded-lg shadow-sm overflow-hidden relative font-sans">
+      <div className="bg-white border border-gray-200 rounded-[15px] shadow-sm relative font-sans">
         <input 
           type="file" 
           ref={fileInputRef} 
@@ -861,9 +862,9 @@ const ImageEditor = ({
           className="hidden" 
         />
 
-        <div className="flex items-center justify-between px-4 py-3 border-b border-gray-50 cursor-pointer hover:bg-gray-50 transition-colors" onClick={() => setActiveSection(activeSection === 'main' ? null : 'main')}>
+        <div className={`flex items-center justify-between px-4 py-4 border-b border-gray-50 cursor-pointer hover:bg-gray-50 transition-colors ${isMainPanelOpen ? 'rounded-t-[15px]' : 'rounded-[15px]'}`} onClick={() => setActiveSection(activeSection === 'main' ? null : 'main')}>
           <div className="flex items-center gap-2.5">
-            <Edit3 size={15} className="text-gray-800" />
+            <Image  size={16} className="text-gray-800" />
             <span className="font-medium text-gray-700 text-sm">Image</span>
           </div>
           <ChevronUp size={16} className={`text-gray-500 transition-transform duration-200 ${isMainPanelOpen ? '' : 'rotate-180'}`} />
@@ -871,7 +872,7 @@ const ImageEditor = ({
         
 
         {isMainPanelOpen && (
-          <div className="space-y-5 pr-5 pl-5 mb-5">
+          <div className="space-y-5 px-5 pb-5 pt-4">
             <div className="space-y-4">
               <div className="flex items-center gap-2">
                 <span className="text-sm font-bold text-gray-900 whitespace-nowrap">Upload your Image</span>
@@ -1028,8 +1029,8 @@ const ImageEditor = ({
               )}
 
               
-              <div className="border border-gray-100 rounded-xl overflow-hidden shadow-sm bg-white">
-                <button onClick={() => setOpenSubSection(openSubSection === 'adjustments' ? null : 'adjustments')} className="w-full flex items-center justify-between px-4 py-3.5 text-[13px] font-bold text-gray-800">
+              <div className="border border-gray-100 rounded-[15px] overflow-hidden shadow-sm bg-white">
+                <button onClick={() => setOpenSubSection(openSubSection === 'adjustments' ? null : 'adjustments')} className="w-full flex items-center justify-between px-4 py-4 text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors">
                   <span>Adjustments</span>
                   <ChevronDown size={16} className={`text-gray-400 transition-transform duration-200 ${openSubSection === 'adjustments' ? 'rotate-180' : ''}`} />
                 </button>
@@ -1061,8 +1062,8 @@ const ImageEditor = ({
                 )}
               </div>
 
-              <div className="border border-gray-100 rounded-xl overflow-hidden shadow-sm bg-white">
-                <button onClick={() => setOpenSubSection(openSubSection === 'radius' ? null : 'radius')} className="w-full flex items-center justify-between px-4 py-3.5 text-[13px] font-bold text-gray-800">
+              <div className="border border-gray-100 rounded-[15px] overflow-hidden shadow-sm bg-white">
+                <button onClick={() => setOpenSubSection(openSubSection === 'radius' ? null : 'radius')} className="w-full flex items-center justify-between px-4 py-4 text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors">
                   <span>Corner Radius</span>
                   <ChevronDown size={16} className={`text-gray-400 transition-transform duration-200 ${openSubSection === 'radius' ? 'rotate-180' : ''}`} />
                 </button>
@@ -1085,8 +1086,8 @@ const ImageEditor = ({
                 )}
               </div>
 
-              <div className="border border-gray-100 rounded-xl overflow-hidden shadow-sm bg-white">
-                <button onClick={() => setOpenSubSection(openSubSection === 'effect' ? null : 'effect')} className="w-full flex items-center justify-between px-4 py-3.5 text-[13px] font-bold text-gray-800">
+              <div className="border border-gray-100 rounded-[15px] overflow-hidden shadow-sm bg-white">
+                <button onClick={() => setOpenSubSection(openSubSection === 'effect' ? null : 'effect')} className="w-full flex items-center justify-between px-4 py-4 text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors">
                   <span>Effect</span>
                   <ChevronDown size={16} className={`text-gray-400 transition-transform duration-200 ${openSubSection === 'effect' ? 'rotate-180' : ''}`} />
                 </button>

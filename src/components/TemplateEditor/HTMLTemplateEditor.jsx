@@ -172,7 +172,7 @@ const HTMLTemplateEditor = forwardRef(({
       });
     });
 
-    const setupClickable = (elements, type) => {
+    const setupClickable = (elements, defaultType) => {
         elements.forEach(el => {
             el.style.cursor = 'pointer';
             el.setAttribute('data-editable', 'true');
@@ -183,6 +183,10 @@ const HTMLTemplateEditor = forwardRef(({
                 el.style.outline = '2px solid #6366f1';
                 el.style.outlineOffset = '2px';
                 setSelectedElement(el);
+
+                // Check for file interaction override
+                const type = el.hasAttribute('data-file-interaction-id') ? 'file-interaction' : defaultType;
+
                 if (onElementSelect) onElementSelect(el, type, pageIndex);
             });
         });

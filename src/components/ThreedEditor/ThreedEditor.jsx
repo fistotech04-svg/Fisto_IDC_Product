@@ -11,6 +11,8 @@ import TopToolbar from "./TopToolbar";
 import AnimatedGizmo from "./Components/AnimatedGizmo";
 import { GlobalLoader } from "./Components/GlobalLoader";
 import RenderModel from "./Components/ModelLoaders";
+import useModalHistory from "./hooks/useModalHistory";
+import ExportModal from "./Components/ExportModal";
 
 
 export default function ThreedEditor() {
@@ -41,6 +43,7 @@ export default function ThreedEditor() {
   });
   
   const controlsRef = React.useRef(null);
+  const modelRef = React.useRef(null);
   const lastUpdateRef = React.useRef(0);
 
   // Target Position State
@@ -55,6 +58,7 @@ export default function ThreedEditor() {
   }, [selectedTexture]);
 
   const [showWarning, setShowWarning] = useState(false);
+  const [showExportModal, setShowExportModal] = useState(false);
 
   // Right Panel & Sidebar State
   const [activeRightTab, setActiveRightTab] = useState("pre"); // "pre" | "custom"
@@ -67,6 +71,7 @@ export default function ThreedEditor() {
     rotation: { x: 0, y: 0, z: 0 },
     scale: { x: 1, y: 1, z: 1 }
   });
+  // --- History Management ---
   const [modelName, setModelName] = useState("");
   const [selectedTextureId, setSelectedTextureId] = useState(null);
 
@@ -100,14 +105,91 @@ export default function ThreedEditor() {
   });
 
   const [resetKey, setResetKey] = useState(0);
+  
+  const { 
+    state: historyState, 
+    set: pushHistory, 
+    undo, 
+    redo, 
+    canUndo, 
+    canRedo,
+    resetHistory
+  } = useModalHistory({
+      transformValues: { position: { x: 0, y: 0, z: 0 }, rotation: { x: 0, y: 0, z: 0 }, scale: { x: 1, y: 1, z: 1 } },
+      materialSettings: {
+        alpha: 100, metallic: 0, roughness: 50, normal: 100, bump: 100, scale: 100, scaleY: 100, rotation: 0,
+        specular: 50, reflection: 50, shadow: 50, softness: 50, ao: 100, environment: 'city',
+        color: '#000000', useFactorColor: false, autoUnwrap: false, envRotation: 0, offset: { x: 0, y: 0 },
+        lightPosition: { x: 10, y: 10, z: 10 }
+      },
+      modelName: ""
+  });
 
-  const updateMaterialSetting = useCallback((key, val) => {
+  // Keep a ref of current state components for constructing history entries
+  const stateRef = useRef({ transformValues, materialSettings, modelName });
+  useEffect(() => {
+      stateRef.current = { transformValues, materialSettings, modelName };
+  }, [transformValues, materialSettings, modelName]);
+
+  const handleUndo = () => {
+      const prevState = undo();
+      if (prevState) {
+          setTransformValues(prevState.transformValues);
+          setMaterialSettings(prevState.materialSettings);
+          setModelName(prevState.modelName);
+      }
+  };
+
+  const handleRedo = () => {
+      const nextState = redo();
+      if (nextState) {
+          setTransformValues(nextState.transformValues);
+          setMaterialSettings(nextState.materialSettings);
+          setModelName(nextState.modelName);
+      }
+  };
+
+  const handleRename = (newName) => {
+      setModelName(newName);
+      pushHistory({
+          ...stateRef.current,
+          modelName: newName
+      });
+  };
+
+  const updateMaterialSetting = useCallback((key, val, fromSync = false) => {
     setMaterialSettings((prev) => {
       // optimization: prevent update if value is same
       if (prev[key] === val) return prev;
-      return { ...prev, [key]: val };
+      
+      const next = { ...prev, [key]: val };
+      
+      if (!fromSync) {
+          // Push to history
+          // We use stateRef.current for other values, but 'next' for materialSettings
+          // Note: accessing stateRef.current inside functional update is safe? 
+          // Yes, but we need to supply the other current values.
+          // Since this callback might be stale regarding 'stateRef', we use the ref object itself which is stable.
+          pushHistory({
+              transformValues: stateRef.current.transformValues,
+              modelName: stateRef.current.modelName,
+              materialSettings: next
+          });
+      }
+      
+      return next;
     });
-  }, []);
+  }, [pushHistory]); // Depends on pushHistory (stable)
+
+  // Memoized handler for syncing from model (GenericModel) to avoid loop
+  const handleMaterialSync = useCallback((key, val) => {
+      updateMaterialSetting(key, val, true);
+  }, [updateMaterialSetting]);
+
+  // Memoized handler for UI updates (RightPanel)
+  const handleMaterialUIUpdate = useCallback((key, val) => {
+      updateMaterialSetting(key, val, false);
+  }, [updateMaterialSetting]);
 
   const processFile = (file) => {
     if (!file) return;
@@ -171,10 +253,18 @@ export default function ThreedEditor() {
         dimensions: "0 X 0 X 0 unit"
     });
     // Reset transform
-    setTransformValues({
+    const defaultTransform = {
         position: { x: 0, y: 0, z: 0 },
         rotation: { x: 0, y: 0, z: 0 },
         scale: { x: 1, y: 1, z: 1 }
+    };
+    setTransformValues(defaultTransform);
+    
+    // Reset History
+    resetHistory({
+        transformValues: defaultTransform,
+        materialSettings: materialSettings, // Use current or default? Current is fine as we might keep settings
+        modelName: ""
     });
   };
 
@@ -202,6 +292,11 @@ export default function ThreedEditor() {
             ...prev[type],
             [axis]: numVal
         };
+        
+        pushHistory({
+            ...stateRef.current,
+            transformValues: next
+        });
         
         return next;
     });
@@ -240,8 +335,22 @@ export default function ThreedEditor() {
         } else if (type === 'scale') {
              next.scale = getXYZ(defaults.scale);
         }
+        
+        pushHistory({
+            ...stateRef.current,
+            transformValues: next
+        });
+
         return next;
     });
+  };
+  
+  const handleTransformEnd = () => {
+     // Called when drag ends. We push the current validated state to history.
+     pushHistory({
+         ...stateRef.current,
+         transformValues: stateRef.current.transformValues // ensure we capture latest
+     });
   };
 
   // Visual Settings State
@@ -294,6 +403,18 @@ export default function ThreedEditor() {
             </div>
         </div>
       )}
+      
+      {/* Export Format Selection Modal */}
+      {showExportModal && (
+          <ExportModal 
+              onClose={() => setShowExportModal(false)}
+              onExport={(format) => {
+                  if (modelRef.current) {
+                      modelRef.current.exportModel(format);
+                  }
+              }}
+          />
+      )}
 
       {/* --- MAIN CONTENT AREA --- */}
       <div className="flex flex-1 overflow-hidden relative">
@@ -313,6 +434,11 @@ export default function ThreedEditor() {
               selectedMaterial={selectedMaterial}
               onSelectMaterial={(name) => setSelectedMaterial({ name, ts: Date.now() })}
               modelName={modelName} // Pass filename
+              onRename={handleRename}
+              onUndo={handleUndo}
+              onRedo={handleRedo}
+              canUndo={canUndo}
+              canRedo={canRedo}
             />
           )}
 
@@ -391,6 +517,7 @@ export default function ThreedEditor() {
               <Suspense fallback={null}>
                   {modelUrl && (
                     <RenderModel 
+                        ref={modelRef}
                         type={modelType}  
                         url={modelUrl}
                         wireframe={settings.wireframe}
@@ -409,13 +536,14 @@ export default function ThreedEditor() {
                         transformMode={transformMode}
                         transformValues={transformValues}
                         materialSettings={materialSettings}
-                        onUpdateMaterialSetting={updateMaterialSetting}
+                        onUpdateMaterialSetting={handleMaterialSync}
                         selectedTexture={selectedTexture}
                         resetKey={resetKey}
                         sceneResetTrigger={sceneResetTrigger}
                         uvUnwrapTrigger={uvUnwrapTrigger}
                         onTextureApplied={() => setSelectedTexture(null)}
                         onTextureIdentified={(id) => setSelectedTextureId(id)}
+                        onTransformEnd={handleTransformEnd}
                         onTransformChange={(t) => {
                             if (t.original) {
                                 originalTransformRef.current = t.original;
@@ -528,11 +656,12 @@ export default function ThreedEditor() {
           <RightPanel
             onFileProcess={processFile}
             hasModel={!!modelUrl}
+            onExport={() => setShowExportModal(true)}
             autoRotate={autoRotate}
             setAutoRotate={setAutoRotate}
             isLoading={isGlobalLoading}
             materialSettings={materialSettings}
-            onUpdateMaterialSetting={updateMaterialSetting}
+            onUpdateMaterialSetting={handleMaterialUIUpdate}
             activeTab={activeRightTab}
             setActiveTab={setActiveRightTab}
             activeAccordion={activeAccordion}
@@ -541,20 +670,24 @@ export default function ThreedEditor() {
             onManualTransformChange={handleManualTransformChange}
             onResetTransform={handleResetTransform}
             onResetFactorSettings={() => {
-                setMaterialSettings(prev => ({
-                    ...prev,
-                    alpha: 100,
-                    metallic: 0,
-                    roughness: 50,
-                    normal: 100,
-                    bump: 100,
-                    scale: 100,
-                    scaleY: 100,
-                    rotation: 0,
-                    offset: { x: 0, y: 0 },
-                    color: '#000000',
-                    useFactorColor: false
-                }));
+                setMaterialSettings(prev => {
+                    const next = {
+                        ...prev,
+                        alpha: 100,
+                        metallic: 0,
+                        roughness: 50,
+                        normal: 100,
+                        bump: 100,
+                        scale: 100,
+                        scaleY: 100,
+                        rotation: 0,
+                        offset: { x: 0, y: 0 },
+                        color: '#000000',
+                        useFactorColor: false
+                    };
+                    pushHistory({ ...stateRef.current, materialSettings: next });
+                    return next;
+                });
                 setResetKey(prev => prev + 1);
             }}
             onUvUnwrap={() => setUvUnwrapTrigger(prev => prev + 1)}

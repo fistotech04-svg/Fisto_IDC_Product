@@ -12,6 +12,12 @@ import ExportModal from '../ExportModal';
 import LeftSidebar from './LeftSidebar';
 import TopToolbar from './TopToolbar';
 import TemplateModal from './TemplateModal';
+import AddFilesModal from './AddFilesModal';
+import * as pdfjsLib from 'pdfjs-dist';
+import pdfjsWorker from 'pdfjs-dist/build/pdf.worker.mjs?url';
+
+// Setup PDF.js worker
+pdfjsLib.GlobalWorkerOptions.workerSrc = pdfjsWorker;
 import HTMLTemplateEditor from './HTMLTemplateEditor';
 import FlipbookPreview from './FlipbookPreview';
 import RightSidebar from './RightSidebar';
@@ -47,6 +53,7 @@ const MainEditor = () => {
   const [showPageSettingsMenu, setShowPageSettingsMenu] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [loadingText, setLoadingText] = useState('Loading...');
+  const [showAddFilesModal, setShowAddFilesModal] = useState(false);
 
   // Hook up to Layout Navbar Export button
   // Hook up to Layout Navbar Export and Save buttons
@@ -1230,6 +1237,115 @@ const MainEditor = () => {
   // If we change zoom, handleZoomChange updates state AND pages. UseEffect might run if we included pages.
   // By omitting pages, we only load when switching. Perfect.
 
+  
+  const processUploadedFiles = async (files) => {
+    if (!files || files.length === 0) return;
+
+    setLoadingText('Processing files...');
+    setIsLoading(true);
+
+    try {
+      const insertAfterIndex = currentPage;
+      const newPagesBatch = [];
+
+      for (const file of files) {
+        const isPDF = file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf');
+
+        if (isPDF) {
+          const arrayBuffer = await file.arrayBuffer();
+          const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+
+          const pageNumbers = Array.from({ length: pdf.numPages }, (_, i) => i + 1);
+
+          // Batch processing to prevent UI freezing (3 pages at a time)
+          const BATCH_SIZE = 3;
+          const pagesData = [];
+
+          for (let j = 0; j < pageNumbers.length; j += BATCH_SIZE) {
+            const batch = pageNumbers.slice(j, j + BATCH_SIZE);
+            const batchResults = await Promise.all(batch.map(async (pageNum) => {
+              const page = await pdf.getPage(pageNum);
+              const viewport = page.getViewport({ scale: 1.5 });
+              const canvas = document.createElement('canvas');
+              const context = canvas.getContext('2d');
+              canvas.height = viewport.height;
+              canvas.width = viewport.width;
+
+              await page.render({
+                canvasContext: context,
+                viewport: viewport
+              }).promise;
+
+              // Use DataURLs instead of Blobs for persistence across refreshes
+              const dataUrl = canvas.toDataURL('image/jpeg', 0.8);
+
+              // Cleanup canvas memory
+              canvas.width = 0;
+              canvas.height = 0;
+
+              const pageTitle = pageNum === 1 ? file.name.split('.')[0] : `${file.name.split('.')[0]} (Page ${pageNum})`;
+              const pageId = Date.now() + Math.random() + pageNum;
+
+              return {
+                pageNum,
+                name: pageTitle,
+                html: `<div style="width: 100%; height: 100%; margin: 0; padding: 0; overflow: hidden; background: white;"><img src="${dataUrl}" data-file-interaction-id="${pageId}" style="width: 100%; height: 100%; object-fit: fill; display: block;" /></div>`,
+                id: pageId
+              };
+            }));
+
+            pagesData.push(...batchResults);
+
+            // Yield to main thread briefly so UI doesn't freeze
+            await new Promise(resolve => setTimeout(resolve, 50));
+            setLoadingText(`Processing PDF: ${Math.min(j + BATCH_SIZE, pdf.numPages)} / ${pdf.numPages} Pages...`);
+          }
+
+          pagesData.sort((a, b) => a.pageNum - b.pageNum);
+          newPagesBatch.push(...pagesData.map(({ pageNum, ...rest }) => rest));
+        } else {
+          const dataUrl = await new Promise((resolve) => {
+            const reader = new FileReader();
+            reader.onload = (e) => resolve(e.target.result);
+            reader.readAsDataURL(file);
+          });
+
+          const pageId = Date.now() + Math.random();
+
+          const pageHTML = `<div style="width: 100%; height: 100%; margin: 0; padding: 0; overflow: hidden; background: white;"><img src="${dataUrl}" data-file-interaction-id="${pageId}" style="width: 100%; height: 100%; object-fit: fill; display: block;" /></div>`;
+
+          newPagesBatch.push({
+            name: file.name.split('.')[0],
+            html: pageHTML,
+            id: pageId
+          });
+        }
+      }
+
+      if (newPagesBatch.length > 0) {
+        setPages(prev => {
+          const updated = [...prev];
+          updated.splice(insertAfterIndex + 1, 0, ...newPagesBatch);
+          return updated;
+        });
+        // Transition can be smoother if we switch after state update
+        if (typeof startTransition === 'function') {
+           startTransition(() => {
+             setCurrentPage(insertAfterIndex + 1);
+           });
+        } else {
+            setCurrentPage(insertAfterIndex + 1);
+        }
+      }
+      setShowAddFilesModal(false);
+    } catch (error) {
+      console.error('Error processing files:', error);
+      alert('Failed to process one or more files. Please try again.');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   return (
     <div className="flex flex-col h-full overflow-hidden bg-gray-50 font-sans text-gray-700">
       {/* Navbar moved to Layout */}
@@ -1258,6 +1374,7 @@ const MainEditor = () => {
         onEditingPageIdChange={setEditingPageId}
         onOpenTemplateModal={() => setShowTemplateModal(true)}
         isDoublePage={isDoublePage}
+        onOpenUploadModal={() => setShowAddFilesModal(true)}
       />
 
       <main className="flex-1 flex flex-col min-w-0 bg-gray-50 border-r border-gray-200">
@@ -1536,6 +1653,8 @@ const MainEditor = () => {
         openPreview={openPreview}
         onPopupPreviewUpdate={handlePopupPreviewUpdate}
         closePanelsSignal={closePanelsSignal}
+        onPDFUpload={processUploadedFiles}
+        currentPage={currentPage}
       />
 
       {showTemplateModal && (
@@ -1548,6 +1667,16 @@ const MainEditor = () => {
           pageName={pageName} 
           onClose={closePreview} 
           isMobile={deviceInfo.isMobile}
+          isDoublePage={isDoublePage}
+        />
+      )}
+
+      {showAddFilesModal && (
+        <AddFilesModal
+          isOpen={showAddFilesModal}
+          onClose={() => setShowAddFilesModal(false)}
+          isLoading={isLoading}
+          onUpload={processUploadedFiles}
         />
       )}
 

@@ -6,9 +6,8 @@ import {
   Music, Loader2, BookOpen, FileText, Bookmark, List, X
 } from 'lucide-react';
 import logo from '../../assets/logo/Fisto_logo.png';
-import PopupPreview from './PopupPreview';
 
-const FlipbookPreview = ({ pages, pageName = "Name of the Book", onClose, isMobile = false }) => {
+const FlipbookPreview = ({ pages, pageName = "Name of the Book", onClose, isMobile = false, isDoublePage }) => {
   const flipbookRef = useRef(null);
   const containerRef = useRef(null);
   const audioRef = useRef(null);
@@ -16,7 +15,7 @@ const FlipbookPreview = ({ pages, pageName = "Name of the Book", onClose, isMobi
   const initializationRef = useRef(false);
 
   // State
-  const [isSingleView, setIsSingleView] = useState(true);
+  const [isSingleView, setIsSingleView] = useState(isMobile || (isDoublePage === false));
   const [currentPage, setCurrentPage] = useState(1);
   const [zoom, setZoom] = useState(0.6);
   const [isFullscreen, setIsFullscreen] = useState(false);
@@ -55,7 +54,7 @@ const FlipbookPreview = ({ pages, pageName = "Name of the Book", onClose, isMobi
   const currentInitIdRef = useRef(0);
 
   const animationEndTimerRef = useRef(null);
-  
+
   // Stabilize pages prop to prevent unnecessary re-renders/initialization
   const stablePages = React.useMemo(() => pages, [JSON.stringify(pages)]);
 
@@ -64,6 +63,13 @@ const FlipbookPreview = ({ pages, pageName = "Name of the Book", onClose, isMobi
   // Page dimensions (A4 ratio)
   const PAGE_WIDTH = 595;
   const PAGE_HEIGHT = 842;
+
+  const hexToRgba = (hex, opacity = 100) => {
+    if (!hex || hex === 'none') return 'transparent';
+    const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
+    const alpha = (opacity / 100).toFixed(2);
+    return result ? `rgba(${parseInt(result[1], 16)}, ${parseInt(result[2], 16)}, ${parseInt(result[3], 16)}, ${alpha})` : hex;
+  };
 
   // Calculate the target offset based on view
   const calculateTargetOffset = useCallback((view) => {
@@ -825,7 +831,7 @@ const FlipbookPreview = ({ pages, pageName = "Name of the Book", onClose, isMobi
                 data: {
                   content: content,
                   styles: styles,
-                  elementType: (imageSrc || el.tagName.toLowerCase() === 'img') ? 'image' : 'text',
+                  elementType: el.tagName.toLowerCase() === 'img' ? 'image' : 'text',
                   elementSource: imageSrc || (el.tagName.toLowerCase() === 'img' ? el.src : null)
                 }
               }, '*');
@@ -835,17 +841,12 @@ const FlipbookPreview = ({ pages, pageName = "Name of the Book", onClose, isMobi
               const type = el.dataset.interaction;
               const trigger = el.dataset.interactionTrigger || 'click';
               const value = el.dataset.interactionValue;
-              
               let content = el.dataset.interactionContent || '';
-              const isEncodedAttr = el.dataset.interactionContentEncoded === 'true';
-              const hasEncodedPrefix = content.startsWith('ENCODED:::');
-
-              if (isEncodedAttr || hasEncodedPrefix) {
+              if (content.startsWith('ENCODED:::')) {
                 try {
-                  const raw = hasEncodedPrefix ? content.substring(10) : content;
-                  content = decodeURIComponent(raw);
+                  content = decodeURIComponent(content.substring(10));
                 } catch (e) {
-                  console.warn("Interaction Script: Failed to decode content", e);
+                  content = content.substring(10);
                 }
               }
               
@@ -901,9 +902,21 @@ const FlipbookPreview = ({ pages, pageName = "Name of the Book", onClose, isMobi
                 window.parent.postMessage({ type: 'flipbook-navigate', page: value }, '*');
               } else if (type === 'popup') {
                 showPopup(el, content, {
-                  font: el.dataset.popupFont, size: el.dataset.popupSize,
-                  weight: el.dataset.popupWeight, fill: el.dataset.popupFill,
-                  autoWidth: el.dataset.popupAutoWidth, autoHeight: el.dataset.popupAutoHeight,
+                  font: el.dataset.popupFont, 
+                  size: el.dataset.popupSize,
+                  weight: el.dataset.popupWeight, 
+                  fill: el.dataset.popupFill,
+                  fillOpacity: el.dataset.popupFillOpacity,
+                  stroke: el.dataset.popupStroke,
+                  strokeOpacity: el.dataset.popupStrokeOpacity,
+                  strokeType: el.dataset.popupStrokeType,
+                  strokeWidth: el.dataset.popupStrokeWidth,
+                  strokeDashLength: el.dataset.popupStrokeDashLength,
+                  strokeDashGap: el.dataset.popupStrokeDashGap,
+                  strokePosition: el.dataset.popupStrokePosition,
+                  strokeRoundCorners: el.dataset.popupStrokeRoundCorners === 'true',
+                  autoWidth: el.dataset.popupAutoWidth, 
+                  autoHeight: el.dataset.popupAutoHeight,
                   fit: el.dataset.popupFit
                 }, el.dataset.popupImageSrc);
               } else if (type === 'download' && value) {
@@ -1042,7 +1055,7 @@ const FlipbookPreview = ({ pages, pageName = "Name of the Book", onClose, isMobi
     `;
 
     let content = html;
-    
+
     // Fix CORS: Strip crossorigin attributes to allow standard opaque loading
     // This resolves "Blocked by CORS policy" errors if the server lacks headers
     if (content) {
@@ -1079,6 +1092,14 @@ const FlipbookPreview = ({ pages, pageName = "Name of the Book", onClose, isMobi
                   box-shadow: 0 0 0 6px rgba(99, 102, 241, 0.1);
                   transform: scale(0.97);
               }
+              
+              /* Frame styling in preview */
+              [data-interaction-type="frame"] {
+                  position: absolute;
+                  z-index: 1000;
+                  pointer-events: auto;
+                  background-color: transparent;
+              }
             </style>
             <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;600;700&family=Roboto:wght@400;500;700&family=Open+Sans:wght@400;600;700&display=swap" rel="stylesheet">
             ${interactionScript}
@@ -1108,6 +1129,14 @@ const FlipbookPreview = ({ pages, pageName = "Name of the Book", onClose, isMobi
             [data-interaction-highlight="true"]:hover {
                 box-shadow: 0 0 0 6px rgba(99, 102, 241, 0.1);
                 transform: scale(0.97);
+            }
+
+            /* Frame styling in preview */
+            [data-interaction-type="frame"] {
+                position: absolute;
+                z-index: 1000;
+                pointer-events: auto;
+                background-color: transparent;
             }
         </style>
         ${interactionScript}
@@ -1350,7 +1379,7 @@ const FlipbookPreview = ({ pages, pageName = "Name of the Book", onClose, isMobi
     // Async Theory: Defer broadcast slightly to ensure Turn.js and DOM are synced
     const timer = setTimeout(() => {
       if (!isReady || !flipbookRef.current) return;
-      
+
       const iframes = flipbookRef.current.querySelectorAll('iframe');
       iframes.forEach(iframe => {
         if (iframe.contentWindow) {
@@ -2054,17 +2083,153 @@ const FlipbookPreview = ({ pages, pageName = "Name of the Book", onClose, isMobi
         </div>
       </div>
 
-      {/* Global Popup Message Overlay */}
+      {/* Global Popup Message Overlay - Covers entire screen */}
       {popupData.isOpen && (
-        <PopupPreview
-          content={popupData.content}
-          styles={popupData.styles}
-          elementType={popupData.elementType}
-          elementSource={popupData.elementSource}
-          renderId={popupData.renderId}
-          onClose={() => setPopupData({ ...popupData, isOpen: false })}
-          isWorkspaceModal={false} // Use fixed positioning for global overlay
-        />
+        <div
+          className="fixed inset-0 z-[200] flex items-center justify-center bg-black/40 backdrop-blur-sm animate-fadeIn"
+          onClick={() => setPopupData({ ...popupData, isOpen: false })}
+        >
+          <style>{`
+            @import url('https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&family=Roboto:wght@300;400;500;700&family=Open+Sans:wght@300;400;600;700&display=swap');
+          `}</style>
+          <div
+            className={`relative shadow-2xl flex flex-col items-center justify-center animate-scaleUp overflow-hidden ${popupData.content && (popupData.content.trim().toLowerCase().startsWith('<!doctype') || /<[a-z][\s\S]*>/i.test(popupData.content))
+              ? 'p-0 bg-transparent'
+              : 'p-12 rounded-xl'
+              }`}
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              width: popupData.content && (popupData.content.trim().toLowerCase().startsWith('<!doctype') || /<[a-z][\s\S]*>/i.test(popupData.content)) ? '95vw' : '100%',
+              maxWidth: popupData.content && (popupData.content.trim().toLowerCase().startsWith('<!doctype') || /<[a-z][\s\S]*>/i.test(popupData.content)) ? 'min(1200px, calc(85vh * 297 / 210))' : '1200px',
+              height: 'auto',
+              maxHeight: '85vh',
+              aspectRatio: popupData.content && (popupData.content.trim().toLowerCase().startsWith('<!doctype') || /<[a-z][\s\S]*>/i.test(popupData.content)) ? '297/210' : 'auto',
+              minWidth: '320px',
+              minHeight: '400px',
+              backgroundColor: popupData.content && (popupData.content.trim().toLowerCase().startsWith('<!doctype') || /<[a-z][\s\S]*>/i.test(popupData.content))
+                ? 'transparent'
+                : hexToRgba(popupData.styles.fill || '#ffffff', popupData.styles.fillOpacity || 100)
+            }}
+          >
+            {/* Stroke Overlay */}
+            {!(popupData.content && (popupData.content.trim().toLowerCase().startsWith('<!doctype') || /<[a-z][\s\S]*>/i.test(popupData.content))) && popupData.styles.stroke && popupData.styles.stroke !== 'none' && (
+              <div className="absolute inset-0 pointer-events-none rounded-xl overflow-hidden">
+                <svg width="100%" height="100%" className="block overflow-visible">
+                  <rect
+                    x={popupData.styles.strokePosition === 'inside' ? (popupData.styles.strokeWidth || 1) / 2 : popupData.styles.strokePosition === 'outside' ? -(popupData.styles.strokeWidth || 1) / 2 : 0}
+                    y={popupData.styles.strokePosition === 'inside' ? (popupData.styles.strokeWidth || 1) / 2 : popupData.styles.strokePosition === 'outside' ? -(popupData.styles.strokeWidth || 1) / 2 : 0}
+                    rx="12"
+                    ry="12"
+                    fill="none"
+                    stroke={popupData.styles.stroke}
+                    strokeWidth={popupData.styles.strokeWidth || 1}
+                    strokeDasharray={popupData.styles.strokeType === 'dashed' ? `${popupData.styles.strokeDashLength || 4},${popupData.styles.strokeDashGap || 4}` : 'none'}
+                    strokeLinecap={popupData.styles.strokeRoundCorners ? 'round' : 'square'}
+                    style={{
+                      strokeOpacity: (popupData.styles.strokeOpacity || 100) / 100,
+                      width: popupData.styles.strokePosition === 'inside' ? `calc(100% - ${popupData.styles.strokeWidth || 1}px)` : popupData.styles.strokePosition === 'outside' ? `calc(100% + ${popupData.styles.strokeWidth || 1}px)` : '100%',
+                      height: popupData.styles.strokePosition === 'inside' ? `calc(100% - ${popupData.styles.strokeWidth || 1}px)` : popupData.styles.strokePosition === 'outside' ? `calc(100% + ${popupData.styles.strokeWidth || 1}px)` : '100%'
+                    }}
+                  />
+                </svg>
+              </div>
+            )}
+
+            <button
+              onClick={() => setPopupData({ ...popupData, isOpen: false })}
+              className="absolute top-6 right-6 p-2 hover:bg-gray-100 rounded-full transition-all text-gray-400 hover:text-gray-600 shadow-sm bg-white z-[210]"
+            >
+              <X size={24} />
+            </button>
+
+            <div className={`w-full flex flex-col items-center justify-center h-full ${popupData.content && (popupData.content.trim().toLowerCase().startsWith('<!doctype') || /<[a-z][\s\S]*>/i.test(popupData.content)) ? 'gap-0' : 'gap-10'}`}>
+              {popupData.elementType === 'image' && !popupData.content && (
+                <img
+                  src={popupData.elementSource}
+                  alt="Popup"
+                  className="max-w-full max-h-[55vh] shadow-md rounded-sm"
+                  style={{
+                    objectFit: popupData.styles.fit === 'Fill' ? 'cover' : (popupData.styles.fit === 'Stretch' ? 'fill' : 'contain')
+                  }}
+                />
+              )}
+
+              {popupData.content && (
+                popupData.content.trim().toLowerCase().startsWith('<!doctype') || /<[a-z][\s\S]*>/i.test(popupData.content) ? (
+                  <iframe
+                    srcDoc={`
+                      <!DOCTYPE html>
+                      <html>
+                        <head>
+                          <style>
+                            html, body {
+                              margin: 0 !important;
+                              padding: 0 !important;
+                              width: 100vw !important;
+                              height: 100vh !important;
+                              overflow: hidden !important;
+                              background: transparent !important;
+                              display: flex !important;
+                              align-items: center !important;
+                              justify-content: center !important;
+                            }
+                            #template-scale-wrapper {
+                              width: 1200px !important;
+                              height: 848px !important;
+                              transform-origin: center center !important;
+                              visibility: hidden;
+                              flex-shrink: 0 !important;
+                            }
+                          </style>
+                        </head>
+                        <body>
+                          <div id="template-scale-wrapper">
+                            ${popupData.content}
+                          </div>
+                          <script>
+                            (function() {
+                              const wrapper = document.getElementById('template-scale-wrapper');
+                              function fit() {
+                                if (!wrapper) return;
+                                const scaleX = window.innerWidth / 1200;
+                                const scaleY = window.innerHeight / 848;
+                                const scale = Math.min(scaleX, scaleY);
+                                wrapper.style.transform = "scale(" + scale + ")";
+                                wrapper.style.visibility = "visible";
+                              }
+                              fit();
+                              window.addEventListener('resize', fit);
+                              // Second pass to ensure everything is settled
+                              setTimeout(fit, 0);
+                            })();
+                          </script>
+                        </body>
+                      </html>
+                    `}
+                    className="w-full h-full border-none m-0 p-0 block animate-fadeIn"
+                    title="Popup Content"
+                    scrolling="no"
+                  />
+                ) : (
+                  <div
+                    className="w-full text-center px-8"
+                    style={{
+                      fontFamily: `'${popupData.styles.font || 'Poppins'}', sans-serif`,
+                      fontSize: `${popupData.styles.size || '32'}px`,
+                      fontWeight: popupData.styles.weight === 'Bold' ? '700' : (popupData.styles.weight === 'Semi Bold' ? '600' : '400'),
+                      color: popupData.styles.fill || '#000000',
+                      lineHeight: '1.4',
+                      wordBreak: 'break-word',
+                      whiteSpace: 'pre-wrap'
+                    }}
+                  >
+                    {popupData.content}
+                  </div>
+                )
+              )}
+            </div>
+          </div>
+        </div>
       )}
 
       {/* Styles for scaleUp animation */}
@@ -2073,8 +2238,15 @@ const FlipbookPreview = ({ pages, pageName = "Name of the Book", onClose, isMobi
           from { transform: scale(0.95); opacity: 0; }
           to { transform: scale(1); opacity: 1; }
         }
+        @keyframes fadeIn {
+          from { opacity: 0; }
+          to { opacity: 1; }
+        }
         .animate-scaleUp {
           animation: scaleUp 0.3s ease-out forwards;
+        }
+        .animate-fadeIn {
+          animation: fadeIn 0.4s ease-out forwards;
         }
       `}</style>
     </div>
