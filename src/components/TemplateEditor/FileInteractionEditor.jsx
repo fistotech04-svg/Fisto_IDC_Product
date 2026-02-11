@@ -14,33 +14,10 @@ import {
     Plus,
     Trash2,
     X,
-    Pencil
+    Pencil,
+    File,
+    Check
 } from 'lucide-react';
-
-const AccordionItem = ({ title, children, isOpen, onToggle, icon: Icon, rightElement }) => {
-    return (
-        <div className="border-b border-gray-100 last:border-0">
-            <button
-                onClick={onToggle}
-                className="w-full flex items-center justify-between p-4 hover:bg-gray-50 transition-colors"
-            >
-                <div className="flex items-center gap-3">
-                    {Icon && <Icon size={18} className="text-gray-500" />}
-                    <span className="font-semibold text-gray-700 text-sm">{title}</span>
-                </div>
-                <div className="flex items-center gap-2">
-                    {rightElement}
-                    {isOpen ? <ChevronUp size={16} className="text-gray-400" /> : <ChevronDown size={16} className="text-gray-400" />}
-                </div>
-            </button>
-            {isOpen && (
-                <div className="px-4 pb-4 animate-in slide-in-from-top-2 duration-200">
-                    {children}
-                </div>
-            )}
-        </div>
-    );
-};
 
 // Reused components from ImageEditor
 const RadiusBox = ({ corner, value, onChange, radiusStyle }) => {
@@ -167,6 +144,8 @@ const FileInteractionEditor = ({
     IconEditorComponent
 }) => {
     const [activeSection, setActiveSection] = useState('files');
+    const [isFitDropdownOpen, setIsFitDropdownOpen] = useState(false);
+    const fitDropdownRef = useRef(null);
     const [nestedSection, setNestedSection] = useState(null);
 
     const [opacity, setOpacity] = useState(100);
@@ -267,6 +246,17 @@ const FileInteractionEditor = ({
 
         return () => observers.forEach(o => o.disconnect());
     }, [scanForFrames]);
+
+    // Close dropdown when clicking outside
+    useEffect(() => {
+        const handleClickOutside = (event) => {
+            if (fitDropdownRef.current && !fitDropdownRef.current.contains(event.target)) {
+                setIsFitDropdownOpen(false);
+            }
+        };
+        document.addEventListener('mousedown', handleClickOutside);
+        return () => document.removeEventListener('mousedown', handleClickOutside);
+    }, []);
 
     // Sync from selected element
     useEffect(() => {
@@ -446,6 +436,33 @@ const FileInteractionEditor = ({
     // Apply strict Visuals logic similar to ImageEditor
     const applyVisuals = useCallback(() => {
         if (!selectedElement) return;
+        
+        // Check for default state to avoid unnecessary updates
+        const isDefaultFilters = 
+            filters.exposure === 0 && 
+            filters.contrast === 0 && 
+            filters.saturation === 0 && 
+            filters.temperature === 0 && 
+            filters.tint === 0 && 
+            filters.highlights === 0 && 
+            filters.shadows === 0;
+
+        const isDefaultEffects = 
+            !activeEffects.includes('Blur') && 
+            !activeEffects.includes('Drop Shadow') && 
+            !activeEffects.includes('Background Blur') && 
+            !activeEffects.includes('Inner Shadow');
+
+        const currentFilter = selectedElement.style.filter;
+        const currentBackdrop = selectedElement.style.backdropFilter || selectedElement.style.webkitBackdropFilter;
+        const currentBoxShadow = selectedElement.style.boxShadow;
+
+        // If we are in default state and the element is already clean, stop here without triggering updates
+        if (isDefaultFilters && isDefaultEffects && !currentFilter && !currentBackdrop && !currentBoxShadow) {
+            isUpdatingDOM.current = false;
+            return;
+        }
+
         isUpdatingDOM.current = true;
 
         let filterString = `brightness(${100 + filters.exposure}%) contrast(${100 + filters.contrast}%) saturate(${100 + filters.saturation}%) hue-rotate(${filters.tint}deg) sepia(${filters.temperature > 0 ? filters.temperature : 0}%)`;
@@ -461,17 +478,24 @@ const FileInteractionEditor = ({
             filterString += ` drop-shadow(${s.x}px ${s.y}px ${s.blur}px ${colorWithAlpha})`;
         }
 
-        selectedElement.style.setProperty('filter', filterString, 'important');
+        // Only update if filter actually changed
+        if (selectedElement.style.filter !== filterString) {
+            selectedElement.style.setProperty('filter', filterString, 'important');
+        }
 
         // Background Blur
         if (activeEffects.includes('Background Blur')) {
             const s = effectSettings['Background Blur'];
             const blurVal = `blur(${s.blur}px)`;
-            selectedElement.style.setProperty('backdrop-filter', blurVal, 'important');
-            selectedElement.style.setProperty('-webkit-backdrop-filter', blurVal, 'important');
+            if (selectedElement.style.backdropFilter !== blurVal) {
+                selectedElement.style.setProperty('backdrop-filter', blurVal, 'important');
+                selectedElement.style.setProperty('-webkit-backdrop-filter', blurVal, 'important');
+            }
         } else {
-            selectedElement.style.removeProperty('backdrop-filter');
-            selectedElement.style.removeProperty('-webkit-backdrop-filter');
+            if (currentBackdrop) {
+                selectedElement.style.removeProperty('backdrop-filter');
+                selectedElement.style.removeProperty('-webkit-backdrop-filter');
+            }
         }
 
         // Inner Shadow
@@ -483,27 +507,42 @@ const FileInteractionEditor = ({
             shadowString += `inset ${s.x}px ${s.y}px ${s.blur}px ${s.spread}px ${colorWithAlpha}`;
         }
 
-        // Handling Box Shadow (Inner Shadow)
+        // Handling Box Shadow (Inner Shadow) - only update if changed
         if (selectedElement.tagName !== 'IMG') {
-            selectedElement.style.setProperty('box-shadow', shadowString, 'important');
+            if (selectedElement.style.boxShadow !== shadowString) {
+                selectedElement.style.setProperty('box-shadow', shadowString, 'important');
+            }
         } else {
             // Apply to parent wrapper if it's an image to make it visible
             const parent = selectedElement.parentElement;
             if (parent && (parent.tagName === 'DIV' || parent.className.includes('wrapper'))) {
-                parent.style.setProperty('box-shadow', shadowString, 'important');
-                parent.style.setProperty('overflow', 'hidden', 'important');
-                parent.style.setProperty('border-radius', selectedElement.style.borderRadius, 'important');
+                if (parent.style.boxShadow !== shadowString) {
+                    parent.style.setProperty('box-shadow', shadowString, 'important');
+                    parent.style.setProperty('overflow', 'hidden', 'important');
+                    parent.style.setProperty('border-radius', selectedElement.style.borderRadius, 'important');
+                }
             }
         }
 
-        if (onUpdate) onUpdate({ filter: filterString, newElement: selectedElement });
+        // Only call onUpdate if there was an actual change (not in default state)
+        if (!isDefaultFilters || !isDefaultEffects) {
+            if (onUpdate) onUpdate({ filter: filterString, newElement: selectedElement });
+        }
+        
         setTimeout(() => { isUpdatingDOM.current = false; }, 100);
 
-    }, [filters, activeEffects, effectSettings, selectedElement, onUpdate]);
+    }, [filters, activeEffects, effectSettings, selectedElement]);
 
+    // Use a ref to track if this is the initial mount to prevent running on first render
+    const isInitialMount = useRef(true);
+    
     useEffect(() => {
+        if (isInitialMount.current) {
+            isInitialMount.current = false;
+            return;
+        }
         applyVisuals();
-    }, [applyVisuals]);
+    }, [filters, activeEffects, effectSettings]);
 
     const updateFilter = (key, val) => {
         setFilters(prev => ({ ...prev, [key]: val }));
@@ -547,25 +586,35 @@ const FileInteractionEditor = ({
 
     // Stable handler for frame updates
     const handleFrameUpdate = useCallback((id, data) => {
-        // Find active element dynamically to avoid closure staleness and allow memoization
-        const iframes = document.querySelectorAll('iframe');
         let activeEl = null;
 
-        for (const ifrm of iframes) {
-            if (ifrm.contentDocument) {
-                const el = ifrm.contentDocument.getElementById(id);
-                if (el) {
-                    activeEl = el;
-                    break;
+        // Optimization: if the update is for the currently selected element, use the prop directly
+        if (selectedElement && selectedElement.id === id) {
+            activeEl = selectedElement;
+        } else {
+            // Find active element dynamically to avoid closure staleness and allow memoization
+            const iframes = document.querySelectorAll('iframe');
+            
+            for (const ifrm of iframes) {
+                if (ifrm.contentDocument) {
+                    const el = ifrm.contentDocument.getElementById(id);
+                    if (el) {
+                        activeEl = el;
+                        break;
+                    }
                 }
             }
         }
 
         if (onUpdate) {
             // Ensure we pass the element reference
-            onUpdate({ ...data, newElement: activeEl });
+            if (data && data.deleted) {
+                 onUpdate({ ...data, newElement: null }); 
+            } else {
+                 onUpdate({ ...data, newElement: activeEl });
+            }
         }
-    }, [onUpdate]);
+    }, [onUpdate, selectedElement]);
 
     return (
         <div className="flex flex-col gap-2">
@@ -577,35 +626,58 @@ const FileInteractionEditor = ({
                 input[type='range']::-webkit-slider-thumb { -webkit-appearance: none; height: 14px; width: 14px; border-radius: 50%; background: #6366f1; border: 2px solid #ffffff; box-shadow: 0 1px 3px rgba(0,0,0,0.2); margin-top: -5px; cursor: pointer; }
             `}</style>
 
-            {/* Files Accordion */}
-            <div className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
-                <AccordionItem
-                    title="Files"
-                    icon={Edit3}
-                    isOpen={activeSection === 'files'}
-                    onToggle={() => setActiveSection(activeSection === 'files' ? null : 'files')}
+            {/* Files Panel - ImageEditor Style */}
+            <div className="bg-white border border-gray-200 rounded-[15px] shadow-sm relative font-sans">
+                <div 
+                    className={`flex items-center justify-between px-4 py-4 border-b border-gray-50 cursor-pointer hover:bg-gray-50 transition-colors ${activeSection === 'files' ? 'rounded-t-[15px]' : 'rounded-[15px]'}`}
+                    onClick={() => setActiveSection(activeSection === 'files' ? null : 'files')}
                 >
-                    <div className="space-y-6 pt-2">
+                    <div className="flex items-center gap-2.5">
+                        <File size={16} className="text-gray-800"/>
+                        <span className="font-medium text-gray-700 text-sm">Files</span>
+                    </div>
+                    <ChevronUp size={16} className={`text-gray-500 transition-transform duration-200 ${activeSection === 'files' ? '' : 'rotate-180'}`} />
+                </div>
+
+                {activeSection === 'files' && (
+                    <div className="space-y-5 px-5 pb-5 pt-4">
                         {/* Upload Section */}
                         <div>
                             <div className="flex items-center gap-3 mb-4">
-                                <span className="text-sm font-bold text-gray-800 whitespace-nowrap">Upload your File</span>
+                                <span className="text-sm font-semibold text-gray-800 whitespace-nowrap">Upload your File</span>
                                 <div className="h-[1px] flex-grow bg-gray-200"></div>
                             </div>
 
                             <div className="flex items-center justify-between mb-4">
                                 <span className="text-[13px] font-medium text-gray-700">Select the File type :</span>
-                                <div className="relative">
-                                    <select
-                                        value={imageType}
-                                        onChange={(e) => handleFitChange(e.target.value)}
-                                        className="appearance-none bg-white border border-gray-100 shadow-sm rounded-md px-4 py-1.5 pr-8 text-sm text-gray-700 focus:outline-none focus:ring-1 focus:ring-indigo-500 w-32 cursor-pointer"
+                                <div className="relative" ref={fitDropdownRef}>
+                                    <button
+                                        onClick={() => setIsFitDropdownOpen(!isFitDropdownOpen)}
+                                        className="flex items-center justify-between w-32 bg-white border border-gray-100 shadow-sm rounded-md px-4 py-1.5 text-sm text-gray-700 focus:outline-none focus:ring-1 focus:ring-indigo-500 hover:bg-gray-50 transition-colors"
                                     >
-                                        <option value="Fit">Fit</option>
-                                        <option value="Fill">Fill</option>
-                                        <option value="Stretch">Stretch</option>
-                                    </select>
-                                    <ChevronDown size={14} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
+                                        <span className="font-medium">{imageType}</span>
+                                        <ChevronDown size={14} className={`text-gray-400 transition-transform duration-200 ${isFitDropdownOpen ? 'rotate-180' : ''}`} />
+                                    </button>
+                                    
+                                    {isFitDropdownOpen && (
+                                        <div className="absolute top-full right-0 mt-1 w-32 bg-white border border-gray-100 rounded-lg shadow-xl z-50 overflow-hidden animate-in fade-in zoom-in-95 duration-100">
+                                            {['Fit', 'Fill', 'Stretch'].map((option) => (
+                                                <button
+                                                    key={option}
+                                                    onClick={() => {
+                                                        handleFitChange(option);
+                                                        setIsFitDropdownOpen(false);
+                                                    }}
+                                                    className={`w-full text-left px-4 py-2 text-xs transition-colors flex items-center justify-between
+                                                        ${imageType === option ? 'bg-indigo-50 text-indigo-600 font-medium' : 'text-gray-700 hover:bg-gray-50 hover:text-gray-900'}
+                                                    `}
+                                                >
+                                                    {option}
+                                                    {imageType === option && <Check size={12} />} 
+                                                </button>
+                                            ))}
+                                        </div>
+                                    )}
                                 </div>
                             </div>
 
@@ -645,7 +717,7 @@ const FileInteractionEditor = ({
                         {/* Opacity Section */}
                         <div>
                             <div className="flex items-center gap-3 mb-4">
-                                <span className="text-sm font-bold text-gray-800 whitespace-nowrap">Opacity</span>
+                                <span className="text-sm font-semibold text-gray-800 whitespace-nowrap">Opacity</span>
                                 <div className="h-[1px] flex-grow bg-gray-200"></div>
                             </div>
                             <div className="flex items-center gap-3">
@@ -668,7 +740,7 @@ const FileInteractionEditor = ({
                                 onClick={() => setNestedSection(nestedSection === 'adjustments' ? null : 'adjustments')}
                                 className="w-full flex justify-between items-center p-4 bg-white hover:bg-gray-50 transition-colors"
                             >
-                                <span className="text-[14px] font-normal text-gray-700">Adjustments</span>
+                                <span className="text-[14px] font-semibold text-gray-700">Adjustments</span>
                                 <ChevronDown size={16} className={`text-gray-400 transition-transform duration-200 ${nestedSection === 'adjustments' ? 'rotate-180' : ''}`} />
                             </button>
                             {nestedSection === 'adjustments' && (
@@ -705,7 +777,7 @@ const FileInteractionEditor = ({
                                 onClick={() => setNestedSection(nestedSection === 'radius' ? null : 'radius')}
                                 className="w-full flex justify-between items-center p-4 bg-white hover:bg-gray-50 transition-colors"
                             >
-                                <span className="text-[14px] font-normal text-gray-700">Corner Radius</span>
+                                <span className="text-[14px] font-semibold text-gray-700">Corner Radius</span>
                                 <ChevronDown size={16} className={`text-gray-400 transition-transform duration-200 ${nestedSection === 'radius' ? 'rotate-180' : ''}`} />
                             </button>
                             {nestedSection === 'radius' && (
@@ -733,7 +805,7 @@ const FileInteractionEditor = ({
                                 onClick={() => setNestedSection(nestedSection === 'effects' ? null : 'effects')}
                                 className="w-full flex justify-between items-center p-4 bg-white hover:bg-gray-50 transition-colors"
                             >
-                                <span className="text-[14px] font-normal text-gray-700">Effect</span>
+                                <span className="text-[14px] font-semibold text-gray-700">Effect</span>
                                 <ChevronDown size={16} className={`text-gray-400 transition-transform duration-200 ${nestedSection === 'effects' ? 'rotate-180' : ''}`} />
                             </button>
                             {nestedSection === 'effects' && (
@@ -807,18 +879,25 @@ const FileInteractionEditor = ({
                             )}
                         </div>
                     </div>
-                </AccordionItem>
+
+                )}
             </div>
 
-            {/* Interaction Accordion */}
-            <div className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-visible">
-                <AccordionItem
-                    title="Interaction"
-                    icon={Sparkles}
-                    isOpen={activeSection === 'interaction'}
-                    onToggle={() => setActiveSection(activeSection === 'interaction' ? null : 'interaction')}
+            {/* Interaction Panel - ImageEditor Style */}
+            <div className="bg-white border border-gray-200 rounded-[15px] shadow-sm relative font-sans">
+                <div 
+                    className={`flex items-center justify-between px-4 py-4 border-b border-gray-50 cursor-pointer hover:bg-gray-50 transition-colors ${activeSection === 'interaction' ? 'rounded-t-[15px]' : 'rounded-[15px]'}`}
+                    onClick={() => setActiveSection(activeSection === 'interaction' ? null : 'interaction')}
                 >
-                    <div className="space-y-4">
+                    <div className="flex items-center gap-2.5">
+                        <Sparkles size={16} className="text-gray-800" />
+                        <span className="font-medium text-gray-700 text-sm">Interaction</span>
+                    </div>
+                    <ChevronUp size={16} className={`text-gray-500 transition-transform duration-200 ${activeSection === 'interaction' ? '' : 'rotate-180'}`} />
+                </div>
+
+                {activeSection === 'interaction' && (
+                    <div className="space-y-4 px-5 pb-5 pt-4">
 
 
                         <div className="flex items-center gap-3">
@@ -947,7 +1026,8 @@ const FileInteractionEditor = ({
                             )}
                         </div>
                     </div>
-                </AccordionItem>
+
+                )}
             </div>
         </div>
     );

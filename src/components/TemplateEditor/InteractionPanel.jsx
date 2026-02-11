@@ -1853,12 +1853,12 @@ const InteractionPanel = ({
               if (onToggle) onToggle();
               else setInternalIsOpen(!internalIsOpen);
             }}
-            className="p-1 rounded-md hover:bg-gray-100 transition-colors"
+            className="rounded-md hover:bg-gray-100 transition-colors"
             aria-label={isInteractionsOpen ? "Collapse" : "Expand"}
           >
             <ChevronUp
               size={16}
-              className={`text-gray-400 transition-transform duration-200 ${isInteractionsOpen ? '' : 'rotate-180'}`}
+              className={`text-gray-500 transition-transform duration-200 ${isInteractionsOpen ? '' : 'rotate-180'}`}
             />
           </button>
         </div>

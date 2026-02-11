@@ -93,10 +93,11 @@ const Editor = () => {
   const contextValue = React.useMemo(() => ({ 
     setExportHandler, 
     setSaveHandler,
+    hasUnsavedChanges,    // Expose state to MainEditor
     setHasUnsavedChanges, // Expose setter to MainEditor
     triggerSaveSuccess: handleSaveSuccess,
     isAutoSaveEnabled // Expose to MainEditor for internal logic
-  }), [isAutoSaveEnabled]);
+  }), [isAutoSaveEnabled, hasUnsavedChanges]);
 
   return (
     <div className="flex flex-col h-screen">

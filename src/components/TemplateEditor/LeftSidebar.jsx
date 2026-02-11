@@ -2,7 +2,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { 
-  Plus, Copy, Edit2, Layout, 
+  Plus, Copy, Edit2, Layout, FilePlus, 
   ArrowUp, ArrowDown, ArrowUpToLine, ArrowDownToLine, 
   Ban, Trash2, MoreVertical, GripVertical 
 } from 'lucide-react';
@@ -292,6 +292,9 @@ const LeftSidebar = ({
                     
                     <button onClick={() => { insertPageAfter(idx); setActiveMenuPageId(null); }} className="flex items-center gap-2.5 px-3 py-2 text-xs font-medium text-gray-700 hover:bg-gray-50 rounded-lg text-left">
                         <Plus size={14} /> Add Page
+                    </button>
+                    <button onClick={() => { switchToPage(idx); onOpenUploadModal(); setActiveMenuPageId(null); }} className="flex items-center gap-2.5 px-3 py-2 text-xs font-medium text-gray-700 hover:bg-gray-50 rounded-lg text-left">
+                        <FilePlus size={14} /> Add File
                     </button>
                     <button onClick={() => { duplicatePage(idx); setActiveMenuPageId(null); }} className="flex items-center gap-2.5 px-3 py-2 text-xs font-medium text-gray-700 hover:bg-gray-50 rounded-lg text-left">
                         <Copy size={14} /> Duplicate

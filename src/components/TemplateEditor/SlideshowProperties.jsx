@@ -13,6 +13,7 @@ import {
   X,
   Check
 } from 'lucide-react';
+import GalleryImage from './GalleryImage';
 
 const DraggableSpan = ({ label, value, onChange, min = 0, max = 100, className }) => {
   const [isDragging, setIsDragging] = useState(false);
@@ -59,7 +60,7 @@ const SectionHeader = ({ title }) => (
   </div>
 );
 
-const SlideshowProperties = ({ selectedElement, onUpdate, isOpen, onToggle, opacity, onUpdateOpacity, setPreviewSrc, setIsUpdatingDOM }) => {
+const SlideshowProperties = ({ selectedElement, onUpdate, isOpen, onToggle, opacity, onUpdateOpacity, setPreviewSrc, setIsUpdatingDOM, currentPageVId, flipbookVId, folderName, flipbookName }) => {
   const [showEffectDropdown, setShowEffectDropdown] = useState(false);
   const [showFitDropdown, setShowFitDropdown] = useState(false);
   const [showModeDropdown, setShowModeDropdown] = useState(false);
@@ -67,9 +68,7 @@ const SlideshowProperties = ({ selectedElement, onUpdate, isOpen, onToggle, opac
   const [openContextMenu, setOpenContextMenu] = useState(null);
   const [showGallery, setShowGallery] = useState(false);
   const fileInputRef = useRef(null);
-  const galleryInputRef = useRef(null);
-  const [uploadedImages, setUploadedImages] = useState([]);
-  const [localGallerySelected, setLocalGallerySelected] = useState(null);
+  
   const [showReplaceModal, setShowReplaceModal] = useState(false);
   const [replaceTargetIndex, setReplaceTargetIndex] = useState(null);
   const [newReplaceImg, setNewReplaceImg] = useState(null);
@@ -389,14 +388,7 @@ const SlideshowProperties = ({ selectedElement, onUpdate, isOpen, onToggle, opac
     e.target.value = '';
   };
 
-  const handleModalFileUpload = (e) => {
-    const file = e.target.files[0];
-    if (!file || !file.type.startsWith('image/')) return;
-    const imageUrl = URL.createObjectURL(file);
-    const newImage = { id: Date.now(), name: file.name, url: imageUrl };
-    setUploadedImages(prev => [newImage, ...prev]);
-    e.target.value = '';
-  };
+
 
   const handleReplaceUpload = (e) => {
     const file = e.target.files[0];
@@ -793,38 +785,16 @@ const SlideshowProperties = ({ selectedElement, onUpdate, isOpen, onToggle, opac
       </div>
 
       {/* Internal Gallery Modal */}
+      {/* Internal Gallery Modal */}
       {showGallery && (
-          <div className="fixed z-[1000] bg-white border border-gray-100 rounded-[12px] shadow-2xl flex flex-col overflow-hidden animate-in fade-in zoom-in-95 duration-200" style={{ width: '320px', height: '540px', top: '55%', left: '80%', transform: 'translate(-50%, -50%)' }}>
-          <div className="flex items-center justify-between px-4 py-4 border-b border-gray-100"><h2 className="text-mg font-semibold text-gray-900">Image Gallery</h2><button onClick={() => { setShowGallery(false); setLocalGallerySelected(null); }} className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-gray-100 transition-colors"><X size={18} className="text-gray-400" /></button></div>
-          <div className=" px-4 py-2"><h3 className="text-[13px] font-semibold text-gray-900 mb-1">Upload your Image</h3><p className="text-[11px] text-gray-400 mb-4"><span>You Can Reuse The File Which Is Uploaded In Gallery</span><span className="text-red-500">*</span></p><div 
-            onClick={() => galleryInputRef.current?.click()} 
-            className="w-full h-28 border-2 border-dashed border-gray-300 rounded-xl flex flex-col items-center justify-center bg-white hover:bg-gray-50 transition-all cursor-pointer group mb-2"
-          ><p className="text-[13px] text-gray-500 font-normal mb-3">Drag & Drop or <span className="text-blue-600 font-semibold">Upload</span></p><Upload size={28} className="text-gray-300 mb-2" strokeWidth={1.5} /><p className="text-[11px] text-gray-400 text-center">Supported File : <span className="font-medium">JPG, PNG</span></p></div><input type="file" ref={galleryInputRef} onChange={handleModalFileUpload} accept="image/*" className="hidden" /></div>
-          <div className="custom-scrollbar overflow-y-auto max-h-[250px] px-4 py-2 flex-1"><h3 className="text-[13px] font-semibold text-gray-900 mb-1">Uploaded Images</h3>{uploadedImages.length > 0 ? (
-            <div className="grid grid-cols-3 gap-3">{uploadedImages.map((img, index) => (
-              <div key={img.id || index} className="group cursor-pointer flex flex-col items-center" onClick={() => setLocalGallerySelected(img)}>
-                <div className={`aspect-square w-full rounded-lg overflow-hidden border-2 transition-all ${localGallerySelected?.url === img.url ? 'border-indigo-600 shadow-md scale-[1.02]' : 'hover:border-indigo-400 border-gray-100'}`}><img src={img.url} className="w-full h-full object-cover" alt="" /></div>
-              </div>
-            ))}</div>
-          ) : (
-            <div className="text-center py-8 text-gray-400"><p className="text-sm">No uploaded images yet</p></div>
-          )}</div>
-          <div className="p-3 border-t flex justify-end gap-2 bg-white mt-auto">
-            <button onClick={() => { setShowGallery(false); setLocalGallerySelected(null); }} className="flex-1 h-8 border border-gray-300 rounded-lg text-[11px] font-semibold flex items-center justify-center gap-1 hover:bg-gray-50 transition-colors"><X size={12} /> Close</button>
-            <button 
-              onClick={() => { 
-                if (localGallerySelected) {
-                  handleGallerySelect(localGallerySelected);
-                  setLocalGallerySelected(null);
-                }
-              }} 
-              disabled={!localGallerySelected}
-              className={`flex-1 h-8 rounded-lg text-[11px] font-semibold flex items-center justify-center gap-1 transition-all ${localGallerySelected ? 'bg-black text-white hover:bg-zinc-800' : 'bg-gray-100 text-gray-400 cursor-not-allowed'}`}
-            >
-              <Check size={12} /> Place
-            </button>
-          </div>
-        </div>
+        <GalleryImage 
+          onClose={() => setShowGallery(false)}
+          onSelect={handleGallerySelect}
+          currentPageVId={currentPageVId}
+          flipbookVId={flipbookVId}
+          folderName={folderName}
+          flipbookName={flipbookName}
+        />
       )}
 
       {/* Replace Image Modal*/}

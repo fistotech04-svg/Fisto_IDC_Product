@@ -125,12 +125,12 @@ const Navbar = ({ onExport, onSave, hasUnsavedChanges, saveSuccessInfo, isAutoSa
               <button 
                 onClick={onSave}
                 disabled={!hasUnsavedChanges}
-                className={`p-2.5 rounded-lg transition-all relative
+                className={`p-2.5 rounded-lg transition-all relative shadow-sm
                   ${hasUnsavedChanges 
-                      ? 'bg-amber-50 text-amber-600 hover:bg-amber-100 cursor-pointer ring-1 ring-amber-200' 
+                      ? 'bg-[#FFFBEB] text-yellow-600 cursor-pointer hover:bg-yellow-100 ring-1 ring-yellow-300' 
                       : 'bg-[#F2FDF8] text-green-600 cursor-default opacity-80 ring-1 ring-green-300'
                   }`}
-                title={hasUnsavedChanges ? "You have unsaved changes" : "All changes saved"}
+                title={hasUnsavedChanges ? "You have unsaved changes - Click to Save" : "All changes saved"}
               >
                 <Save size={20} />
               </button>

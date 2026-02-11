@@ -90,10 +90,6 @@ const AddFilesModal = ({ isOpen, onClose, onUpload, isLoading }) => {
                             Drag & Drop or <span className="text-[#6C63FF] hover:underline">Upload</span>
                         </p>
 
-                        <div className="flex items-center justify-center mt-1">
-                            <Upload size={14} className="text-[#6C63FF]" />
-                        </div>
-
                         <p className="text-[10px] text-gray-400 mt-3 uppercase tracking-wider font-semibold">
                             Supported File : <span className="text-gray-500">PDF, JPG, PNG, JPEG</span>
                         </p>

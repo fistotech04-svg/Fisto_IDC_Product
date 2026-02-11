@@ -33,14 +33,14 @@ export default function MyFlipbooks() {
       try {
           // Fetch Folders
           const folderRes = await axios.get(`${backendUrl}/api/flipbook/folders`, { params: { emailId } });
-          let folderNames = folderRes.data.folders || [];
+          // Filter out System Folders
+          let folderNames = (folderRes.data.folders || []).filter(f => f !== 'Public Book' && f !== 'Recent Book' && f !== 'Recent book');
           
-          // Ensure Recent Book is at the top
-          folderNames = folderNames.sort((a, b) => {
-              if (a === 'Recent Book') return -1;
-              if (b === 'Recent Book') return 1;
-              return a.localeCompare(b);
-          });
+          // Ensure Recent Book is at the top (if we add it back manually or keep it)
+          folderNames = folderNames.sort((a, b) => a.localeCompare(b));
+          
+          // Add Recent Book manually at top
+          folderNames = ['Recent Book', ...folderNames];
           
           setFolders(folderNames.map(name => ({ id: name, name })));
 
@@ -87,8 +87,9 @@ export default function MyFlipbooks() {
   };
 
   const handleUploadPDF = (files) => {
-    console.log("Upload PDF Clicked", files);
+    if (!files || files.length === 0) return;
     setIsCreateModalOpen(false);
+    navigate('/editor', { state: { uploadFiles: files } });
   };
 
   const handleUseTemplate = async (templateData) => {
@@ -102,14 +103,25 @@ export default function MyFlipbooks() {
         if (storedSetting !== null) isAutoSave = JSON.parse(storedSetting);
     } catch (e) { console.warn("Error reading auto-save setting", e); }
 
-    // If Auto-Save is DISABLED, do not create on backend yet. Just open Editor.
+    // Check for Email - Mandatory for backend creation
+    if (!emailId) {
+        console.error("Cannot pre-create flipbook: No user email found.");
+        navigate('/editor', { state: templateData });
+        return;
+    }
+
+    // If Auto-Save is DISABLED, do not save to backend yet. 
+    // Just navigate to the editor with the template data.
     if (!isAutoSave) {
+        console.log("Auto-save is disabled. Skipping backend pre-creation.");
         navigate('/editor', { state: templateData });
         return;
     }
 
     // Pre-create flipbook to get v_id and avoid "redirect" effect
     setIsLoading(true);
+    console.log("Pre-creating flipbook record...");
+    
     try {
         const pageCount = templateData.pageCount || 12;
         const pages = Array.from({ length: pageCount }, (_, i) => ({
@@ -120,25 +132,30 @@ export default function MyFlipbooks() {
         const now = new Date();
         const timeString = now.toISOString().replace(/[-:T.]/g, '').slice(0, 14);
         const uniqueName = `Flipbook_${timeString}`;
-        const folderName = 'My Flipbooks';
+        const targetFolder = activeFolder === 'Recent Book' ? 'My Flipbooks' : activeFolder;
 
+        console.log(`Saving new flipbook "${uniqueName}" to "${targetFolder}"...`);
         const res = await axios.post(`${backendUrl}/api/flipbook/save`, {
             emailId,
             flipbookName: uniqueName,
             pages: pages,
             overwrite: true,
-            folderName: folderName
+            folderName: targetFolder
         });
 
+        console.log("Creation result:", res.data);
+
         if (res.data && res.data.v_id) {
-            navigate(`/editor/${encodeURIComponent(folderName)}/${res.data.v_id}`);
+            const redirectUrl = `/editor/${encodeURIComponent(targetFolder)}/${res.data.v_id}`;
+            console.log("Navigating with v_id:", redirectUrl);
+            navigate(redirectUrl);
         } else {
-            // Fallback
+            console.warn("Backend didn't return v_id, using fallback editor route");
             navigate('/editor', { state: templateData });
         }
     } catch (e) {
         console.error("Creation failed", e);
-        // Fallback to old behavior
+        showAlert('Creation Error', 'Backend creation failed. You can still edit, but must save manually.', 'warning');
         navigate('/editor', { state: templateData });
     } finally {
         setIsLoading(false);

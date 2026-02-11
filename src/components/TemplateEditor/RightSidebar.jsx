@@ -33,7 +33,14 @@ const RightSidebar = ({
   onPopupUpdate,
   pages,
   currentPage,
-  onPDFUpload
+  onStartInteractionDraw,
+  onPDFUpload,
+  onElementSelect,
+  // Metadata for uploads
+  folderName,
+  flipbookName,
+  flipbookVId,
+  currentPageVId
 }) => {
   const [dimensions, setDimensions] = useState({ width: 793, height: 1122 });
 
@@ -163,6 +170,11 @@ const RightSidebar = ({
             VideoEditorComponent={VideoEditor}
             GifEditorComponent={GifEditor}
             IconEditorComponent={IconEditor}
+            // Metadata
+            folderName={folderName}
+            flipbookName={flipbookName}
+            flipbookVId={flipbookVId}
+            currentPageVId={currentPageVId}
           />
         )}
 
@@ -179,6 +191,11 @@ const RightSidebar = ({
             VideoEditorComponent={VideoEditor}
             GifEditorComponent={GifEditor}
             IconEditorComponent={IconEditor}
+            // Metadata
+            folderName={folderName}
+            flipbookName={flipbookName}
+            flipbookVId={flipbookVId}
+            currentPageVId={currentPageVId}
           />
         )}
 
@@ -196,6 +213,11 @@ const RightSidebar = ({
             VideoEditorComponent={VideoEditor}
             GifEditorComponent={GifEditor}
             IconEditorComponent={IconEditor}
+            // Metadata
+            folderName={folderName}
+            flipbookName={flipbookName}
+            flipbookVId={flipbookVId}
+            currentPageVId={currentPageVId}
           />
         )}
         
@@ -212,6 +234,11 @@ const RightSidebar = ({
             VideoEditorComponent={VideoEditor}
             GifEditorComponent={GifEditor}
             IconEditorComponent={IconEditor}
+            // Metadata
+            folderName={folderName}
+            flipbookName={flipbookName}
+            flipbookVId={flipbookVId}
+            currentPageVId={currentPageVId}
           />
         )}
 
@@ -228,6 +255,11 @@ const RightSidebar = ({
             VideoEditorComponent={VideoEditor}
             GifEditorComponent={GifEditor}
             IconEditorComponent={IconEditor}
+            // Metadata
+            folderName={folderName}
+            flipbookName={flipbookName}
+            flipbookVId={flipbookVId}
+            currentPageVId={currentPageVId}
           />
         )}
         
@@ -235,6 +267,7 @@ const RightSidebar = ({
           <FileInteractionEditor
             selectedElement={selectedElement}
             onUpdate={onUpdate}
+            onStartInteractionDraw={onStartInteractionDraw}
             pages={pages}
             currentPage={currentPage}
             onPopupPreviewUpdate={onPopupPreviewUpdate}
@@ -242,11 +275,17 @@ const RightSidebar = ({
             onPopupUpdate={onPopupUpdate}
             InteractionPanelComponent={InteractionPanel}
             onPDFUpload={onPDFUpload}
+            onElementSelect={onElementSelect}
             TextEditorComponent={TextEditor}
             ImageEditorComponent={ImageEditor}
             VideoEditorComponent={VideoEditor}
             GifEditorComponent={GifEditor}
             IconEditorComponent={IconEditor}
+            // Metadata
+            folderName={folderName}
+            flipbookName={flipbookName}
+            flipbookVId={flipbookVId}
+            currentPageVId={currentPageVId}
           />
         )}
 

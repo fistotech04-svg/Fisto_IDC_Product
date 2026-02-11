@@ -1,7 +1,7 @@
 // MainEditor.jsx - Updated Prop Passing for Double Page & Preview
 import React, { useState, useCallback, useRef, useEffect } from 'react';
 import axios from 'axios';
-import { useLocation, useOutletContext } from 'react-router-dom';
+import { useLocation, useOutletContext, useParams } from 'react-router-dom';
 import JSZip from 'jszip';
 import { jsPDF } from 'jspdf';
 import { saveAs } from 'file-saver';
@@ -40,6 +40,7 @@ const MainEditor = () => {
   const modalListRef = useRef(null);
   
   // ==================== HOOKS ====================
+  const { folder: urlFolder, v_id: urlVId } = useParams();
   usePreventBrowserZoom(); // Block default browser zoom globally
   const deviceInfo = useDeviceDetection();
   const { zoom, zoomIn, zoomOut, setZoomLevel, fitToScreen } = useZoom(60, editorContainerRef);
@@ -57,7 +58,16 @@ const MainEditor = () => {
 
   // Hook up to Layout Navbar Export button
   // Hook up to Layout Navbar Export and Save buttons
-  const { setExportHandler, setSaveHandler } = useOutletContext() || {};
+  const { setExportHandler, setSaveHandler, hasUnsavedChanges, setHasUnsavedChanges, triggerSaveSuccess, isAutoSaveEnabled } = useOutletContext() || {};
+  
+  // Add isDirtyRef to track dirty state locally for auto-save (from Branch)
+  const isDirtyRef = useRef(false);
+  const autoSaveTimerRef = useRef(null);
+
+  const markAsDirty = useCallback(() => {
+      isDirtyRef.current = true;
+      if (setHasUnsavedChanges) setHasUnsavedChanges(true);
+  }, [setHasUnsavedChanges]);
   
 
 
@@ -109,6 +119,7 @@ const MainEditor = () => {
      }
      return getRestoredState('pages', [{ 
        id: 1, 
+       v_id: 'page_' + Math.random().toString(36).substr(2, 9),
        name: 'Page 1', 
        html: '',
        thumbnail: null 
@@ -123,7 +134,13 @@ const MainEditor = () => {
   
   // Track the last successfully saved name
   const [lastSavedName, setLastSavedName] = useState(() => getRestoredState('lastSavedName', null));
-  const [lastSavedFolder, setLastSavedFolder] = useState(() => getRestoredState('lastSavedFolder', 'Public Book'));
+  const [lastSavedFolder, setLastSavedFolder] = useState(() => {
+    // If it's a brand new book, it doesn't have a folder yet.
+    if (initialData.pageCount || initialData.templateData || initialData.uploadFiles) return null;
+    return getRestoredState('lastSavedFolder', null);
+  });
+  const [lastSavedVId, setLastSavedVId] = useState(() => getRestoredState('lastSavedVId', null));
+  const [currentVId, setCurrentVId] = useState(() => getRestoredState('currentVId', null));
 
   // Panning State
   const [panOffset, setPanOffset] = useState({ x: 0, y: 0 });
@@ -134,6 +151,15 @@ const MainEditor = () => {
   const [selectedElement, setSelectedElement] = useState(null);
   const [selectedElementType, setSelectedElementType] = useState(null);
   const [selectedElementPage, setSelectedElementPage] = useState(null);
+  const [interactionDrawMode, setInteractionDrawMode] = useState(false);
+  
+  const toggleInteractionDrawMode = useCallback(() => {
+    setInteractionDrawMode(prev => {
+        const next = !prev;
+        if (next) setHasUnsavedChanges?.(true); // Flag as dirty when starting to draw/edit interactions
+        return next;
+    });
+  }, [setHasUnsavedChanges]);
 
   // Page renaming state (for auto-rename after add/duplicate)
   const [editingPageId, setEditingPageId] = useState(null);
@@ -148,20 +174,80 @@ const MainEditor = () => {
      }
   }, [currentPage, pages]);
 
+  // Mark as dirty when creating a NEW flipbook (from Page Count or Template)
+  useEffect(() => {
+      if (initialData.pageCount || initialData.templateData) {
+          // Small timeout to ensure context is ready and initial render is done
+          setTimeout(markAsDirty, 100);
+      }
+  }, [initialData, markAsDirty]);
+
+
+
+  // Clear selection ONLY when currentPage changes (separate useEffect to avoid clearing on pages update)
+  useEffect(() => {
+     setSelectedElement(null);
+     setSelectedElementType(null);
+     setSelectedElementPage(null);
+  }, [currentPage]); // Only depends on currentPage, not pages array
+
   // Auto-save state on change
   useEffect(() => {
-      if (pages.length > 0) {
-          const stateToSave = {
-              pages,
-              currentPage,
-              pageName,
-              lastSavedName,
-              lastSavedFolder,
-              timestamp: Date.now()
-          };
-          localStorage.setItem('editor_autosave', JSON.stringify(stateToSave));
+    if (pages.length > 0) {
+      const stateToSave = {
+        pages,
+        currentPage,
+        pageName,
+        lastSavedName,
+        lastSavedFolder,
+        lastSavedVId,
+        timestamp: Date.now()
+      };
+
+      try {
+        localStorage.setItem('editor_autosave', JSON.stringify(stateToSave));
+      } catch (e) {
+        if (e.name === 'QuotaExceededError' || e.code === 22) {
+          console.warn('Autosave: localStorage quota exceeded. Attempting to save without large content...');
+          try {
+            // High-capacity cleanup: Remove large HTML content from all but the current page
+            const slimPages = pages.map((p, idx) => ({
+              ...p,
+              html: idx === currentPage ? p.html : (p.html?.length > 500 ? '[Large Content Refactored]' : p.html)
+            }));
+            localStorage.setItem('editor_autosave', JSON.stringify({ ...stateToSave, pages: slimPages }));
+          } catch (e2) {
+            try {
+              // Ultra-slim: Only save current page HTML
+              const ultraSlimPages = pages.map((p, idx) => ({
+                id: p.id,
+                name: p.name,
+                html: idx === currentPage ? p.html : ''
+              }));
+              localStorage.setItem('editor_autosave', JSON.stringify({ ...stateToSave, pages: ultraSlimPages }));
+            } catch (e3) {
+              // Final fallback: Only meta
+              try {
+                const metaOnly = pages.map(p => ({ id: p.id, name: p.name }));
+                localStorage.setItem('editor_autosave', JSON.stringify({ ...stateToSave, pages: metaOnly }));
+              } catch (e4) {
+                console.error('Critical Autosave Failure: LocalStorage is completely full.', e4);
+              }
+            }
+          }
+        } else {
+          console.error('Autosave failed:', e);
+        }
       }
+    }
   }, [pages, currentPage, pageName, lastSavedName, lastSavedFolder]);
+
+  // Track pageName changes for unsaved status
+  useEffect(() => {
+    if (pageName !== lastSavedName && lastSavedName !== null) {
+        setHasUnsavedChanges?.(true);
+    }
+  }, [pageName, lastSavedName, setHasUnsavedChanges]);
 
   // Clear history for New Template / Page Count to allow autosave on refresh
   useEffect(() => {
@@ -172,8 +258,13 @@ const MainEditor = () => {
 
   // Load Book Logic (Open in Editor)
   useEffect(() => {
-      if (initialData.loadBook) {
-          const { folder, name } = initialData.loadBook;
+    // Priority 1: Navigation State (direct from MyFlipbooks)
+    // Priority 2: URL Parameters (shared links or manual refresh)
+    const folder = initialData.loadBook?.folder || urlFolder;
+    const v_id = initialData.loadBook?.v_id || urlVId;
+    const name = initialData.loadBook?.name; // Name might be missing in URL params
+
+    if (v_id || (folder && name)) {
           const loadBook = async () => {
               setLoadingText('Loading Book...');
               setIsLoading(true);
@@ -183,9 +274,10 @@ const MainEditor = () => {
                   const user = JSON.parse(storedUser);
                   const backendUrl = import.meta.env.VITE_BACKEND_URL || 'http://localhost:5000';
                   
-                  const res = await axios.get(`${backendUrl}/api/flipbook/get`, {
-                      params: { emailId: user.emailId, folderName: folder, bookName: name }
-                  });
+                  // Construction: Prefer v_id if available, fallback to folder+name
+                  const params = v_id ? { emailId: user.emailId, v_id } : { emailId: user.emailId, folderName: folder, bookName: name };
+
+                  const res = await axios.get(`${backendUrl}/api/flipbook/get`, { params });
                   
                   if (res.data.pages && res.data.pages.length > 0) {
                        const loadedPages = res.data.pages.map((p, i) => ({
@@ -195,12 +287,16 @@ const MainEditor = () => {
                            thumbnail: null
                        }));
                        setPages(loadedPages);
-                       setPageName(name);
-                       setLastSavedName(name);
-                       setLastSavedFolder(folder);
+                       setPageName(res.data.meta?.flipbookName || name || "Untitled Document");
+                       setLastSavedName(res.data.meta?.flipbookName || name);
+                       setLastSavedFolder(res.data.meta?.folderName || folder);
+                       setLastSavedVId(res.data.meta?.v_id || null);
                        setCurrentPage(0);
                        
-                       window.history.replaceState({}, document.title); 
+                       // Cleanup state to prevent re-load loops
+                       if (initialData.loadBook) {
+                           window.history.replaceState({}, document.title); 
+                       }
                   }
               } catch (err) {
                   console.error("Failed to load book", err);
@@ -211,19 +307,29 @@ const MainEditor = () => {
           };
           loadBook();
       }
-  }, [initialData.loadBook]);
+  }, [initialData.loadBook, urlVId, urlFolder]);
+
+  // Handle Initial PDF/Files upload from MyFlipbooks
+  useEffect(() => {
+    if (initialData.uploadFiles) {
+        processUploadedFiles(initialData.uploadFiles, true); 
+        // Clear history to avoid re-processing on refresh
+        window.history.replaceState({}, document.title);
+    }
+  }, [initialData.uploadFiles]);
 
   // Save Modal State
   const [showSaveModal, setShowSaveModal] = useState(false);
   const [targetFolder, setTargetFolder] = useState(''); // Default empty to force selection
-  const [availableFolders, setAvailableFolders] = useState(['Public Book']);
+  const [availableFolders, setAvailableFolders] = useState([]);
   const [isCreatingFolder, setIsCreatingFolder] = useState(false);
   const [newFolderInput, setNewFolderInput] = useState('');
 
   // Fetch folders when modal opens
   useEffect(() => {
     if (showSaveModal) {
-        setTargetFolder('Public Book'); // Default to Public Book
+        // Initial defaults
+        setTargetFolder(''); 
         setIsCreatingFolder(false);
         setNewFolderInput('');
 
@@ -237,7 +343,15 @@ const MainEditor = () => {
                         params: { emailId: user.emailId }
                     });
                     if (res.data.folders) {
-                        setAvailableFolders(res.data.folders);
+                        // Filter out 'Recent Book' and 'Public Book' as requested
+                        const filtered = res.data.folders.filter(f => f !== 'Recent Book' && f !== 'Recent book' && f !== 'Public Book');
+                        setAvailableFolders(filtered);
+
+                        // If user has NO personal folders, automatically suggest creating 'My Flipbooks'
+                        if (filtered.length === 0) {
+                            setIsCreatingFolder(true);
+                            setNewFolderInput('My Flipbooks');
+                        }
                     }
                 }
             } catch (err) {
@@ -323,97 +437,148 @@ const MainEditor = () => {
   const saveHandlerRef = useRef(null);
   const exportHandlerRef = useRef(null);
 
-  const executeSave = useCallback(async (folderName, overwrite = false) => {
-    setShowSaveModal(false); // Close modal immediately for better UX
-    setLoadingText('Saving...');
-    setIsLoading(true);
+  const executeSave = useCallback(async (folderName, overwrite = false, silent = false, overrideName = null) => {
+    const nameToSave = overrideName || pageName;
+        if (!folderName) {
+        if (!silent) {
+            console.warn("Cannot save: No folder name provided.");
+            setShowSaveModal(true);
+        } else {
+            console.warn("[Auto-save] Failed: No folder name provided.");
+        }
+        return;
+    }
+
+    if (!silent) {
+        setShowSaveModal(false); 
+        setLoadingText('Saving...');
+        setIsLoading(true);
+    }
+    
     try {
       const storedUser = localStorage.getItem('user');
       if (!storedUser) {
-         showAlert('error', 'Authentication Error', 'User not found. Please log in again.');
+         if (!silent) showAlert('error', 'Authentication Error', 'User not found. Please log in again.');
+         else console.warn("[Auto-save] Failed: User not logged in.");
          return;
       }
       const user = JSON.parse(storedUser);
       const emailId = user.emailId;
       const backendUrl = import.meta.env.VITE_BACKEND_URL || 'http://localhost:5000';
 
-      // If we are saving the same flipbook we just saved/confirmed, auto-overwrite
-      let shouldOverwrite = overwrite;
-      
-      // RENAME LOGIC: If saving exiting book to same folder with DIFFERENT name
-      // Normalize strings for comparison (handle simple mismatches)
       const isSameFolder = lastSavedFolder && folderName && (lastSavedFolder.trim().toLowerCase() === folderName.trim().toLowerCase());
-      const isNameChanged = lastSavedName && (pageName.trim() !== lastSavedName.trim());
+      const isNameChanged = lastSavedName && (nameToSave.trim() !== lastSavedName.trim());
+
+      let shouldOverwrite = overwrite;
+      let pagesPayloadSource = pages;
 
       if (!overwrite && isSameFolder && isNameChanged) {
-           // Attempt to rename the directory first
+           console.log("Attempting rename before save...");
            try {
                await axios.post(`${backendUrl}/api/flipbook/rename`, {
                   emailId,
-                  folderName: lastSavedFolder, // Use original casing for reliability
+                  folderName: lastSavedFolder,
                   oldName: lastSavedName,
-                  newName: pageName.trim()
+                  newName: nameToSave.trim(),
+                  v_id: lastSavedVId || urlVId
                });
-               // If rename successful, the "new" name now exists (it's the renamed folder).
-               // We must overwrite it with the current content.
                shouldOverwrite = true;
+               
+               // ASSET PATH CORRECTION (from Branch): 
+               const oldPathSegment = `/My_Flipbooks/${lastSavedFolder}/${lastSavedName}/`;
+               const newPathSegment = `/My_Flipbooks/${lastSavedFolder}/${nameToSave.trim()}/`;
+               
+               const updatedPages = pages.map(p => ({
+                   ...p,
+                   html: p.html ? p.html.split(oldPathSegment).join(newPathSegment) : ''
+               }));
+               
+               setPages(updatedPages);
+               pagesPayloadSource = updatedPages;
            } catch (renameErr) {
-               // If rename fails (e.g. name exists), we fall through to normal save (which handles conflicts)
-               // But if it's a conflict, the Save call below will trigger the 409 flow.
                console.warn("Rename attempt failed, falling back to standard save", renameErr);
-               // We do NOT set shouldOverwrite to true here, so Save will check existence.
            }
       }
 
-      if (lastSavedName && (pageName.trim() === lastSavedName.trim()) && isSameFolder) {
+      if (lastSavedName && (nameToSave.trim() === lastSavedName.trim()) && isSameFolder) {
           shouldOverwrite = true;
       }
 
-      // Prepare pages
-      const pagesToSave = pages.map(p => ({
+      const pagesToSave = pagesPayloadSource.map(p => ({
           pageName: p.name,
-          content: p.html
+          content: p.html,
+          v_id: p.v_id 
       }));
       
-      await axios.post(`${backendUrl}/api/flipbook/save`, {
+      isDirtyRef.current = false;
+
+      console.log(`[Auto-save] Sending request to ${folderName}/${nameToSave}`);
+
+      const res = await axios.post(`${backendUrl}/api/flipbook/save`, {
           emailId,
-          flipbookName: pageName.trim(), 
+          v_id: lastSavedVId || urlVId || undefined, 
+          flipbookName: nameToSave.trim(), 
           pages: pagesToSave,
           overwrite: shouldOverwrite,
           folderName: folderName.trim()
       });
       
-      setLastSavedName(pageName);
+      const savedVId = res.data.v_id;
+      setLastSavedName(nameToSave);
       setLastSavedFolder(folderName);
-      // setShowSaveModal(false); // Already closed at start
-      closeAlert(); 
-      showAlert('success', 'Saved Successfully', `Saved to ${folderName}/${pageName}`);
+      if (savedVId) {
+          setLastSavedVId(savedVId);
+          setCurrentVId(savedVId);
+      }
+      setHasUnsavedChanges?.(false);
+      
+      if (!silent) {
+          triggerSaveSuccess?.({ name: nameToSave, folder: folderName });
+          closeAlert(); 
+          // showAlert('success', 'Saved Successfully', `Saved to ${folderName}/${nameToSave}`);
+      } else {
+          console.log(`[Auto-save] Success: Saved to ${folderName}/${nameToSave}`);
+      }
+
+      if (folderName && savedVId) {
+          window.history.replaceState({}, document.title, `/editor/${encodeURIComponent(folderName)}/${savedVId}`);
+      }
+
+      return savedVId;
     } catch (error) {
+      isDirtyRef.current = true;
       if (error.response && error.response.status === 409) {
-          showAlert('warning', 'Flipbook Exists', 'A flipbook with this name already exists in this folder. Do you want to overwrite it?', {
-              showCancel: true,
-              confirmText: 'Overwrite',
-              cancelText: 'Cancel',
-              onConfirm: () => executeSave(folderName, true)
-          });
+          if (!silent) {
+              showAlert('warning', 'Flipbook Exists', 'A flipbook with this name already exists in this folder. Do you want to overwrite it?', {
+                  showCancel: true,
+                  confirmText: 'Overwrite',
+                  cancelText: 'Cancel',
+                  onConfirm: () => executeSave(folderName, true, false, overrideName)
+              });
+          } else {
+              // Auto-save logic: if conflict, revert name
+              console.warn("[Auto-save] Conflict detected. Reverting name.");
+              if (lastSavedName) setPageName(lastSavedName);
+          }
           return;
       }
       console.error("Save failed:", error);
-      showAlert('error', 'Save Failed', `Failed to save flipbook. ${error.response?.data?.message || error.message}`);
+      if (!silent) showAlert('error', 'Save Failed', `Failed to save flipbook. ${error.response?.data?.message || error.message}`);
     } finally {
-      setIsLoading(false);
+      if (!silent) setIsLoading(false);
     }
-  }, [pages, pageName, showAlert, closeAlert, lastSavedName, lastSavedFolder]);
+  }, [pages, pageName, showAlert, closeAlert, lastSavedName, lastSavedFolder, lastSavedVId, urlVId, setHasUnsavedChanges, triggerSaveSuccess]);
 
   const handleSaveFlipbook = useCallback(() => {
-     // Quick Save condition: Name hasn't changed AND we have a last saved folder
-     if (pageName === lastSavedName && lastSavedFolder) {
-         executeSave(lastSavedFolder, true);
+     // If we already have a folder, just save (executeSave handles renames)
+     if (lastSavedFolder) {
+         // Pass overwrite=false to allow executeSave to check for renames/conflicts internally
+         executeSave(lastSavedFolder, false, false);
      } else {
-         // Show options to select folder
+         // First time save: Show options to select folder
          setShowSaveModal(true);
      }
-  }, [pageName, lastSavedName, lastSavedFolder, executeSave]);
+  }, [lastSavedFolder, executeSave]);
   
   // Keep refs up to date
   useEffect(() => {
@@ -438,6 +603,53 @@ const MainEditor = () => {
         if (setSaveHandler) setSaveHandler(null);
     };
   }, [setExportHandler, setSaveHandler]);
+
+  // ==================== AUTO SAVE TO BACKEND ====================
+  useEffect(() => {
+    if (isAutoSaveEnabled && lastSavedName && lastSavedFolder) {
+        if (autoSaveTimerRef.current) clearTimeout(autoSaveTimerRef.current);
+        
+        autoSaveTimerRef.current = setTimeout(() => {
+             const nameChanged = (pageName && lastSavedName) ? (pageName.trim() !== lastSavedName.trim()) : false;
+             if (isDirtyRef.current || nameChanged) {
+                 console.log(`[Auto-save] Triggering save. Dirty: ${isDirtyRef.current}, NameChanged: ${nameChanged}`);
+                 executeSave(lastSavedFolder, !nameChanged, true);
+             }
+        }, 2000); // 2 seconds debounce
+        
+        return () => {
+            if (autoSaveTimerRef.current) clearTimeout(autoSaveTimerRef.current);
+        };
+    }
+  }, [pages, pageName, lastSavedName, lastSavedFolder, isAutoSaveEnabled, executeSave]);
+
+  // Initial Auto-Save for New Flipbooks (Standardize default save) - From Branch
+  useEffect(() => {
+    const handleInitialSave = async () => {
+        // Only if AutoSave is ON, we are creating a NEW book, and haven't saved yet
+        if (isAutoSaveEnabled && !initialData.loadBook && !lastSavedName && (initialData.pageCount || initialData.templateData || initialData.uploadFiles)) {
+             try {
+                 // Generate Unique Name: Flipbook_YYYYMMDD_HHMMSS
+                 const now = new Date();
+                 const timeString = now.toISOString().replace(/[-:T.]/g, '').slice(0, 14); 
+                 const uniqueName = `Flipbook_${timeString}`;
+                 const defaultFolder = 'My Flipbooks';
+                 
+                 setPageName(uniqueName);
+                 setLastSavedFolder(defaultFolder);
+                 
+                 if (executeSave && pages.length > 0) {
+                      await executeSave(defaultFolder, true, true, uniqueName); 
+                 }
+             } catch (e) {
+                 console.error("Initial auto-save failed", e);
+             }
+        }
+    };
+    
+    const timer = setTimeout(handleInitialSave, 2000); // Wait longer for PDF processing if needed
+    return () => clearTimeout(timer);
+  }, [isAutoSaveEnabled, initialData, lastSavedName, pages.length, executeSave]);
 
   // ==================== EXPORT LOGIC ====================
   const handleDownloadPages = useCallback(async (pagesToExport, format = 'png') => {
@@ -722,11 +934,12 @@ const MainEditor = () => {
       });
       // Immediate generation for loaded template (50ms wait for state, 100ms debounce)
       setTimeout(() => generateThumbnail(html, pages[currentPage].id, 100), 50);
+      markAsDirty();
     } catch (error) {
       console.error('Failed to load:', error);
       showAlert('error', 'Load Failed', 'Failed to load the selected template. Please try again.');
     }
-  }, [currentPage, generateThumbnail, pages]);
+  }, [currentPage, generateThumbnail, pages, markAsDirty]);
 
   // ==================== PAGE MANAGEMENT ====================
   const switchToPage = useCallback((index) => {
@@ -783,6 +996,7 @@ const MainEditor = () => {
         // Create new page with the pre-generated ID
         const newPage = { 
             id: newPageId, 
+            v_id: 'page_' + Math.random().toString(36).substr(2, 9),
             name: newName, 
             html: '', 
             thumbnail: null 
@@ -802,8 +1016,9 @@ const MainEditor = () => {
     // Trigger rename mode for the newly added page
     setTimeout(() => {
       setEditingPageId(newPageId);
-    }, 100); // Small delay to ensure state is updated
-  }, []);
+    }, 100); 
+    markAsDirty();
+  }, [markAsDirty]);
 
   const duplicatePage = useCallback((index) => {
     // Need to access current state inside setPages or use dependency.
@@ -892,7 +1107,13 @@ const MainEditor = () => {
     }
 
     const newPageId = Date.now();
-    const newPage = { id: newPageId, name: newName, html: sourcePage.html, thumbnail: sourcePage.thumbnail };
+    const newPage = { 
+        id: newPageId, 
+        v_id: 'page_' + Math.random().toString(36).substr(2, 9),
+        name: newName, 
+        html: sourcePage.html, 
+        thumbnail: sourcePage.thumbnail 
+    };
     
     setPages(prev => {
         const newPages = [...prev];
@@ -905,14 +1126,21 @@ const MainEditor = () => {
     // Trigger rename mode for the duplicated page
     setTimeout(() => {
       setEditingPageId(newPageId);
-    }, 100); // Small delay to ensure state is updated
-  }, [pages, currentPage]);
+    }, 100); 
+    markAsDirty();
+  }, [pages, currentPage, markAsDirty]);
 
   const clearPage = useCallback((index) => {
       showAlert('warning', 'Clear Content', 'Are you sure you want to clear all content from this page?', {
           showCancel: true,
           confirmText: 'Clear Page',
           onConfirm: () => {
+             // specific fix: Clear any pending element updates to avoid overwriting the clear action
+             if (elementUpdateDebounceRef.current) {
+                 clearTimeout(elementUpdateDebounceRef.current);
+                 elementUpdateDebounceRef.current = null;
+             }
+
              const blankHTML = '';
              setPages(prev => {
                 const newPages = [...prev];
@@ -920,10 +1148,11 @@ const MainEditor = () => {
                 return newPages;
              });
              if (index === currentPage) setTemplateHTML(blankHTML);
+             markAsDirty();
              closeAlert();
           }
       });
-  }, [currentPage, showAlert, closeAlert]);
+  }, [currentPage, showAlert, closeAlert, markAsDirty]);
 
   const deletePage = useCallback((index) => {
     if (pages.length <= 1) { 
@@ -947,12 +1176,13 @@ const MainEditor = () => {
             }
 
             setPages(newPages);
+            markAsDirty();
             setCurrentPage(newCurrentPage);
             setTemplateHTML(newPages[newCurrentPage]?.html || '');
             closeAlert();
         }
     });
-  }, [pages, currentPage, showAlert, closeAlert]);
+  }, [pages, currentPage, showAlert, closeAlert, setHasUnsavedChanges]);
 
   // ==================== TEMPLATE EDITING ====================
   const handleTemplateChange = useCallback((newHTML, targetIdx = currentPage) => {
@@ -971,7 +1201,8 @@ const MainEditor = () => {
     if (pages[targetIdx]) {
         generateThumbnail(newHTML, pages[targetIdx].id, 800);
     }
-  }, [currentPage, generateThumbnail, pages]);
+    markAsDirty();
+  }, [currentPage, generateThumbnail, pages, markAsDirty]);
 
   const handleElementSelect = useCallback((element, type, pageIndex) => {
     // Remove tag from old selection
@@ -1080,7 +1311,8 @@ const MainEditor = () => {
 
   const renamePage = useCallback((pageId, newName) => {
     setPages(prev => prev.map(p => p.id === pageId ? { ...p, name: newName } : p));
-  }, []);
+    markAsDirty();
+  }, [markAsDirty]);
 
   // Handle pan start events bubbled up from iframe
   const handleIframePanStart = useCallback((event) => {
@@ -1128,7 +1360,8 @@ const MainEditor = () => {
              setCurrentPage(currentPage + 1);
         }
     }
-  }, [pages.length, currentPage]);
+    markAsDirty();
+  }, [pages.length, currentPage, markAsDirty]);
 
   const movePageUp = useCallback((index) => movePage(index, index - 1), [movePage]);
   const movePageDown = useCallback((index) => movePage(index, index + 1), [movePage]);
@@ -1149,7 +1382,8 @@ const MainEditor = () => {
     if (pages[index]) {
        generateThumbnail(newHTML, pages[index].id, 800);
     }
-  }, [currentPage, generateThumbnail, pages]);
+    markAsDirty();
+  }, [currentPage, generateThumbnail, pages, markAsDirty]);
 
   const handlePreviousPage = useCallback(() => {
     if (!isDoublePage) {
@@ -1238,7 +1472,7 @@ const MainEditor = () => {
   // By omitting pages, we only load when switching. Perfect.
 
   
-  const processUploadedFiles = async (files) => {
+  const processUploadedFiles = async (files, isReplace = false) => {
     if (!files || files.length === 0) return;
 
     setLoadingText('Processing files...');
@@ -1249,10 +1483,11 @@ const MainEditor = () => {
       const newPagesBatch = [];
 
       for (const file of files) {
+        // Handle both File objects and plain objects (if passed via state which might lose prototypes)
         const isPDF = file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf');
 
         if (isPDF) {
-          const arrayBuffer = await file.arrayBuffer();
+          const arrayBuffer = await (file.arrayBuffer ? file.arrayBuffer() : new Response(file).arrayBuffer());
           const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
 
           const pageNumbers = Array.from({ length: pdf.numPages }, (_, i) => i + 1);
@@ -1288,8 +1523,9 @@ const MainEditor = () => {
 
               return {
                 pageNum,
+                v_id: 'page_' + Math.random().toString(36).substr(2, 9),
                 name: pageTitle,
-                html: `<div style="width: 100%; height: 100%; margin: 0; padding: 0; overflow: hidden; background: white;"><img src="${dataUrl}" data-file-interaction-id="${pageId}" style="width: 100%; height: 100%; object-fit: fill; display: block;" /></div>`,
+                html: `<div style="width: 100%; height: 100%; margin: 0; padding: 0; overflow: hidden; background: white; display: flex; align-items: center; justify-content: center;"><img src="${dataUrl}" data-file-interaction-id="${pageId}" style="width: 100%; height: 100%; object-fit: contain; display: block;" /></div>`,
                 id: pageId
               };
             }));
@@ -1312,10 +1548,11 @@ const MainEditor = () => {
 
           const pageId = Date.now() + Math.random();
 
-          const pageHTML = `<div style="width: 100%; height: 100%; margin: 0; padding: 0; overflow: hidden; background: white;"><img src="${dataUrl}" data-file-interaction-id="${pageId}" style="width: 100%; height: 100%; object-fit: fill; display: block;" /></div>`;
+          const pageHTML = `<div style="width: 100%; height: 100%; margin: 0; padding: 0; overflow: hidden; background: white; display: flex; align-items: center; justify-content: center;"><img src="${dataUrl}" data-file-interaction-id="${pageId}" style="width: 100%; height: 100%; object-fit: contain; display: block;" /></div>`;
 
           newPagesBatch.push({
             name: file.name.split('.')[0],
+            v_id: 'page_' + Math.random().toString(36).substr(2, 9),
             html: pageHTML,
             id: pageId
           });
@@ -1324,20 +1561,35 @@ const MainEditor = () => {
 
       if (newPagesBatch.length > 0) {
         setPages(prev => {
+          if (isReplace) return newPagesBatch;
+
           const updated = [...prev];
-          updated.splice(insertAfterIndex + 1, 0, ...newPagesBatch);
+          
+          // Replace current page with first uploaded page
+          if (newPagesBatch.length >= 1) {
+            const originalPageName = updated[insertAfterIndex].name;
+            const originalPageId = updated[insertAfterIndex].id;
+            updated[insertAfterIndex] = {
+              ...newPagesBatch[0],
+              name: originalPageName,  // Keep original page name
+              id: originalPageId       // Keep original page ID
+            };
+          }
+          
+          // Insert remaining pages after current page
+          if (newPagesBatch.length > 1) {
+            const remainingPages = newPagesBatch.slice(1);
+            updated.splice(insertAfterIndex + 1, 0, ...remainingPages);
+          }
+          
           return updated;
         });
-        // Transition can be smoother if we switch after state update
-        if (typeof startTransition === 'function') {
-           startTransition(() => {
-             setCurrentPage(insertAfterIndex + 1);
-           });
-        } else {
-            setCurrentPage(insertAfterIndex + 1);
-        }
+        
+        // Stay on current page (which now has the first uploaded page)
+        // No need to change page since we replaced the current one
       }
       setShowAddFilesModal(false);
+      markAsDirty();
     } catch (error) {
       console.error('Error processing files:', error);
       alert('Failed to process one or more files. Please try again.');
@@ -1434,6 +1686,8 @@ const MainEditor = () => {
                         setShowTemplateModal(true);
                     }}
                     isDoublePage={isDoublePage}
+                    isDrawingInteraction={interactionDrawMode}
+                    onInteractionDrawComplete={() => setInteractionDrawMode(false)}
                 /> 
                 
                 {/* Overlay to capture mouse events during panning */}
@@ -1559,6 +1813,18 @@ const MainEditor = () => {
                       Add Page
                     </button>
                     <button
+                      onClick={() => { setShowAddFilesModal(true); setShowPageSettingsMenu(false); }}
+                      className="flex items-center gap-2.5 px-3 py-2 text-xs font-medium text-gray-700 hover:bg-gray-50 rounded-lg text-left"
+                    >
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z"/>
+                        <polyline points="14 2 14 8 20 8"/>
+                        <line x1="12" y1="18" x2="12" y2="12"/>
+                        <line x1="9" y1="15" x2="15" y2="15"/>
+                      </svg>
+                      Add File
+                    </button>
+                    <button
                       onClick={() => { duplicatePage(currentPage); setShowPageSettingsMenu(false); }}
                       className="flex items-center gap-2.5 px-3 py-2 text-xs font-medium text-gray-700 hover:bg-gray-50 rounded-lg text-left"
                     >
@@ -1648,13 +1914,20 @@ const MainEditor = () => {
         activePopupElement={activePopupElement}
         onPopupUpdate={handlePopupUpdate}
         pages={pages}
+        currentPage={currentPage}
         isDoublePage={isDoublePage}
         setIsDoublePage={setIsDoublePage}
         openPreview={openPreview}
         onPopupPreviewUpdate={handlePopupPreviewUpdate}
         closePanelsSignal={closePanelsSignal}
+        onStartInteractionDraw={() => setInteractionDrawMode(true)}
         onPDFUpload={processUploadedFiles}
-        currentPage={currentPage}
+        onElementSelect={handleElementSelect}
+        // Metadata for asset uploads
+        folderName={lastSavedFolder || urlFolder}
+        flipbookName={pageName}
+        flipbookVId={lastSavedVId || urlVId}
+        currentPageVId={pages[currentPage]?.v_id}
       />
 
       {showTemplateModal && (
@@ -1735,9 +2008,7 @@ const MainEditor = () => {
                   className="space-y-2 max-h-52 overflow-y-auto custom-scrollbar p-1 mb-4 scroll-smooth"
                >
                   {/* Folder List */}
-                  {(!isCreatingFolder ? (availableFolders && availableFolders.length > 0 ? availableFolders : ['Public Book']) : (availableFolders || ['Public Book'])).sort((a,b) => {
-                      if (a === 'Public Book') return -1;
-                      if (b === 'Public Book') return 1;
+                  {(!isCreatingFolder ? (availableFolders || []) : (availableFolders || [])).sort((a,b) => {
                       return a.localeCompare(b);
                   }).map(folder => {
                       const isSelected = targetFolder === folder;
