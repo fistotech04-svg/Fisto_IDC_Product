@@ -15,11 +15,16 @@ import useModalHistory from "./hooks/useModalHistory";
 import ExportModal from "./Components/ExportModal";
 
 
+import { useOutletContext } from "react-router-dom";
+
 export default function ThreedEditor() {
-  const [modelUrl, setModelUrl] = useState(null);
-  const [modelType, setModelType] = useState('glb');
+  const { threedState, setThreedState } = useOutletContext();
+
+  const [modelUrl, setModelUrl] = useState(threedState.modelUrl);
+  const [modelFile, setModelFile] = useState(threedState.modelFile); // Persistence: Store the file object
+  const [modelType, setModelType] = useState(threedState.modelType);
   const [autoRotate, setAutoRotate] = useState(false);
-  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(true);
+  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(!threedState.modelUrl); // If model exists, don't collapse
   const [isTextureOpen, setIsTextureOpen] = useState(false);
   const [manualLoading, setManualLoading] = useState(false);
 
@@ -34,13 +39,7 @@ export default function ThreedEditor() {
   const isGlobalLoading = manualLoading || active;
   
   // Model Statistics State
-  const [modelStats, setModelStats] = useState({
-    vertexCount: "0",
-    polygonCount: "0",
-    materialCount: "0",
-    fileSize: "0 MB",
-    dimensions: "0 X 0 X 0 unit"
-  });
+  const [modelStats, setModelStats] = useState(threedState.modelStats);
   
   const controlsRef = React.useRef(null);
   const modelRef = React.useRef(null);
@@ -48,7 +47,7 @@ export default function ThreedEditor() {
 
   // Target Position State
   const [targetPosition, setTargetPosition] = useState({ x: 0, y: 0, z: 0 });
-  const [materialList, setMaterialList] = useState([]);
+  const [materialList, setMaterialList] = useState(threedState.materialList || []);
   const [selectedMaterial, setSelectedMaterial] = useState(null);
   const [selectedTexture, setSelectedTexture] = useState(null);
   
@@ -66,43 +65,13 @@ export default function ThreedEditor() {
 
   // Transform Tools State
   const [transformMode, setTransformMode] = useState(null); // 'translate', 'rotate', 'scale', null
-  const [transformValues, setTransformValues] = useState({
-    position: { x: 0, y: 0, z: 0 },
-    rotation: { x: 0, y: 0, z: 0 },
-    scale: { x: 1, y: 1, z: 1 }
-  });
+  const [transformValues, setTransformValues] = useState(threedState.transformValues);
+
   // --- History Management ---
-  const [modelName, setModelName] = useState("");
+  const [modelName, setModelName] = useState(threedState.modelName);
   const [selectedTextureId, setSelectedTextureId] = useState(null);
 
-  const [materialSettings, setMaterialSettings] = useState({
-    alpha: 100,
-    metallic: 0,
-    roughness: 50,
-    normal: 100,
-    bump: 100,
-    scale: 100,
-    scaleY: 100,
-    rotation: 0,
-    specular: 50,
-    reflection: 50,
-    shadow: 50,
-    softness: 50,
-    ao: 100,
-
-    environment: 'city',
-    color: '#000000',
-    useFactorColor: false, // New Toggle
-    autoUnwrap: false,
-    envRotation: 0,
-    shadow: 50,
-    
-    // Texture Placement
-    offset: { x: 0, y: 0 },
-
-    // Light position controls (spherical coordinates)
-    lightPosition: { x: 10, y: 10, z: 10 }
-  });
+  const [materialSettings, setMaterialSettings] = useState(threedState.materialSettings);
 
   const [resetKey, setResetKey] = useState(0);
   
@@ -115,14 +84,9 @@ export default function ThreedEditor() {
     canRedo,
     resetHistory
   } = useModalHistory({
-      transformValues: { position: { x: 0, y: 0, z: 0 }, rotation: { x: 0, y: 0, z: 0 }, scale: { x: 1, y: 1, z: 1 } },
-      materialSettings: {
-        alpha: 100, metallic: 0, roughness: 50, normal: 100, bump: 100, scale: 100, scaleY: 100, rotation: 0,
-        specular: 50, reflection: 50, shadow: 50, softness: 50, ao: 100, environment: 'city',
-        color: '#000000', useFactorColor: false, autoUnwrap: false, envRotation: 0, offset: { x: 0, y: 0 },
-        lightPosition: { x: 10, y: 10, z: 10 }
-      },
-      modelName: ""
+      transformValues: threedState.transformValues,
+      materialSettings: threedState.materialSettings,
+      modelName: threedState.modelName
   });
 
   // Keep a ref of current state components for constructing history entries
@@ -130,6 +94,21 @@ export default function ThreedEditor() {
   useEffect(() => {
       stateRef.current = { transformValues, materialSettings, modelName };
   }, [transformValues, materialSettings, modelName]);
+
+  // Sync State changes to Context (Debounced or on change)
+  useEffect(() => {
+      setThreedState(prev => ({
+          ...prev,
+          modelUrl,
+          modelFile, // Sync file to context
+          modelType,
+          modelStats,
+          transformValues,
+          materialSettings,
+          modelName,
+          materialList
+      }));
+  }, [modelUrl, modelFile, modelType, modelStats, transformValues, materialSettings, modelName, materialList, setThreedState]);
 
   const handleUndo = () => {
       const prevState = undo();
@@ -165,11 +144,6 @@ export default function ThreedEditor() {
       const next = { ...prev, [key]: val };
       
       if (!fromSync) {
-          // Push to history
-          // We use stateRef.current for other values, but 'next' for materialSettings
-          // Note: accessing stateRef.current inside functional update is safe? 
-          // Yes, but we need to supply the other current values.
-          // Since this callback might be stale regarding 'stateRef', we use the ref object itself which is stable.
           pushHistory({
               transformValues: stateRef.current.transformValues,
               modelName: stateRef.current.modelName,
@@ -212,8 +186,13 @@ export default function ThreedEditor() {
         fileSize: `${sizeInMB} MB`
     }));
 
+    if (modelUrl) {
+        URL.revokeObjectURL(modelUrl);
+    }
+
     const url = URL.createObjectURL(file);
     setModelUrl(url);
+    setModelFile(file); // Set file to state
 
     if (name.endsWith('.obj')) setModelType('obj');
     else if (name.endsWith('.fbx')) setModelType('fbx');
@@ -223,6 +202,7 @@ export default function ThreedEditor() {
     
     setIsSidebarCollapsed(false); 
   };
+
 
   const handleDragOver = (e) => {
     e.preventDefault();
@@ -238,7 +218,13 @@ export default function ThreedEditor() {
   };
 
   const handleClearModel = () => {
+    // Revoke URL
+    if (modelUrl) {
+         URL.revokeObjectURL(modelUrl);
+    }
+
     setModelUrl(null);
+    setModelFile(null); // Clear file to prevent restoration
     setModelType('glb');
     setMaterialList([]);
     setSelectedMaterial(null);
@@ -263,7 +249,7 @@ export default function ThreedEditor() {
     // Reset History
     resetHistory({
         transformValues: defaultTransform,
-        materialSettings: materialSettings, // Use current or default? Current is fine as we might keep settings
+        materialSettings: materialSettings, 
         modelName: ""
     });
   };
@@ -362,6 +348,37 @@ export default function ThreedEditor() {
     wireframe: false,
   });
 
+  // Memoized Handlers to prevent infinite loops in child Effects
+  const handleTextureIdentified = useCallback((id) => {
+      setSelectedTextureId(id);
+  }, []);
+
+  const handleTextureApplied = useCallback(() => {
+      setSelectedTexture(null);
+  }, []);
+
+  const handleSelectMaterial = useCallback((val) => {
+      if (typeof val === 'object') {
+          // Preserve full object (including isGroup, materials)
+          setSelectedMaterial({ ...val, uuid: val.uuid || null, ts: Date.now() });
+      } else {
+          setSelectedMaterial({ name: val, uuid: null, ts: Date.now() });
+      }
+  }, []);
+
+  const handleTransformChange = useCallback((t) => {
+      if (t.original) {
+          originalTransformRef.current = t.original;
+      } else {
+          originalTransformRef.current = null; // Clear if not provided (e.g. wrapper)
+      }
+      setTransformValues({
+          position: { x: t.position.x, y: t.position.y, z: t.position.z },
+          rotation: { x: t.rotation.x, y: t.rotation.y, z: t.rotation.z },
+          scale: { x: t.scale.x, y: t.scale.y, z: t.scale.z }
+      });
+  }, []);
+
   return (
     <div 
         className="flex h-[92vh] w-full bg-white overflow-hidden relative"
@@ -370,53 +387,50 @@ export default function ThreedEditor() {
     >
       <GlobalLoader manualLoading={manualLoading} />
       
-      {/* Unsupported Format Warning Modal */}
+      {/* --- WARNING MODAL --- */}
       {showWarning && (
-        <div className="absolute inset-0 z-[120] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
-            <div className="bg-white rounded-2xl shadow-2xl max-w-sm w-full overflow-hidden animate-in fade-in zoom-in duration-200">
-                <div className="p-6 text-center">
-                    <div className="w-14 h-14 bg-red-50 text-red-500 rounded-full flex items-center justify-center mx-auto mb-5">
-                        <Icon icon="heroicons:exclamation-triangle-solid" width={32} />
-                    </div>
-                    
-                    <h3 className="text-xl font-bold text-gray-900 mb-2">Format Not Supported</h3>
-                    
-                    <p className="text-[14px] text-gray-500 mb-6 leading-relaxed">
-                        Oops! We currently don't support this file format. Please upload one of the following:
-                    </p>
-                    
-                    <div className="flex flex-wrap gap-2 justify-center mb-8">
-                        {['.GLB', '.OBJ', '.FBX', '.STL', '.STEP'].map((ext) => (
-                            <span key={ext} className="px-2.5 py-1 bg-gray-100 text-gray-600 text-xs font-bold rounded-md border border-gray-200">
-                                {ext}
-                            </span>
-                        ))}
-                    </div>
-
-                    <button 
-                        onClick={() => setShowWarning(false)}
-                        className="w-full py-3 bg-gray-900 hover:bg-black text-white font-semibold rounded-xl transition-all active:scale-[0.98]"
-                    >
-                        Got it, thanks!
-                    </button>
-                </div>
-            </div>
-        </div>
+           <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
+               <div className="bg-white p-6 rounded-2xl shadow-xl max-w-sm w-full text-center">
+                   <div className="w-12 h-12 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                       <Icon icon="ph:warning-circle-bold" className="text-red-600 text-2xl" />
+                   </div>
+                   <h3 className="text-lg font-bold text-gray-900 mb-2">Unsupported File Type</h3>
+                   <p className="text-sm text-gray-600 mb-6">
+                       Please upload a 3D model in one of the following formats: <br/>
+                       <span className="font-mono text-xs bg-gray-100 px-1 py-0.5 rounded">.glb, .gltf, .obj, .fbx, .stl, .step</span>
+                   </p>
+                   <button 
+                       onClick={() => setShowWarning(false)}
+                       className="w-full py-2.5 bg-gray-900 text-white rounded-xl font-medium hover:bg-gray-800 transition-colors"
+                   >
+                       Got it
+                   </button>
+               </div>
+           </div>
       )}
-      
-      {/* Export Format Selection Modal */}
+
+      {/* --- EXPORT MODAL --- */}
       {showExportModal && (
           <ExportModal 
               onClose={() => setShowExportModal(false)}
               onExport={(format) => {
                   if (modelRef.current) {
                       modelRef.current.exportModel(format);
+                      setShowExportModal(false);
                   }
               }}
           />
       )}
 
-      {/* --- MAIN CONTENT AREA --- */}
+      {isSidebarCollapsed && modelUrl && (
+          <button
+            onClick={() => setIsSidebarCollapsed(false)}
+            className="absolute left-6 top-6 z-30 p-2 bg-white rounded-xl shadow-lg border border-gray-100 text-gray-600 hover:text-[#3b4190] hover:border-blue-100 transition-all"
+          >
+            <Icon icon="ph:list-bold" width={20} />
+          </button>
+      )}
+
       <div className="flex flex-1 overflow-hidden relative">
 
         {/* CENTER EDITOR AREA */}
@@ -432,7 +446,7 @@ export default function ThreedEditor() {
               targetPosition={targetPosition}
               materialList={materialList}
               selectedMaterial={selectedMaterial}
-              onSelectMaterial={(name) => setSelectedMaterial({ name, ts: Date.now() })}
+              onSelectMaterial={(name) => handleSelectMaterial(name)}
               modelName={modelName} // Pass filename
               onRename={handleRename}
               onUndo={handleUndo}
@@ -488,7 +502,7 @@ export default function ThreedEditor() {
 
           {/* 3D CANVAS */}
           <div className="flex-1 h-full w-full">
-            <Canvas camera={{ position: [0, 1, 5] }} shadows>
+            <Canvas camera={{ position: [0, 1, 5] }} shadows dpr={[1, 2]} gl={{ preserveDrawingBuffer: true }}>
               <color attach="background" args={[settings.backgroundColor]} />
               
               <ambientLight intensity={0.6 * ((materialSettings.specular ?? 50) / 50)} />
@@ -524,14 +538,7 @@ export default function ThreedEditor() {
                         setModelStats={setModelStats}
                         setMaterialList={setMaterialList}
                         selectedMaterial={selectedMaterial}
-                        onSelectMaterial={(val) => {
-                            if (typeof val === 'object') {
-                                // Preserve full object (including isGroup, materials)
-                                setSelectedMaterial({ ...val, uuid: val.uuid || null, ts: Date.now() });
-                            } else {
-                                setSelectedMaterial({ name: val, uuid: null, ts: Date.now() });
-                            }
-                        }}
+                        onSelectMaterial={handleSelectMaterial}
                         modelName={modelName}
                         transformMode={transformMode}
                         transformValues={transformValues}
@@ -541,21 +548,10 @@ export default function ThreedEditor() {
                         resetKey={resetKey}
                         sceneResetTrigger={sceneResetTrigger}
                         uvUnwrapTrigger={uvUnwrapTrigger}
-                        onTextureApplied={() => setSelectedTexture(null)}
-                        onTextureIdentified={(id) => setSelectedTextureId(id)}
+                        onTextureApplied={handleTextureApplied}
+                        onTextureIdentified={handleTextureIdentified}
                         onTransformEnd={handleTransformEnd}
-                        onTransformChange={(t) => {
-                            if (t.original) {
-                                originalTransformRef.current = t.original;
-                            } else {
-                                originalTransformRef.current = null; // Clear if not provided (e.g. wrapper)
-                            }
-                            setTransformValues({
-                                position: { x: t.position.x, y: t.position.y, z: t.position.z },
-                                rotation: { x: t.rotation.x, y: t.rotation.y, z: t.rotation.z },
-                                scale: { x: t.scale.x, y: t.scale.y, z: t.scale.z }
-                            });
-                        }}
+                        onTransformChange={handleTransformChange}
                     />
                   )}
               </Suspense>

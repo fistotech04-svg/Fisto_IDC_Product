@@ -1,7 +1,7 @@
 // MainEditor.jsx - Updated Prop Passing for Double Page & Preview
 import React, { useState, useCallback, useRef, useEffect } from 'react';
 import axios from 'axios';
-import { useLocation, useOutletContext, useParams } from 'react-router-dom';
+import { useLocation, useOutletContext, useParams, useNavigate } from 'react-router-dom';
 import JSZip from 'jszip';
 import { jsPDF } from 'jspdf';
 import { saveAs } from 'file-saver';
@@ -41,6 +41,7 @@ const MainEditor = () => {
   
   // ==================== HOOKS ====================
   const { folder: urlFolder, v_id: urlVId } = useParams();
+  const navigate = useNavigate();
   usePreventBrowserZoom(); // Block default browser zoom globally
   const deviceInfo = useDeviceDetection();
   const { zoom, zoomIn, zoomOut, setZoomLevel, fitToScreen } = useZoom(60, editorContainerRef);
@@ -282,6 +283,7 @@ const MainEditor = () => {
                   if (res.data.pages && res.data.pages.length > 0) {
                        const loadedPages = res.data.pages.map((p, i) => ({
                            id: i + 1,
+                           v_id: p.v_id || 'page_' + Math.random().toString(36).substr(2, 9), 
                            name: p.name || `Page ${i + 1}`,
                            html: p.html,
                            thumbnail: null
@@ -541,7 +543,7 @@ const MainEditor = () => {
       }
 
       if (folderName && savedVId) {
-          window.history.replaceState({}, document.title, `/editor/${encodeURIComponent(folderName)}/${savedVId}`);
+          navigate(`/editor/${encodeURIComponent(folderName)}/${savedVId}`, { replace: true });
       }
 
       return savedVId;
@@ -567,7 +569,7 @@ const MainEditor = () => {
     } finally {
       if (!silent) setIsLoading(false);
     }
-  }, [pages, pageName, showAlert, closeAlert, lastSavedName, lastSavedFolder, lastSavedVId, urlVId, setHasUnsavedChanges, triggerSaveSuccess]);
+  }, [pages, pageName, showAlert, closeAlert, lastSavedName, lastSavedFolder, lastSavedVId, urlVId, setHasUnsavedChanges, triggerSaveSuccess, navigate]);
 
   const handleSaveFlipbook = useCallback(() => {
      // If we already have a folder, just save (executeSave handles renames)

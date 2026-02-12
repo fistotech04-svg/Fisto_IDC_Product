@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { Eye, EyeOff } from 'lucide-react';
+import { Eye, EyeOff, Loader2 } from 'lucide-react';
 import axios from 'axios';
 import { useToast } from '../components/CustomToast';
 import ForgotPasswordModal from '../components/ForgotPasswordModal';
@@ -9,6 +9,7 @@ import SigninBg from '../assets/logo/signin.png';
 
 export default function Signin() {
   const [showPassword, setShowPassword] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
   const [formData, setFormData] = useState({
     emailId: '',
     password: ''
@@ -38,6 +39,7 @@ export default function Signin() {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    setIsLoading(true);
     try {
       const backendUrl = import.meta.env.VITE_BACKEND_URL || 'http://localhost:5000';
       const res = await axios.post(`${backendUrl}/api/auth/login`, {
@@ -59,6 +61,8 @@ export default function Signin() {
     } catch (err) {
       console.error('Login error:', err.response?.data?.message || err.message);
       toast.error(err.response?.data?.message || 'Login failed');
+    } finally {
+      setIsLoading(false);
     }
   };
 
@@ -168,9 +172,17 @@ export default function Signin() {
               {/* Submit Button */}
               <button
                 type="submit"
-                className="block w-full text-center py-3.5 px-4 rounded-full bg-[#4c5add] hover:bg-[#3f4bc0] text-white font-semibold text-lg shadow-lg shadow-indigo-900/50 transition-all transform hover:scale-[1.02] focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 border-2 border-indigo-400/30"
+                disabled={isLoading}
+                className="block w-full text-center py-3.5 px-4 rounded-full bg-[#4c5add] hover:bg-[#3f4bc0] text-white font-semibold text-lg shadow-lg shadow-indigo-900/50 transition-all transform hover:scale-[1.02] focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 border-2 border-indigo-400/30 disabled:opacity-70 disabled:cursor-not-allowed"
               >
-                Sign In
+                {isLoading ? (
+                  <div className="flex items-center justify-center gap-2">
+                    <Loader2 className="h-5 w-5 animate-spin" />
+                    <span>Signing In...</span>
+                  </div>
+                ) : (
+                  "Sign In"
+                )}
               </button>
               
               {/* Create Account Link */}

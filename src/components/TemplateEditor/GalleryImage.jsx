@@ -125,13 +125,15 @@ export default function GalleryImage({ onClose, onUpdate, onSelect, selectedElem
       
       // Upload to flipbook assets
       const storedUser = localStorage.getItem('user');
-      if (storedUser && (flipbookVId || (folderName && flipbookName))) {
+      if (storedUser) {
         const user = JSON.parse(storedUser);
         const formData = new FormData();
         formData.append('emailId', user.emailId);
         if (flipbookVId) formData.append('v_id', flipbookVId);
-        if (folderName) formData.append('folderName', folderName);
-        if (flipbookName) formData.append('flipbookName', flipbookName);
+        
+        // Provide defaults for unsaved books
+        formData.append('folderName', folderName || 'My Flipbooks');
+        formData.append('flipbookName', flipbookName || 'Untitled Document');
         formData.append('type', 'image');
         formData.append('assetType', 'Image');
         formData.append('page_v_id', currentPageVId || 'global');
@@ -167,13 +169,15 @@ export default function GalleryImage({ onClose, onUpdate, onSelect, selectedElem
         
         // Upload to flipbook assets
         const storedUser = localStorage.getItem('user');
-        if (storedUser && (flipbookVId || (folderName && flipbookName))) {
+        if (storedUser) {
           const user = JSON.parse(storedUser);
           const formData = new FormData();
           formData.append('emailId', user.emailId);
           if (flipbookVId) formData.append('v_id', flipbookVId);
-          if (folderName) formData.append('folderName', folderName);
-          if (flipbookName) formData.append('flipbookName', flipbookName);
+          
+          // Provide defaults for unsaved books
+          formData.append('folderName', folderName || 'My Flipbooks');
+          formData.append('flipbookName', flipbookName || 'Untitled Document');
           formData.append('type', 'image');
           formData.append('assetType', 'Image');
           formData.append('page_v_id', currentPageVId || 'global');

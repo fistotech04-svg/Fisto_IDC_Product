@@ -1223,6 +1223,89 @@ const ImageEditor = ({
           flipbookVId={flipbookVId}
           folderName={folderName}
           flipbookName={flipbookName}
+          onSelect={async (img) => {
+             // 1. Optimistic Update
+             const optimisticUrl = img.url;
+             selectedElement.src = optimisticUrl;
+             setPreviewSrc(optimisticUrl);
+             selectedElement.removeAttribute('data-original-src');
+             selectedElement.removeAttribute('data-cropped-src');
+             if (onUpdate) onUpdate({ shouldRefresh: true });
+
+             // 2. Backend Upload/Associate logic
+             const storedUser = localStorage.getItem('user');
+             if (!storedUser) {
+                 setShowGallery(false);
+                 return;
+             }
+             
+             try {
+                const user = JSON.parse(storedUser);
+                const backendUrl = import.meta.env.VITE_BACKEND_URL || 'http://localhost:5000';
+                
+                // Prepare File Object
+                let fileToUpload = null;
+                if (img.file) {
+                    fileToUpload = img.file;
+                } else {
+                    // Fetch blob from URL to re-upload as asset
+                    // Use axios with blob response type for better compatibility
+                    try {
+                        const response = await axios.get(img.url, { responseType: 'blob' });
+                        const contentType = response.headers['content-type'] || 'image/png';
+                        // Extract useful extension or default
+                        const ext = contentType.split('/')[1] || 'png';
+                        const filename = img.name ? (img.name.endsWith('.' + ext) ? img.name : `${img.name}.${ext}`) : `gallery_image.${ext}`;
+                        
+                        fileToUpload = new File([response.data], filename, { type: contentType });
+                    } catch (fetchErr) {
+                        console.error("Failed to fetch gallery image for re-upload:", fetchErr);
+                        // If fetch fails (e.g. CORS), we can't upload to backend as a new asset.
+                        // We leave the optimistic URL (links to gallery) as fallback.
+                    }
+                }
+                
+                if (fileToUpload) {
+                    const formData = new FormData();
+                    formData.append('emailId', user.emailId);
+                    if (flipbookVId) formData.append('v_id', flipbookVId);
+                    
+                    // Defaults for unsaved books to ensure storage
+                    formData.append('folderName', folderName || 'My Flipbooks');
+                    formData.append('flipbookName', flipbookName || 'Untitled Document');
+                    
+                    formData.append('type', 'image');
+                    formData.append('assetType', 'Image');
+                    formData.append('page_v_id', currentPageVId || 'global');
+                    
+                    // Handle Replacement
+                    const existingFileVid = selectedElement.dataset.fileVid;
+                    if (existingFileVid) {
+                        formData.append('replacing_file_v_id', existingFileVid);
+                    }
+                    
+                    formData.append('file', fileToUpload);
+                    
+                    const res = await axios.post(`${backendUrl}/api/flipbook/upload-asset`, formData);
+                    
+                    if (res.data.url) {
+                        const serverUrl = `${backendUrl}${res.data.url}`;
+                        
+                        // Update DOM with final server URL and new File ID
+                        selectedElement.src = serverUrl;
+                        selectedElement.dataset.fileVid = res.data.file_v_id;
+                        setPreviewSrc(serverUrl);
+                        
+                        if (onUpdate) onUpdate({ shouldRefresh: true });
+                        console.log("Gallery Image successfully stored as Asset:", res.data.filename);
+                    }
+                }
+             } catch (err) {
+                console.error("Gallery Select Backend Sync Failed:", err);
+             }
+             
+             setShowGallery(false);
+          }}
         />
       )}      {isCropping && (
         <ImageCropOverlay 

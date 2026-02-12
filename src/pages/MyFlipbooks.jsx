@@ -4,7 +4,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import { BookOpen, Folder, Plus, ArrowLeft, Search, MoreVertical, Trash2, Edit2, Copy, Eye, Wrench, PenTool, BarChart2, Share2, Download, FolderInput, SlidersHorizontal, CheckSquare, Check } from 'lucide-react';
 import DashboardBg from '../assets/images/myflipbook.png';
 
-import CreateFolderModal from '../components/CreateFolderModal';
+
 import AlertModal from '../components/AlertModal';
 import CreateFlipbookModal from '../components/CreateFlipbookModal';
 
@@ -62,8 +62,22 @@ export default function MyFlipbooks() {
       setSelectedBooks([]);
   }, [activeFolder]);
 
-  const [isModalOpen, setIsModalOpen] = useState(false);
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
+  
+  // Inline Folder Creation State
+  const [isCreatingFolder, setIsCreatingFolder] = useState(false);
+  const [newFolderInputName, setNewFolderInputName] = useState('');
+  const folderListRef = useRef(null);
+
+  // Auto-scroll to bottom when creating folder
+  useEffect(() => {
+    if (isCreatingFolder && folderListRef.current) {
+        folderListRef.current.scrollTo({
+            top: folderListRef.current.scrollHeight,
+            behavior: 'smooth'
+        });
+    }
+  }, [isCreatingFolder]);
 
   const [isLoading, setIsLoading] = useState(false);
   const [alertState, setAlertState] = useState({
@@ -169,9 +183,20 @@ export default function MyFlipbooks() {
   // Menu Action State
   const [activeMenuId, setActiveMenuId] = useState(null);
 
-  // Open Modal
+  // Open Inline Create
   const handleAddFolderClick = () => {
-    setIsModalOpen(true);
+    setIsCreatingFolder(true);
+    setNewFolderInputName('');
+  };
+
+  const saveNewFolder = async () => {
+      if (!newFolderInputName.trim()) {
+          setIsCreatingFolder(false);
+          return;
+      }
+      await handleCreateFolder(newFolderInputName.trim());
+      setIsCreatingFolder(false);
+      setNewFolderInputName('');
   };
 
   // Create Folder
@@ -312,6 +337,14 @@ export default function MyFlipbooks() {
     isOpen: false,
     bookId: null,
     isBulk: false // Added to track bulk move
+  });
+
+  // Conflict / Rename & Move State
+  const [conflictModal, setConflictModal] = useState({
+      isOpen: false,
+      book: null,
+      targetFolder: '',
+      newName: ''
   });
 
   // --- Selection Logic ---
@@ -491,17 +524,36 @@ export default function MyFlipbooks() {
   };
 
   const confirmMoveBook = async (targetFolder) => {
+     // Helper to perform the actual move request
+     const performMove = async (book, targetId) => {
+         await axios.post(`${backendUrl}/api/flipbook/move`, {
+            emailId,
+            bookName: book.realName,
+            currentFolder: book.folder,
+            targetFolder: targetId
+        });
+     };
+
      try {
           if (moveBookModal.bookId === 'BULK') {
               for (const bookId of selectedBooks) {
                   const book = books.find(b => b.id === bookId);
                   if (book) {
-                      await axios.post(`${backendUrl}/api/flipbook/move`, {
-                          emailId,
-                          bookName: book.realName,
-                          currentFolder: book.folder,
-                          targetFolder
-                      });
+                      try {
+                          await performMove(book, targetFolder);
+                      } catch (err) {
+                          if (err.response?.status === 409) {
+                               setConflictModal({
+                                   isOpen: true,
+                                   book,
+                                   targetFolder,
+                                   newName: book.realName
+                               });
+                               setMoveBookModal({ isOpen: false, bookId: null, isBulk: false });
+                               return; 
+                          }
+                          console.error(err);
+                      }
                   }
               }
               setSelectedBooks([]);
@@ -509,19 +561,71 @@ export default function MyFlipbooks() {
           } else if (moveBookModal.bookId) {
               const book = books.find(b => b.id === moveBookModal.bookId);
                if (book) {
-                      await axios.post(`${backendUrl}/api/flipbook/move`, {
-                          emailId,
-                          bookName: book.realName,
-                          currentFolder: book.folder,
-                          targetFolder
-                      });
+                    try {
+                      await performMove(book, targetFolder);
+                    } catch (err) {
+                        if (err.response?.status === 409) {
+                            setConflictModal({
+                                isOpen: true,
+                                book,
+                                targetFolder,
+                                newName: book.realName
+                            });
+                            setMoveBookModal({ isOpen: false, bookId: null, isBulk: false });
+                            return;
+                        }
+                        throw err;
+                    }
                }
           }
           await fetchData();
-      } catch(err) { console.log(err); }
+      } catch(err) { 
+          console.log(err); 
+          showAlert('Move Failed', err.response?.data?.message || err.message);
+      }
     setMoveBookModal({ isOpen: false, bookId: null, isBulk: false });
     setIsCreatingInMove(false); // Reset create mode
     setNewMoveFolderName('');
+  };
+
+  const handleRenameAndMove = async () => {
+      const { book, newName, targetFolder } = conflictModal;
+      if (!book || !newName.trim() || !targetFolder) return;
+      
+      setIsLoading(true);
+      try {
+          // 1. Rename in Source
+          if (newName.trim() !== book.realName) {
+              await axios.post(`${backendUrl}/api/flipbook/rename`, {
+                  emailId,
+                  folderName: book.folder,
+                  oldName: book.realName,
+                  newName: newName.trim()
+              });
+          } else {
+               showAlert("Name Exists", "Please choose a different name to resolve the conflict.");
+               setIsLoading(false);
+               return;
+          }
+
+          // 2. Move to Target
+          await axios.post(`${backendUrl}/api/flipbook/move`, {
+              emailId,
+              bookName: newName.trim(), // Use new name
+              currentFolder: book.folder,
+              targetFolder
+          });
+          
+          await fetchData();
+          setConflictModal({ isOpen: false, book: null, targetFolder: '', newName: '' });
+
+      } catch (err) {
+          console.error(err);
+          const msg = err.response?.status === 409 ? 'Name still conflicts (in source or target).' : err.message;
+          showAlert('Action Failed', msg);
+      } finally {
+          setIsLoading(false);
+      }
   };
 
   // --- Create Folder in Move Modal Logic ---
@@ -586,7 +690,7 @@ export default function MyFlipbooks() {
           </div>
 
           {/* Scrollable Folder List */}
-          <div className="flex-1 overflow-y-auto custom-scrollbar pr-1 pb-4">
+          <div className="flex-1 overflow-y-auto custom-scrollbar pr-1 pb-4" ref={folderListRef}>
             <div className="space-y-3">
               {folders.map(folder => {
                   const isEditing = editingId === folder.id;
@@ -677,13 +781,37 @@ export default function MyFlipbooks() {
                       </div>
                   );
               })}
+              
+              {/* New Folder Input */}
+              {isCreatingFolder && (
+                   <div className="w-full px-4 py-3 rounded-xl border-2 border-[#3b4190] bg-white shadow-md animate-in fade-in slide-in-from-top-2 duration-300">
+                      <input 
+                          autoFocus
+                          type="text"
+                          placeholder="Name..."
+                          value={newFolderInputName}
+                          onChange={(e) => setNewFolderInputName(e.target.value)}
+                          onBlur={saveNewFolder}
+                          onKeyDown={(e) => {
+                              if (e.key === 'Enter') {
+                                  e.preventDefault(); 
+                                  saveNewFolder();
+                              }
+                              if (e.key === 'Escape') {
+                                  setIsCreatingFolder(false);
+                              }
+                          }}
+                          className="w-full text-sm font-medium text-gray-900 focus:outline-none placeholder-gray-400"
+                      />
+                   </div>
+              )}
             </div>
           </div>
         </div>
 
         {/* Bottom Action */}
         <div className="mt-auto pt-4">
-             <Link to="/home" className="w-full flex items-center justify-center gap-2 px-4 py-3 rounded-lg border border-[#3b4190] text-[#3b4190] font-medium hover:bg-blue-50 transition-colors">
+             <Link to="/home" className="w-full flex items-center justify-center gap-2 px-4 py-3 rounded-lg border-2 border-[#3b4190] text-[#3b4190] font-medium hover:bg-blue-50 transition-colors">
                  <ArrowLeft size={18} />
                  Back to Home
              </Link>
@@ -1002,11 +1130,7 @@ export default function MyFlipbooks() {
         </>
       )}
 
-      <CreateFolderModal 
-        isOpen={isModalOpen} 
-        onClose={() => setIsModalOpen(false)} 
-        onCreate={handleCreateFolder} 
-      />
+
 
       {/* Move Book Modal */}
       {moveBookModal.isOpen && (
@@ -1153,6 +1277,50 @@ export default function MyFlipbooks() {
         showCancel={alertState.showCancel}
         onConfirm={alertState.onConfirm}
       />
+
+      {/* Conflict / Rename & Move Modal */}
+      {conflictModal.isOpen && (
+           <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/50 backdrop-blur-sm animate-in fade-in duration-200">
+              <div className="bg-white rounded-2xl w-full max-w-md p-6 shadow-2xl scale-100 animate-in zoom-in-95 duration-200">
+                  <div className="text-center mb-6">
+                      <div className="w-12 h-12 bg-orange-100 rounded-full flex items-center justify-center mx-auto mb-3">
+                          <CheckSquare size={24} className="text-orange-600" />
+                      </div>
+                      <h3 className="text-xl font-semibold text-gray-900 mb-2">Flipbook Already Exists</h3>
+                      <p className="text-sm text-gray-500">
+                          A flipbook named <span className="font-semibold text-gray-800">"{conflictModal.book?.realName}"</span> already exists in <span className="font-semibold text-[#3b4190]">{conflictModal.targetFolder}</span>.
+                      </p>
+                      <p className="text-sm text-gray-500 mt-1">Please rename it to continue moving.</p>
+                  </div>
+                  
+                  <div className="mb-6">
+                      <label className="block text-xs font-semibold text-gray-700 uppercase mb-2">New Name</label>
+                      <input 
+                          autoFocus
+                          type="text"
+                          value={conflictModal.newName}
+                          onChange={(e) => setConflictModal(prev => ({...prev, newName: e.target.value}))}
+                          className="w-full px-4 py-3 rounded-xl border border-gray-300 focus:border-[#3b4190] focus:ring-2 focus:ring-blue-100 outline-none text-gray-800 font-medium transition-all"
+                      />
+                  </div>
+
+                  <div className="flex gap-3">
+                      <button 
+                          onClick={() => setConflictModal({ isOpen: false, book: null, targetFolder: '', newName: '' })}
+                          className="flex-1 py-2.5 rounded-xl border border-gray-200 text-gray-600 font-semibold hover:bg-gray-50 transition-colors"
+                      >
+                          Cancel
+                      </button>
+                      <button 
+                          onClick={handleRenameAndMove}
+                          className="flex-1 py-2.5 rounded-xl bg-[#3b4190] text-white font-semibold hover:bg-[#323675] transition-colors shadow-lg shadow-blue-900/20"
+                      >
+                          Rename & Move
+                      </button>
+                  </div>
+              </div>
+           </div>
+      )}
     </div>
   );
 }

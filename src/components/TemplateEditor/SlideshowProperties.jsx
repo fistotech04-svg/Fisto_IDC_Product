@@ -14,6 +14,7 @@ import {
   Check
 } from 'lucide-react';
 import GalleryImage from './GalleryImage';
+import axios from 'axios';
 
 const DraggableSpan = ({ label, value, onChange, min = 0, max = 100, className }) => {
   const [isDragging, setIsDragging] = useState(false);
@@ -142,7 +143,8 @@ const SlideshowProperties = ({ selectedElement, onUpdate, isOpen, onToggle, opac
         
         const currentSrc = selectedElement.getAttribute('src') || selectedElement.src;
         if (currentSrc) {
-          setSlideshowImages([{ id: Date.now(), url: currentSrc, name: 'Main Image' }]);
+          const initialFileVid = selectedElement.dataset.fileVid || null;
+          setSlideshowImages([{ id: Date.now(), url: currentSrc, name: 'Main Image', file_v_id: initialFileVid }]);
         } else {
           setSlideshowImages([]);
         }
@@ -375,17 +377,82 @@ const SlideshowProperties = ({ selectedElement, onUpdate, isOpen, onToggle, opac
     return () => { if (overlay) overlay.remove(); };
   }, [slideshowSettings, slideshowImages, activeSlideIndex, selectedElement]);
 
-  const handleFileUpload = (e) => {
+  const uploadFile = async (file, replacingVideoId = null) => {
+    const storedUser = localStorage.getItem('user');
+    if (!storedUser) return null;
+
+    const user = JSON.parse(storedUser);
+    const formData = new FormData();
+    formData.append('emailId', user.emailId);
+    if (flipbookVId) formData.append('v_id', flipbookVId);
+    
+    // Provide defaults for unsaved books
+    formData.append('folderName', folderName || 'My Flipbooks');
+    formData.append('flipbookName', flipbookName || 'Untitled Document');
+    
+    formData.append('type', 'image');
+    formData.append('assetType', 'Image');
+    formData.append('page_v_id', currentPageVId || 'global');
+    
+    if (replacingVideoId) {
+        formData.append('replacing_file_v_id', replacingVideoId);
+    }
+    formData.append('file', file);
+
+    try {
+        const backendUrl = import.meta.env.VITE_BACKEND_URL || 'http://localhost:5000';
+        const res = await axios.post(`${backendUrl}/api/flipbook/upload-asset`, formData);
+        if (res.data.url) {
+            return {
+                url: `${backendUrl}${res.data.url}`,
+                file_v_id: res.data.file_v_id,
+                name: res.data.filename
+            };
+        }
+    } catch (err) {
+        console.error("Slideshow image upload failed:", err);
+    }
+    return null;
+  };
+
+  const handleFileUpload = async (e) => {
     const files = e.target.files;
     if (!files || files.length === 0) return;
     
     const remainingSlots = 4 - slideshowImages.length;
     const filesToUpload = Array.from(files).slice(0, remainingSlots);
-    const newImages = filesToUpload.filter(file => file.type.startsWith('image/')).map((file, idx) => ({
-      id: Date.now() + idx, url: URL.createObjectURL(file), name: file.name
+    
+    // 1. Create Optimistic State with Blob URLs
+    const optimisticImages = filesToUpload.filter(file => file.type.startsWith('image/')).map((file, idx) => ({
+      id: Date.now() + idx, 
+      url: URL.createObjectURL(file), 
+      name: file.name,
+      isUploading: true,
+      file_orig: file // Keep reference for upload
     }));
-    if (newImages.length > 0) setSlideshowImages(prev => [...prev, ...newImages]);
+
+    if (optimisticImages.length === 0) return;
+
+    setSlideshowImages(prev => [...prev, ...optimisticImages]);
     e.target.value = '';
+
+    // 2. Upload in Background and Update State
+    for (const img of optimisticImages) {
+        const uploadedData = await uploadFile(img.file_orig);
+        
+        setSlideshowImages(prev => prev.map(item => {
+            if (item.id === img.id) {
+                if (uploadedData) {
+                    return { ...item, url: uploadedData.url, file_v_id: uploadedData.file_v_id, name: uploadedData.name, isUploading: false };
+                } else {
+                    // Upload failed, maybe keep blob or remove? Keeping blob for now but marking error could be better.
+                    // For now, just remove uploading flag
+                    return { ...item, isUploading: false };
+                }
+            }
+            return item;
+        }));
+    }
   };
 
 
@@ -394,17 +461,26 @@ const SlideshowProperties = ({ selectedElement, onUpdate, isOpen, onToggle, opac
     const file = e.target.files[0];
     if (!file || !file.type.startsWith('image/')) return;
     const imageUrl = URL.createObjectURL(file);
-    setNewReplaceImg({ url: imageUrl, name: file.name });
+    setNewReplaceImg({ url: imageUrl, name: file.name, file: file }); // Store file object for upload
     e.target.value = '';
   };
 
-  const confirmReplace = () => {
+  const confirmReplace = async () => {
     if (!newReplaceImg || replaceTargetIndex === null) return;
     
+    const targetImage = slideshowImages[replaceTargetIndex];
+    const fileToUpload = newReplaceImg.file;
+
+    // Optimistic Update
     setSlideshowImages(prev => {
       const updated = [...prev];
       if (updated[replaceTargetIndex]) {
-        updated[replaceTargetIndex] = { ...updated[replaceTargetIndex], url: newReplaceImg.url, name: newReplaceImg.name };
+        updated[replaceTargetIndex] = { 
+            ...updated[replaceTargetIndex], 
+            url: newReplaceImg.url, 
+            name: newReplaceImg.name,
+            isUploading: true
+        };
       }
       return updated;
     });
@@ -412,21 +488,127 @@ const SlideshowProperties = ({ selectedElement, onUpdate, isOpen, onToggle, opac
     setShowReplaceModal(false);
     setReplaceTargetIndex(null);
     setNewReplaceImg(null);
+
+    // Upload
+    if (fileToUpload) {
+        const uploadedData = await uploadFile(fileToUpload, targetImage.file_v_id); // Pass existing v_id for replacement
+        
+        if (uploadedData) {
+             setSlideshowImages(prev => prev.map((item, idx) => {
+                 if (idx === replaceTargetIndex || (item.isUploading && item.url === newReplaceImg.url)) { // Fallback matching
+                      return { ...item, url: uploadedData.url, file_v_id: uploadedData.file_v_id, name: uploadedData.name, isUploading: false };
+                 }
+                 return item;
+             }));
+        }
+    }
+    
     if (onUpdateRef.current) onUpdateRef.current();
   };
 
-  const handleGallerySelect = (img) => {
+  const deleteImage = async (index) => {
+    const img = slideshowImages[index];
+    if (!img) return;
+
+    // Optimistic remove
+    setSlideshowImages(prev => prev.filter((_, idx) => idx !== index));
+    setOpenContextMenu(null);
+
+    // Backend delete
+    if (img.file_v_id) {
+        try {
+            const storedUser = localStorage.getItem('user');
+            if (storedUser) {
+                const user = JSON.parse(storedUser);
+                const backendUrl = import.meta.env.VITE_BACKEND_URL || 'http://localhost:5000';
+                await axios.post(`${backendUrl}/api/flipbook/delete-asset`, {
+                    emailId: user.emailId,
+                    file_v_id: img.file_v_id,
+                    assetType: 'Image',
+                    folderName: folderName || 'My Flipbooks',
+                    bookName: flipbookName || 'Untitled Document'
+                });
+            }
+        } catch (error) {
+            console.error("Failed to delete asset from backend:", error);
+        }
+    }
+  };
+
+  const handleGallerySelect = async (img) => {
+    // 1. Determine if we are REPLACING or ADDING
+    const isReplacing = activeSlideIndex < slideshowImages.length;
+    let replacingId = null;
+    
+    if (isReplacing) {
+        replacingId = slideshowImages[activeSlideIndex]?.file_v_id;
+    }
+
+    // 2. Optimistic Update (Show generic/gallery URL immediately)
+    const optimisticId = Date.now();
     setSlideshowImages(prev => {
-      const updated = [...prev];
-      if (activeSlideIndex < updated.length) {
-        updated[activeSlideIndex] = { id: img.id, url: img.url, name: img.name };
-      } else if (updated.length < 4) {
-        updated.push({ id: img.id, url: img.url, name: img.name });
-      }
-      return updated;
+        const updated = [...prev];
+        const newImgObj = { 
+            id: optimisticId, 
+            url: img.url, 
+            name: img.name, 
+            file_v_id: null, // Temp null, will update after upload
+            isUploading: true 
+        };
+        
+        if (isReplacing) {
+            updated[activeSlideIndex] = newImgObj;
+        } else if (updated.length < 4) {
+            updated.push(newImgObj);
+        }
+        return updated;
     });
+
     setOpenContextMenu(null);
     setShowGallery(false);
+
+    // 3. Backend Association (Upload/Copy)
+    try {
+        let uploaded = null;
+        if (img.file) {
+            uploaded = await uploadFile(img.file, replacingId);
+        } else {
+            // Existing gallery image - fetch blob and re-upload/associate
+            try {
+                const response = await fetch(img.url);
+                const blob = await response.blob();
+                const file = new File([blob], img.name || 'gallery_image.png', { type: blob.type || 'image/png' });
+                uploaded = await uploadFile(file, replacingId);
+            } catch (fetchErr) {
+                console.error("Failed to fetch gallery image blob:", fetchErr);
+            }
+        }
+
+        // 4. Update State with Permanent ID
+        if (uploaded) {
+            setSlideshowImages(prev => prev.map(item => {
+                if (item.id === optimisticId) { // Match by our temp ID
+                    return { 
+                        ...item, 
+                        url: uploaded.url, 
+                        name: uploaded.name, 
+                        file_v_id: uploaded.file_v_id, 
+                        isUploading: false 
+                    };
+                }
+                return item;
+            }));
+        } else {
+             // Fallback: Remove uploading flag
+             setSlideshowImages(prev => prev.map(item => {
+                if (item.id === optimisticId) return { ...item, isUploading: false };
+                return item; 
+             }));
+        }
+
+    } catch (error) {
+        console.error("Failed to associate gallery image:", error);
+    }
   };
 
   const updateSetting = (key, value) => {
@@ -541,10 +723,7 @@ const SlideshowProperties = ({ selectedElement, onUpdate, isOpen, onToggle, opac
                       </button>
                       {slideshowImages[i] && (
                         <button 
-                          onClick={() => { 
-                            setSlideshowImages(prev => prev.filter((_, idx) => idx !== i)); 
-                            setOpenContextMenu(null); 
-                          }}
+                          onClick={() => deleteImage(i)}
                           className="w-full px-4 py-2.5 text-[11px] font-semibold text-red-500 hover:bg-red-50 text-left transition-colors"
                         >
                           Delete Image

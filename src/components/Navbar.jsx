@@ -10,10 +10,21 @@ const Navbar = ({ onExport, onSave, hasUnsavedChanges, saveSuccessInfo, isAutoSa
   const [secondsSinceSave, setSecondsSinceSave] = useState(0);
   const [isProfileOpen, setIsProfileOpen] = useState(false);
   const location = useLocation();
+  // Determine active editor path with persistence
+  const [lastEditorPath, setLastEditorPath] = useState(() => {
+    return localStorage.getItem('lastEditorPath') || '/editor';
+  });
+
+  useEffect(() => {
+    if (location.pathname.startsWith('/editor') && !location.pathname.includes('threed_editor')) {
+      setLastEditorPath(location.pathname);
+      localStorage.setItem('lastEditorPath', location.pathname);
+    }
+  }, [location]);
 
   // Helper to determine if a link is active
   const isActive = (path) => {
-    if (path === '/editor') return location.pathname === '/editor';
+    if (path === '/editor') return location.pathname.startsWith('/editor') && !location.pathname.includes('threed_editor');
     if (path === '/editor/threed_editor') return location.pathname.includes('threed_editor');
     return location.pathname === path;
   };
@@ -87,7 +98,7 @@ const Navbar = ({ onExport, onSave, hasUnsavedChanges, saveSuccessInfo, isAutoSa
             Customize
           </Link>
           <Link
-            to="/editor"
+            to={lastEditorPath}
             className={isActive('/editor') ? activeLinkStyle : baseLinkStyle}
           >
             Editor

@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { Eye, EyeOff, Check, X } from 'lucide-react';
+import { Eye, EyeOff, Check, X, Loader2 } from 'lucide-react';
 import axios from 'axios';
 import { useToast } from '../components/CustomToast';
 import FistoLogo from '../assets/logo/Fisto_logo.png'; 
@@ -9,6 +9,7 @@ import SignupBg from '../assets/logo/signup.png';
 export default function Signup() {
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
   const navigate = useNavigate();
   const toast = useToast();
   
@@ -50,6 +51,7 @@ export default function Signup() {
       toast.error("Passwords do not match");
       return;
     }
+    setIsLoading(true);
     try {
       // Backend expects emailId, frontend has email
       const backendUrl = import.meta.env.VITE_BACKEND_URL || 'http://localhost:5000';
@@ -75,6 +77,8 @@ export default function Signup() {
     } catch (err) {
       console.error('Signup error:', err.response?.data?.message || err.message);
       toast.error(err.response?.data?.message || 'Signup failed');
+    } finally {
+      setIsLoading(false);
     }
   };
 
@@ -225,11 +229,20 @@ export default function Signup() {
               </div>
 
               {/* Submit Button */}
+
               <button
                 type="submit"
-                className="w-full py-3.5 px-4 rounded-full bg-[#4c5add] hover:bg-[#3f4bc0] text-white font-semibold text-lg shadow-lg shadow-indigo-200 transition-all transform hover:scale-[1.02] focus:outline-none text-center block"
+                disabled={isLoading}
+                className="w-full py-3.5 px-4 rounded-full bg-[#4c5add] hover:bg-[#3f4bc0] text-white font-semibold text-lg shadow-lg shadow-indigo-200 transition-all transform hover:scale-[1.02] focus:outline-none text-center block disabled:opacity-70 disabled:cursor-not-allowed"
               >
-                Sign Up
+                {isLoading ? (
+                  <div className="flex items-center justify-center gap-2">
+                    <Loader2 className="h-5 w-5 animate-spin" />
+                    <span>Signing Up...</span>
+                  </div>
+                ) : (
+                  "Sign Up"
+                )}
               </button>
 
               {/* Footer Link */}

@@ -2,7 +2,7 @@ import React, { useState, useRef, useEffect } from "react";
 import axios from "axios";
 import { Upload, X, Check, Replace } from "lucide-react";
 
-export default function GalleryGif({ onClose, onUpdate, selectedElement, currentPageVId, flipbookVId, folderName, flipbookName }) {
+export default function GalleryGif({ onClose, onUpdate, onSelect, selectedElement, currentPageVId, flipbookVId, folderName, flipbookName }) {
   const [tempSelectedGif, setTempSelectedGif] = useState(null);
   const [uploadedGifs, setUploadedGifs] = useState([]);
   const galleryInputRef = useRef(null);
@@ -95,7 +95,22 @@ export default function GalleryGif({ onClose, onUpdate, selectedElement, current
   };
 
   const handleReplace = async () => {
-    if (!selectedElement || !tempSelectedGif) return;
+    if (!tempSelectedGif) return;
+
+    if (onUpdate && typeof onUpdate.onSelect === 'function') {
+        onUpdate.onSelect(tempSelectedGif);
+        onClose();
+        return;
+    }
+    
+    // If onSelect prop was passed directly (preferred pattern)
+    if (onSelect) {
+        onSelect(tempSelectedGif);
+        onClose();
+        return;
+    }
+
+    if (!selectedElement) return;
     
     const existingFileVid = selectedElement.dataset.fileVid;
     
@@ -119,9 +134,11 @@ export default function GalleryGif({ onClose, onUpdate, selectedElement, current
         const formData = new FormData();
         formData.append('emailId', user.emailId);
         if (flipbookVId) formData.append('v_id', flipbookVId);
-        if (folderName) formData.append('folderName', folderName);
-        if (flipbookName) formData.append('flipbookName', flipbookName);
+        // Provide defaults for unsaved books
+        formData.append('folderName', folderName || 'My Flipbooks');
+        formData.append('flipbookName', flipbookName || 'Untitled Document');
         formData.append('type', 'gif');
+        formData.append('assetType', 'gif');
         formData.append('page_v_id', currentPageVId || 'global');
         if (existingFileVid) formData.append('replacing_file_v_id', existingFileVid);
         formData.append('file', tempSelectedGif.file);
@@ -173,9 +190,11 @@ export default function GalleryGif({ onClose, onUpdate, selectedElement, current
           const formData = new FormData();
           formData.append('emailId', user.emailId);
           if (flipbookVId) formData.append('v_id', flipbookVId);
-          if (folderName) formData.append('folderName', folderName);
-          if (flipbookName) formData.append('flipbookName', flipbookName);
+          // Provide defaults for unsaved books
+          formData.append('folderName', folderName || 'My Flipbooks');
+          formData.append('flipbookName', flipbookName || 'Untitled Document');
           formData.append('type', 'gif');
+          formData.append('assetType', 'gif');
           formData.append('page_v_id', currentPageVId || 'global');
           if (existingFileVid) formData.append('replacing_file_v_id', existingFileVid);
           formData.append('file', file);

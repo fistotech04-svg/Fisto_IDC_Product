@@ -129,6 +129,7 @@ const GifEditor = ({
           if (flipbookName) formData.append('flipbookName', flipbookName);
           
           formData.append('type', 'gif');
+          formData.append('assetType', 'gif');
           formData.append('page_v_id', currentPageVId || 'global');
 
           if (existingFileVid) {
@@ -308,6 +309,101 @@ const GifEditor = ({
           selectedElement={selectedElement}
           onUpdate={onUpdate}
           onClose={() => setOpenGallery(false)}
+          currentPageVId={currentPageVId}
+          flipbookVId={activeVId}
+          folderName={folderName}
+          flipbookName={flipbookName}
+          onSelect={async (gif) => {
+             // 1. Optimistic Update
+             const optimisticUrl = gif.url;
+             if (selectedElement.tagName === "VIDEO") {
+                selectedElement.src = optimisticUrl;
+                const source = selectedElement.querySelector("source");
+                if (source) source.src = optimisticUrl;
+                selectedElement.load();
+             } else {
+                selectedElement.src = optimisticUrl;
+             }
+             if (selectedElement.dataset.mediaType !== "gif") {
+                selectedElement.dataset.mediaType = "gif";
+             }
+             onUpdateRef.current?.({ shouldRefresh: true });
+
+             // 2. Backend Upload/Associate logic
+             const storedUser = localStorage.getItem('user');
+             if (!storedUser) {
+                 setOpenGallery(false);
+                 return;
+             }
+             
+             try {
+                const user = JSON.parse(storedUser);
+                const backendUrl = import.meta.env.VITE_BACKEND_URL || 'http://localhost:5000';
+                
+                // Prepare File Object
+                let fileToUpload = null;
+                if (gif.file) {
+                    fileToUpload = gif.file;
+                } else {
+                    // Fetch blob from URL to re-upload as asset
+                    try {
+                        const response = await axios.get(gif.url, { responseType: 'blob' });
+                        const contentType = response.headers['content-type'] || 'image/gif';
+                        const filename = gif.name ? (gif.name.endsWith('.gif') ? gif.name : `${gif.name}.gif`) : `gallery_gif.gif`;
+                        
+                        fileToUpload = new File([response.data], filename, { type: contentType });
+                    } catch (fetchErr) {
+                        console.error("Failed to fetch gallery gif for re-upload:", fetchErr);
+                    }
+                }
+                
+                if (fileToUpload) {
+                    const formData = new FormData();
+                    formData.append('emailId', user.emailId);
+                    if (activeVId) formData.append('v_id', activeVId);
+                    
+                    // Defaults for unsaved books to ensure storage
+                    formData.append('folderName', folderName || 'My Flipbooks');
+                    formData.append('flipbookName', flipbookName || 'Untitled Document');
+                    
+                    formData.append('type', 'gif');
+                    formData.append('assetType', 'gif');
+                    formData.append('page_v_id', currentPageVId || 'global');
+                    
+                    // Handle Replacement
+                    const existingFileVid = selectedElement.dataset.fileVid;
+                    if (existingFileVid) {
+                        formData.append('replacing_file_v_id', existingFileVid);
+                    }
+                    
+                    formData.append('file', fileToUpload);
+                    
+                    const res = await axios.post(`${backendUrl}/api/flipbook/upload-asset`, formData);
+                    
+                    if (res.data.url) {
+                        const serverUrl = `${backendUrl}${res.data.url}`;
+                        
+                        // Update DOM with final server URL and new File ID
+                        if (selectedElement.tagName === "VIDEO") {
+                            selectedElement.src = serverUrl;
+                            const source = selectedElement.querySelector("source");
+                            if (source) source.src = serverUrl;
+                            selectedElement.load();
+                        } else {
+                            selectedElement.src = serverUrl;
+                        }
+                        selectedElement.dataset.fileVid = res.data.file_v_id;
+                        
+                        onUpdateRef.current?.({ shouldRefresh: true });
+                        console.log("Gallery GIF successfully stored as Asset:", res.data.filename);
+                    }
+                }
+             } catch (err) {
+                console.error("Gallery Select Backend Sync Failed:", err);
+             }
+             
+             setOpenGallery(false);
+          }}
         />
       )}
     </>
