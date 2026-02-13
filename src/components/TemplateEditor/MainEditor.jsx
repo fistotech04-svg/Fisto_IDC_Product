@@ -302,7 +302,17 @@ const MainEditor = () => {
                   }
               } catch (err) {
                   console.error("Failed to load book", err);
-                  // showAlert('error', 'Load Failed', 'Could not load flipbook.');
+                  if (err.response && (err.response.status === 404 || err.response.status === 400)) {
+                       showAlert('error', 'Book Not Found', 'The requested flipbook could not be found. It may have been deleted or the link is incorrect.', {
+                           confirmText: 'Go Back',
+                           showCancel: false,
+                           onConfirm: () => {
+                               navigate('/my-flipbooks'); 
+                           }
+                       });
+                  } else {
+                       showAlert('error', 'Load Failed', 'Could not load flipbook. Please try again later.');
+                  }
               } finally {
                   setIsLoading(false);
               }
@@ -497,9 +507,16 @@ const MainEditor = () => {
                
                setPages(updatedPages);
                pagesPayloadSource = updatedPages;
-           } catch (renameErr) {
-               console.warn("Rename attempt failed, falling back to standard save", renameErr);
-           }
+            } catch (renameErr) {
+                if (renameErr.response && renameErr.response.status === 409) {
+                    console.warn("Rename conflict", renameErr);
+                    // Always show alert for name conflict, even on auto-save
+                    showAlert('warning', 'Name Exists', 'A flipbook with this name already exists. Reverting to previous name.');
+                    setPageName(lastSavedName); // Revert UI
+                    return; // Exit executeSave, finally block will run
+                }
+                console.warn("Rename attempt failed, falling back to standard save", renameErr);
+            }
       }
 
       if (lastSavedName && (nameToSave.trim() === lastSavedName.trim()) && isSameFolder) {
@@ -550,18 +567,10 @@ const MainEditor = () => {
     } catch (error) {
       isDirtyRef.current = true;
       if (error.response && error.response.status === 409) {
-          if (!silent) {
-              showAlert('warning', 'Flipbook Exists', 'A flipbook with this name already exists in this folder. Do you want to overwrite it?', {
-                  showCancel: true,
-                  confirmText: 'Overwrite',
-                  cancelText: 'Cancel',
-                  onConfirm: () => executeSave(folderName, true, false, overrideName)
-              });
-          } else {
-              // Auto-save logic: if conflict, revert name
-              console.warn("[Auto-save] Conflict detected. Reverting name.");
-              if (lastSavedName) setPageName(lastSavedName);
-          }
+          console.warn("Save conflict", error);
+          // Always show alert for name conflict, even on auto-save
+          showAlert('warning', 'Name Exists', 'A flipbook with this name already exists. Reverting to previous name.');
+          if (lastSavedName) setPageName(lastSavedName);
           return;
       }
       console.error("Save failed:", error);
@@ -1473,7 +1482,11 @@ const MainEditor = () => {
   // If we change zoom, handleZoomChange updates state AND pages. UseEffect might run if we included pages.
   // By omitting pages, we only load when switching. Perfect.
 
-  
+  const handleResetWorkspace = useCallback(() => {
+    handleZoomChange(60);
+    setPanOffset({ x: 0, y: 0 });
+  }, [handleZoomChange]);
+
   const processUploadedFiles = async (files, isReplace = false) => {
     if (!files || files.length === 0) return;
 
@@ -1643,6 +1656,8 @@ const MainEditor = () => {
           onRedo={handleRedo}
           zoom={zoom}
           handleZoom={handleZoomChange}
+          onReset={handleResetWorkspace}
+          onNameSubmit={handleSaveFlipbook}
         />
 
         <div className="flex-1 flex overflow-hidden relative">

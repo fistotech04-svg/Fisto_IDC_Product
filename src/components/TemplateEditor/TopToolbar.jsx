@@ -14,7 +14,9 @@ const TopToolbar = ({
   onUndo,
   onRedo,
   zoom,
-  handleZoom
+  handleZoom,
+  onReset,
+  onNameSubmit
 }) => {
   return (
     <div 
@@ -50,8 +52,16 @@ const TopToolbar = ({
             type="text"
             value={pageName}
             onChange={(e) => setPageName(e.target.value)}
-            onBlur={() => setIsEditingPageName(false)}
-            onKeyDown={(e) => e.key === 'Enter' && setIsEditingPageName(false)}
+            onBlur={() => {
+                setIsEditingPageName(false);
+                onNameSubmit?.();
+            }}
+            onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                    setIsEditingPageName(false);
+                    onNameSubmit?.();
+                }
+            }}
             className="border-b border-blue-500 text-gray-900 font-medium text-center focus:outline-none"
             style={{ fontSize: '1vw', minFontSize: '14px', width: '20vw' }}
             autoFocus
@@ -89,7 +99,7 @@ const TopToolbar = ({
             </button>
             <div className="w-[1px] h-4 bg-gray-300 mx-1"></div>
             <button 
-                onClick={() => handleZoom && handleZoom(60)}
+                onClick={onReset}
                 className="text-xs font-medium text-gray-600 hover:text-gray-900 px-1"
             >
                 Reset

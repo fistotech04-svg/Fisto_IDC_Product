@@ -35,3 +35,14 @@ video.hide-controls:hover::-webkit-media-controls {
   pointer-events: auto;
   transition: opacity 0.2s ease;
 }
+
+/* Hide Spin Buttons for Number Input */
+.no-spin::-webkit-inner-spin-button, 
+.no-spin::-webkit-outer-spin-button { 
+  -webkit-appearance: none; 
+  margin: 0; 
+}
+
+.no-spin {
+  -moz-appearance: textfield;
+}

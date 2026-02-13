@@ -736,7 +736,7 @@ const SlideshowProperties = ({ selectedElement, onUpdate, isOpen, onToggle, opac
             ))}
           </div>
 
-          <input type="file" ref={fileInputRef} onChange={handleFileUpload} accept="image/*" className="hidden" />
+          <input type="file" ref={fileInputRef} onChange={handleFileUpload} accept=".jpg, .jpeg, .png" className="hidden" />
       </div>
 
       {/* Opacity Slider */}

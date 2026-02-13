@@ -200,6 +200,7 @@ const TextEditor = ({
 
   const [activePanel, setActivePanel] = useState(null);
   const [showFontDropdown, setShowFontDropdown] = useState(false);
+  const [showFontSizeDropdown, setShowFontSizeDropdown] = useState(false);
   const [showWeightDropdown, setShowWeightDropdown] = useState(false);
   const [showBorderStyleDropdown, setShowBorderStyleDropdown] = useState(false);
   const [showFillTypeDropdown, setShowFillTypeDropdown] = useState(false);
@@ -679,6 +680,26 @@ const TextEditor = ({
     return window.getComputedStyle(selectedElement)[prop] || '';
   };
 
+  const getLineHeight = () => {
+      if (!selectedElement) return 1.2;
+      const inlineLH = selectedElement.style.lineHeight;
+      // If inline is unitless number
+      if (inlineLH && /^[0-9.]+$/.test(inlineLH)) {
+        return parseFloat(inlineLH);
+      }
+      
+      const computed = window.getComputedStyle(selectedElement);
+      const fontSize = parseFloat(computed.fontSize);
+      const lh = computed.lineHeight;
+      
+      if (lh === 'normal') return 1.2;
+      const val = parseFloat(lh);
+      
+      // If computed is in px (most likely), convert to multiplier
+      if (fontSize) return val / fontSize;
+      return 1.2;
+  };
+
   // --- EFFECTS ---
 
   useEffect(() => {
@@ -917,7 +938,7 @@ const TextEditor = ({
 
       {/* DASHED POPUP (Redesigned per Screenshot 4) */}
       {showDashedPopup && (
-        <div ref={dashedRef} className="fixed top-80 w-[18.75vw] right-[23.5vw] bg-white border border-gray-200 rounded-[1.5vw] shadow-2xl z-50 overflow-hidden">
+        <div ref={dashedRef} className="fixed top-80 w-[18.75vw] right-[23.5vw] bg-white border border-gray-200 rounded-[1.5vw] shadow-2xl z-[300] overflow-hidden">
           <div className="p-[1.25vw] space-y-[1.25vw]">
             <div className="flex items-center gap-[0.75vw]">
               <span className="font-bold text-[0.9vw] text-gray-800">Dashed</span>
@@ -937,7 +958,7 @@ const TextEditor = ({
                     <ChevronDown size={14} className="text-gray-500" />
                   </div>
                   {showStrokePositionDropdown && (
-                    <div className="absolute top-full left-0 w-full mt-1 bg-white border border-gray-200 rounded-[0.75vw] shadow-xl z-50 py-1">
+                    <div className="absolute top-full left-0 w-full mt-1 bg-white border border-gray-200 rounded-[0.75vw] shadow-xl z-[310] py-1">
                       {['outside', 'center', 'inside'].map(pos => (
                         <div
                           key={pos}
@@ -1011,7 +1032,7 @@ const TextEditor = ({
       )}
 
       {/* SIMPLE STROKE COLOR PICKER */}
-      <div ref={strokePickerRef} className={`fixed top-1/2 -translate-y-1/2 right-[22.9vw] w-[16.7vw] bg-white border border-gray-200 rounded-[1vw] shadow-xl transition-all duration-300 z-50 overflow-hidden ${showStrokePicker ? 'opacity-100 scale-100 pointer-events-auto' : 'opacity-0 scale-95 pointer-events-none'}`}>
+      <div ref={strokePickerRef} className={`fixed top-1/2 -translate-y-1/2 right-[22.9vw] w-[16.7vw] bg-white border border-gray-200 rounded-[1vw] shadow-xl transition-all duration-300 z-[300] overflow-hidden ${showStrokePicker ? 'opacity-100 scale-100 pointer-events-auto' : 'opacity-0 scale-95 pointer-events-none'}`}>
         <div className="p-[1vw]">
           <div className="grid grid-cols-6 gap-[0.5vw]">
             {[
@@ -1033,7 +1054,7 @@ const TextEditor = ({
       </div>
 
       {/* GRADIENT STOP COLOR PICKER */}
-      <div ref={gradientStopPickerRef} className={`fixed top-[50%] -translate-y-1/2 right-[3.5vw] w-[17.4vw] bg-white rounded-[1vw] shadow-[0_10px_40px_-10px_rgba(0,0,0,0.3)] border-2 border-blue-500 transition-all duration-300 z-[100] overflow-hidden ${editingGradientStopIndex !== null ? 'opacity-100 scale-100 pointer-events-auto' : 'opacity-0 scale-95 pointer-events-none'}`}>
+      <div ref={gradientStopPickerRef} className={`fixed top-[50%] -translate-y-1/2 right-[3.5vw] w-[17.4vw] bg-white rounded-[1vw] shadow-[0_10px_40px_-10px_rgba(0,0,0,0.3)] border-2 border-blue-500 transition-all duration-300 z-[300] overflow-hidden ${editingGradientStopIndex !== null ? 'opacity-100 scale-100 pointer-events-auto' : 'opacity-0 scale-95 pointer-events-none'}`}>
         {/* Close Icon */}
         <button
           onClick={() => setEditingGradientStopIndex(null)}
@@ -1135,7 +1156,7 @@ const TextEditor = ({
       </div>
 
       {/* COLOR FILL CONTAINER (Only for Fill, not Stroke) */}
-      <div ref={fillPickerRef} className={`fixed top-1/2 -translate-y-1/2 right-[22.2vw] w-[19.4vw] bg-white rounded-3xl shadow-[0_10px_40px_-10px_rgba(0,0,0,0.2)] transition-all duration-300 z-50 overflow-hidden flex flex-col max-h-[90vh] ${showFillPicker ? 'opacity-100 scale-100 pointer-events-auto' : 'opacity-0 scale-95 pointer-events-none'}`}>
+      <div ref={fillPickerRef} className={`fixed top-1/2 -translate-y-1/2 right-[22.2vw] w-[19.4vw] bg-white rounded-3xl shadow-[0_10px_40px_-10px_rgba(0,0,0,0.2)] transition-all duration-300 z-[300] overflow-hidden flex flex-col max-h-[90vh] ${showFillPicker ? 'opacity-100 scale-100 pointer-events-auto' : 'opacity-0 scale-95 pointer-events-none'}`}>
 
         {/* Header */}
         <div className="flex items-center justify-between p-4 pb-0">
@@ -1148,7 +1169,7 @@ const TextEditor = ({
                 <span className="capitalize">{fillType}</span> <ChevronDown size={14} className="text-gray-400" />
               </button>
               {showFillTypeDropdown && (
-                <div className="absolute top-full left-0 mt-1 w-[8.3vw] bg-white border border-gray-200 rounded-xl shadow-xl z-50 overflow-hidden py-1">
+                <div className="absolute top-full left-0 mt-1 w-[8.3vw] bg-white border border-gray-200 rounded-xl shadow-xl z-[300] overflow-hidden py-1">
                   <button onClick={() => updateFillType('solid')} className="w-full text-left px-4 py-2 text-xs font-medium text-gray-700 hover:bg-gray-50">Solid</button>
                   <button onClick={() => updateFillType('gradient')} className="w-full text-left px-4 py-2 text-xs font-medium text-gray-700 hover:bg-gray-50">Gradient</button>
                 </div>
@@ -1164,7 +1185,7 @@ const TextEditor = ({
                   {gradientType} <ChevronDown size={14} className="text-gray-400" />
                 </button>
                 {showGradientTypeDropdown && (
-                  <div className="absolute top-full right-0 mt-1 w-[8.3vw] bg-white border border-gray-200 rounded-xl shadow-xl z-50 overflow-hidden py-1">
+                  <div className="absolute top-full right-0 mt-1 w-[8.3vw] bg-white border border-gray-200 rounded-xl shadow-xl z-[300] overflow-hidden py-1">
                     <button onClick={() => { setGradientType('Linear'); applyGradient(gradientStops, 'Linear'); setShowGradientTypeDropdown(false); }} className="w-full text-left px-4 py-2 text-xs font-medium text-gray-700 hover:bg-gray-50">Linear</button>
                     <button onClick={() => { setGradientType('Radial'); applyGradient(gradientStops, 'Radial'); setShowGradientTypeDropdown(false); }} className="w-full text-left px-4 py-2 text-xs font-medium text-gray-700 hover:bg-gray-50">Radial</button>
                   </div>
@@ -1494,7 +1515,7 @@ const TextEditor = ({
                       <ChevronDown size={14} className="text-gray-400 flex-shrink-0" />
                     </button>
                     {showFontDropdown && (
-                      <div className="absolute z-50 mt-2 w-full bg-white border border-gray-200 rounded-xl shadow-2xl max-h-[220px] overflow-y-auto custom-scrollbar">
+                      <div className="absolute z-[300] mt-2 w-full bg-white border border-gray-200 rounded-xl shadow-2xl max-h-[220px] overflow-y-auto custom-scrollbar">
                         {fontFamilies.map((font) => (
                           <div key={font} onClick={() => { updateStyle('fontFamily', font); setShowFontDropdown(false); }} className="px-4 py-2.5 cursor-pointer hover:bg-indigo-50 text-sm font-medium text-gray-700 hover:text-indigo-600 transition-colors" style={{ fontFamily: font }}>{font}</div>
                         ))}
@@ -1502,10 +1523,40 @@ const TextEditor = ({
                     )}
                   </div>
                   <div className="relative w-[6.1vw] h-[2.5vw]">
-                    <select value={parseInt(getCurrentStyle('fontSize')) || 12} onChange={(e) => updateStyle('fontSize', e.target.value + 'px')} className="w-full h-full pl-[0.75vw] pr-[2vw] bg-white border-2 border-gray-200 rounded-[0.5vw] appearance-none text-[0.85vw] font-semibold text-gray-700 outline-none cursor-pointer hover:border-indigo-300 focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100 transition-all">
-                      {[12, 14, 16, 18, 20, 24, 32, 48, 64, 72, 96].map(size => <option key={size} value={size}>{size}</option>)}
-                    </select>
-                    <ChevronDown size={14} className="absolute right-[0.6vw] top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
+                    <div className="w-full h-full flex items-center bg-white border-2 border-gray-200 rounded-[0.5vw] hover:border-indigo-300 focus-within:border-indigo-400 focus-within:ring-2 focus-within:ring-indigo-100 transition-all">
+                      <input 
+                        type="number" 
+                        className="w-full h-full pl-[0.75vw] pr-[2vw] bg-transparent text-[0.85vw] font-semibold text-gray-700 outline-none appearance-none no-spin"
+                        value={parseInt(getCurrentStyle('fontSize')) || ''}
+                        onChange={(e) => {
+                           const val = parseInt(e.target.value);
+                           if (!isNaN(val) && val > 0) updateStyle('fontSize', val + 'px');
+                        }}
+                      />
+                      <button 
+                        onClick={() => setShowFontSizeDropdown(!showFontSizeDropdown)}
+                        className="absolute right-0 top-0 h-full px-[0.6vw] flex items-center justify-center text-gray-400 hover:text-indigo-500 transition-colors"
+                      >
+                        <ChevronDown size={14} />
+                      </button>
+                    </div>
+                    
+                    {showFontSizeDropdown && (
+                      <div className="absolute z-[300] mt-2 w-full bg-white border border-gray-200 rounded-xl shadow-2xl max-h-[220px] overflow-y-auto custom-scrollbar">
+                        {[12, 14, 16, 18, 20, 24, 32, 48, 64, 72, 96].map(size => (
+                          <button
+                            key={size}
+                            onClick={() => {
+                              updateStyle('fontSize', size + 'px');
+                              setShowFontSizeDropdown(false);
+                            }}
+                            className="w-full text-left px-4 py-2 hover:bg-indigo-50 text-sm font-medium text-gray-700 hover:text-indigo-600 transition-colors"
+                          >
+                            {size}
+                          </button>
+                        ))}
+                      </div>
+                    )}
                   </div>
                 </div>
 
@@ -1517,7 +1568,7 @@ const TextEditor = ({
                       <ChevronDown size={14} className="text-gray-400 flex-shrink-0" />
                     </button>
                     {showWeightDropdown && (
-                      <div className="absolute z-50 mt-2 w-[9vw] bg-white border border-gray-200 rounded-xl shadow-2xl max-h-[220px] overflow-y-auto custom-scrollbar">
+                      <div className="absolute z-[300] mt-2 w-[9vw] bg-white border border-gray-200 rounded-xl shadow-2xl max-h-[220px] overflow-y-auto custom-scrollbar">
                         {fontWeights.map((w) => {
                           const isSelected = getCurrentStyle('fontWeight') === w.value || (w.value === '400' && getCurrentStyle('fontWeight') === 'normal');
                           return (
@@ -1551,13 +1602,15 @@ const TextEditor = ({
                   {/* Line Height */}
                   <div className="relative w-[7.4vw] h-[2.5vw] border-2 border-gray-200 rounded-[0.5vw] bg-white flex items-center px-1.5 hover:border-indigo-300 transition-colors group">
                     <button onClick={() => {
-                      const current = parseFloat(getCurrentStyle('lineHeight')) || 1.2;
-                      updateStyle('lineHeight', (current - 0.1).toFixed(1));
+                        const current = getLineHeight();
+                        const newVal = Math.max(0.1, (current - 0.1).toFixed(1));
+                        updateStyle('lineHeight', newVal);
                     }} className="w-[1.75vw] h-[1.75vw] flex items-center justify-center text-gray-500 hover:bg-indigo-50 hover:text-indigo-600 rounded-md transition-colors font-bold">−</button>
-                    <input readOnly className="w-full text-center text-[0.75vw] font-semibold text-gray-700 outline-none bg-transparent" value={parseFloat(getCurrentStyle('lineHeight')) || 1.2} />
+                    <input readOnly className="w-full text-center text-[0.75vw] font-semibold text-gray-700 outline-none bg-transparent" value={getLineHeight().toFixed(1)} />
                     <button onClick={() => {
-                      const current = parseFloat(getCurrentStyle('lineHeight')) || 1.2;
-                      updateStyle('lineHeight', (current + 0.1).toFixed(1));
+                        const current = getLineHeight();
+                        const newVal = (current + 0.1).toFixed(1);
+                        updateStyle('lineHeight', newVal);
                     }} className="w-[1.75vw] h-[1.75vw] flex items-center justify-center text-gray-500 hover:bg-indigo-50 hover:text-indigo-600 rounded-md transition-colors font-bold">+</button>
                     <ArrowUpDown size={13} className="text-gray-400 group-hover:text-indigo-400 flex-shrink-0 ml-1 transition-colors" />
                   </div>
@@ -1575,7 +1628,7 @@ const TextEditor = ({
                       <AlignLeft size={17} />
                     </button>
                     {activePanel === 'alignment' && (
-                      <div className="absolute top-10 left-0 z-50 p-2 bg-[#1a1a1a] rounded-xl flex gap-2 shadow-xl whitespace-nowrap">
+                      <div className="absolute top-10 left-0 z-[300] p-2 bg-[#373d8a] rounded-xl flex gap-2 shadow-xl whitespace-nowrap">
                         <button onClick={() => updateStyle('textAlign', 'left')} className={`w-10 h-10 rounded-lg flex items-center justify-center text-gray-800 transition-colors ${selectedElement?.style.textAlign === 'left' ? 'bg-gray-300' : 'bg-white hover:bg-gray-100'}`}><AlignLeft size={20} /></button>
                         <button onClick={() => updateStyle('textAlign', 'center')} className={`w-10 h-10 rounded-lg flex items-center justify-center text-gray-800 transition-colors ${selectedElement?.style.textAlign === 'center' ? 'bg-gray-300' : 'bg-white hover:bg-gray-100'}`}><AlignCenter size={20} /></button>
                         <button onClick={() => updateStyle('textAlign', 'right')} className={`w-10 h-10 rounded-lg flex items-center justify-center text-gray-800 transition-colors ${selectedElement?.style.textAlign === 'right' ? 'bg-gray-300' : 'bg-white hover:bg-gray-100'}`}><AlignRight size={20} /></button>
@@ -1593,7 +1646,7 @@ const TextEditor = ({
                       <Bold size={17} />
                     </button>
                     {activePanel === 'style' && (
-                      <div className="absolute top-10 left-[-50px] z-50 p-2 bg-[#1a1a1a] rounded-xl flex gap-2 shadow-xl whitespace-nowrap">
+                      <div className="absolute top-10 left-[-50px] z-[300] p-2 bg-[#373d8a] rounded-xl flex gap-2 shadow-xl whitespace-nowrap">
                         <button onClick={() => updateStyle('fontWeight', 'bold')} className={`w-10 h-10 rounded-lg flex items-center justify-center text-lg font-bold text-gray-800 transition-colors ${selectedElement?.style.fontWeight === '700' || selectedElement?.style.fontWeight === 'bold' ? 'bg-gray-300' : 'bg-white hover:bg-gray-100'}`}>B</button>
                         <button onClick={() => updateStyle('fontStyle', 'italic')} className={`w-10 h-10 rounded-lg flex items-center justify-center text-lg italic font-serif text-gray-800 transition-colors ${selectedElement?.style.fontStyle === 'italic' ? 'bg-gray-300' : 'bg-white hover:bg-gray-100'}`}>I</button>
                         <button onClick={() => updateStyle('textDecoration', 'underline')} className={`w-10 h-10 rounded-lg flex items-center justify-center text-lg underline text-gray-800 transition-colors ${selectedElement?.style.textDecoration?.includes('underline') ? 'bg-gray-300' : 'bg-white hover:bg-gray-100'}`}>U</button>
@@ -1611,7 +1664,7 @@ const TextEditor = ({
                       <Type size={17} />
                     </button>
                     {activePanel === 'case' && (
-                      <div className="absolute top-10 left-[-100px] z-50 p-2 bg-[#1a1a1a] rounded-xl flex gap-2 shadow-xl whitespace-nowrap">
+                      <div className="absolute top-10 left-[-100px] z-[300] p-2 bg-[#373d8a] rounded-xl flex gap-2 shadow-xl whitespace-nowrap">
                         <button onClick={() => updateStyle('textTransform', 'none')} className={`w-10 h-10 rounded-lg flex items-center justify-center text-lg text-gray-800 transition-colors ${selectedElement?.style.textTransform === 'none' || !selectedElement?.style.textTransform ? 'bg-gray-300' : 'bg-white hover:bg-gray-100'}`}><Minus size={20} /></button>
                         <button onClick={() => updateStyle('textTransform', 'capitalize')} className={`w-10 h-10 rounded-lg flex items-center justify-center text-lg font-medium text-gray-800 transition-colors ${selectedElement?.style.textTransform === 'capitalize' ? 'bg-gray-300' : 'bg-white hover:bg-gray-100'}`}>Aa</button>
                         <button onClick={() => updateStyle('textTransform', 'uppercase')} className={`w-10 h-10 rounded-lg flex items-center justify-center text-lg font-medium text-gray-800 transition-colors ${selectedElement?.style.textTransform === 'uppercase' ? 'bg-gray-300' : 'bg-white hover:bg-gray-100'}`}>AB</button>
@@ -1629,7 +1682,7 @@ const TextEditor = ({
                       <List size={17} />
                     </button>
                     {activePanel === 'list' && (
-                      <div className="absolute top-10 right-0 z-50 p-2 bg-[#1a1a1a] rounded-xl flex gap-2 shadow-xl whitespace-nowrap">
+                      <div className="absolute top-10 right-0 z-[300] p-2 bg-[#373d8a] rounded-xl flex gap-2 shadow-xl whitespace-nowrap">
                         <button onClick={() => updateStyle('listStyleType', 'disc')} className={`w-10 h-10 rounded-lg flex items-center justify-center text-lg text-gray-800 transition-colors ${selectedElement?.style.listStyleType === 'disc' ? 'bg-gray-300' : 'bg-white hover:bg-gray-100'}`}><List size={20} /></button>
                         <button onClick={() => updateStyle('listStyleType', 'square')} className={`w-10 h-10 rounded-lg flex items-center justify-center text-lg text-gray-800 transition-colors ${selectedElement?.style.listStyleType === 'square' ? 'bg-gray-300' : 'bg-white hover:bg-gray-100'}`}><List size={20} /></button>
                         <button onClick={() => updateStyle('listStyleType', 'decimal')} className={`w-10 h-10 rounded-lg flex items-center justify-center text-lg text-gray-800 transition-colors ${selectedElement?.style.listStyleType === 'decimal' ? 'bg-gray-300' : 'bg-white hover:bg-gray-100'}`}><ListOrdered size={20} /></button>
@@ -1726,7 +1779,7 @@ const TextEditor = ({
                           <ChevronDown size={12} className="text-gray-500 group-hover:text-blue-600" />
                         </div>
                         {showBorderStyleDropdown && (
-                          <div className="absolute right-0 bottom-full mb-1 w-[6.9vw] bg-white border border-gray-200 rounded-lg shadow-xl z-50 overflow-hidden py-1 animate-in fade-in slide-in-from-bottom-2">
+                          <div className="absolute right-0 bottom-full mb-1 w-[6.9vw] bg-white border border-gray-200 rounded-lg shadow-xl z-[300] overflow-hidden py-1 animate-in fade-in slide-in-from-bottom-2">
                             <div onClick={() => {
                               setStrokeType('solid');
                               setShowBorderStyleDropdown(false);

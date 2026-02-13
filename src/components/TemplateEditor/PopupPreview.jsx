@@ -248,7 +248,7 @@ const PopupPreview = ({ content, styles, elementType, elementSource, renderId, m
 
     return (
         <div
-            className={`${isWorkspaceModal ? 'absolute inset-[15px]' : 'fixed inset-0'} z-[100] flex items-center justify-center bg-black/40 backdrop-blur-[2px] cursor-default pointer-events-auto animate-fadeIn`}
+            className={`${isWorkspaceModal ? 'absolute inset-[15px]' : 'fixed inset-0'} z-[10] flex items-center justify-center bg-black/40 backdrop-blur-[2px] cursor-default pointer-events-auto animate-fadeIn`}
             onClick={(e) => {
                 if (onSelectElement) onSelectElement(null); // Clear inner selection
                 onClose && onClose();

@@ -86,10 +86,10 @@ const Navbar = ({ onExport, onSave, hasUnsavedChanges, saveSuccessInfo, isAutoSa
         {/* Center Section - Navigation Links */}
         <div className="absolute left-1/2 top-1/2 transform -translate-x-1/2 -translate-y-1/2 flex items-center gap-10">
           <Link
-            to="/home"
-            className={isActive('/home') ? activeLinkStyle : baseLinkStyle}
+            to="/my-flipbooks"
+            className={isActive('/my-flipbooks') ? activeLinkStyle : baseLinkStyle}
           >
-            Home
+            My Flipbook
           </Link>
           <Link
             to="/customized"

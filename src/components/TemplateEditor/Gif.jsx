@@ -16,7 +16,7 @@ import InteractionPanel from './InteractionPanel';
 const galleryPreviewImages = [
   "https://convertico.com/samples/download.php?format=gif&file=mesmerizing-motion-gif.gif",
   "https://www.easygifanimator.net/images/samples/video-to-gif-sample.gif",
-  "https://psdgang.com//wp-content/uploads/2017/04/009.gif"
+  "https://cdn.dribbble.com/userupload/21557392/file/original-1dc535a0588f83a40ba90ad05452ce77.gif"
 ];
 
 const GifEditor = ({

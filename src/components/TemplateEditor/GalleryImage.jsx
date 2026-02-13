@@ -255,7 +255,7 @@ export default function GalleryImage({ onClose, onUpdate, onSelect, selectedElem
             type="file"
             ref={galleryInputRef}
             onChange={handleModalFileUpload}
-            accept="image/*"
+            accept=".jpg, .jpeg, .png"
             className="hidden"
           />
         </div>

@@ -6,6 +6,7 @@ import {
   Music, Loader2, BookOpen, FileText, Bookmark, List, X
 } from 'lucide-react';
 import logo from '../../assets/logo/Fisto_logo.png';
+import PopupPreview from './PopupPreview';
 
 const FlipbookPreview = ({ pages, pageName = "Name of the Book", onClose, isMobile = false, isDoublePage }) => {
   const flipbookRef = useRef(null);
@@ -1085,13 +1086,7 @@ const FlipbookPreview = ({ pages, pageName = "Name of the Book", onClose, isMobi
               }
               
               /* Interaction Highlights */
-              [data-interaction-highlight="true"] {
-                  transition: all 0.2s ease;
-              }
-              [data-interaction-highlight="true"]:hover {
-                  box-shadow: 0 0 0 6px rgba(99, 102, 241, 0.1);
-                  transform: scale(0.97);
-              }
+
               
               /* Frame styling in preview */
               [data-interaction-type="frame"] {
@@ -1121,22 +1116,59 @@ const FlipbookPreview = ({ pages, pageName = "Name of the Book", onClose, isMobi
             *::selection { background: rgba(59, 130, 246, 0.3); }
             *::-moz-selection { background: rgba(59, 130, 246, 0.3); }
             [data-interaction] { cursor: pointer; }
+
+            /* Important: Copy parent fonts */
+            @import url('https://fonts.googleapis.com/css2?family=Dancing+Script:wght@400;500;600;700&family=Inter:wght@100..900&family=Lato:ital,wght@0,100;0,300;0,400;0,700;0,900;1,100;1,300;1,400;1,700;1,900&family=Merriweather:ital,wght@0,300;0,400;0,700;0,900;1,300;1,400;1,700;1,900&family=Montserrat:ital,wght@0,100..900;1,100..900&family=Nunito:ital,wght@0,200..1000;1,200..1000&family=Open+Sans:ital,wght@0,300..800;1,300..800&family=Oswald:wght@200..700&family=PT+Sans:ital,wght@0,400;0,700;1,400;1,700&family=Pacifico&family=Playfair+Display:ital,wght@0,400..900;1,400..900&family=Poppins:ital,wght@0,100;0,200;0,300;0,400;0,500;0,600;0,700;0,800;0,900;1,100;1,200;1,300;1,400;1,500;1,600;1,700;1,800;1,900&family=Raleway:ital,wght@0,100..900;1,100..900&family=Roboto:ital,wght@0,100;0,300;0,400;0,500;0,700;0,900;1,100;1,300;1,400;1,500;1,700;1,900&family=Ubuntu:ital,wght@0,300;0,400;0,500;0,700;1,300;1,400;1,500;1,700&display=swap');
+            @import url('https://fonts.cdnfonts.com/css/eight-one');
+            @import url('https://fonts.cdnfonts.com/css/walkway');
+            @import url('https://fonts.cdnfonts.com/css/coolvetika');
+            @import url('https://fonts.cdnfonts.com/css/cream-cake');
+            @import url('https://fonts.cdnfonts.com/css/varsity');
+            @import url('https://db.onlinewebfonts.com/c/72da2edf2e878addc8cd378af836530d?family=Qurova+DEMO+SemBd');
+            @import url('https://fonts.cdnfonts.com/css/klaxon');
+            @import url('https://fonts.cdnfonts.com/css/harmony');
+            @import url('https://fonts.cdnfonts.com/css/kabisat');
+            @import url('https://fonts.cdnfonts.com/css/thurkle');
+            @import url('https://fonts.cdnfonts.com/css/windstone');
             
-            /* Interaction Highlights */
-            [data-interaction-highlight="true"] {
-                transition: all 0.2s ease;
+            /* Interaction Highlights - Only on Hover */
+            [data-interaction] {
+                background: transparent !important;
+                box-shadow: none !important;
+                border: none !important;
+                outline: none !important;
             }
-            [data-interaction-highlight="true"]:hover {
-                box-shadow: 0 0 0 6px rgba(99, 102, 241, 0.1);
-                transform: scale(0.97);
+            /* Only show highlight on hover */
+            [data-interaction]:hover {
+                box-shadow: 0 0 0 2px rgba(99, 102, 241, 0.6) !important;
+                background-color: rgba(99, 102, 241, 0.1) !important;
             }
 
-            /* Frame styling in preview */
+            /* Hide potential editor artifacts/handles/labels */
+            .moveable-control-box, 
+            .moveable-line, 
+            .moveable-area, 
+            .rnb-resize-handler,
+            [class*="resize-handle"],
+            [class*="ui-resizable-handle"],
+            [class*="interaction-label"],
+            [class*="frame-label"] {
+                display: none !important;
+            }
+
+            /* Specific fix for "ZOOM" label if it's text content in a frame */
+            [data-interaction-type="frame"] {
+                color: transparent !important; /* Hide text like "ZOOM" */
+                font-size: 0 !important;
+            }
+            
+            /* Ensure the frame itself is transparent but interactive */
             [data-interaction-type="frame"] {
                 position: absolute;
                 z-index: 1000;
                 pointer-events: auto;
-                background-color: transparent;
+                background-color: transparent !important;
+                border: none !important;
             }
         </style>
         ${interactionScript}
@@ -2085,151 +2117,14 @@ const FlipbookPreview = ({ pages, pageName = "Name of the Book", onClose, isMobi
 
       {/* Global Popup Message Overlay - Covers entire screen */}
       {popupData.isOpen && (
-        <div
-          className="fixed inset-0 z-[200] flex items-center justify-center bg-black/40 backdrop-blur-sm animate-fadeIn"
-          onClick={() => setPopupData({ ...popupData, isOpen: false })}
-        >
-          <style>{`
-            @import url('https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&family=Roboto:wght@300;400;500;700&family=Open+Sans:wght@300;400;600;700&display=swap');
-          `}</style>
-          <div
-            className={`relative shadow-2xl flex flex-col items-center justify-center animate-scaleUp overflow-hidden ${popupData.content && (popupData.content.trim().toLowerCase().startsWith('<!doctype') || /<[a-z][\s\S]*>/i.test(popupData.content))
-              ? 'p-0 bg-transparent'
-              : 'p-12 rounded-xl'
-              }`}
-            onClick={(e) => e.stopPropagation()}
-            style={{
-              width: popupData.content && (popupData.content.trim().toLowerCase().startsWith('<!doctype') || /<[a-z][\s\S]*>/i.test(popupData.content)) ? '95vw' : '100%',
-              maxWidth: popupData.content && (popupData.content.trim().toLowerCase().startsWith('<!doctype') || /<[a-z][\s\S]*>/i.test(popupData.content)) ? 'min(1200px, calc(85vh * 297 / 210))' : '1200px',
-              height: 'auto',
-              maxHeight: '85vh',
-              aspectRatio: popupData.content && (popupData.content.trim().toLowerCase().startsWith('<!doctype') || /<[a-z][\s\S]*>/i.test(popupData.content)) ? '297/210' : 'auto',
-              minWidth: '320px',
-              minHeight: '400px',
-              backgroundColor: popupData.content && (popupData.content.trim().toLowerCase().startsWith('<!doctype') || /<[a-z][\s\S]*>/i.test(popupData.content))
-                ? 'transparent'
-                : hexToRgba(popupData.styles.fill || '#ffffff', popupData.styles.fillOpacity || 100)
-            }}
-          >
-            {/* Stroke Overlay */}
-            {!(popupData.content && (popupData.content.trim().toLowerCase().startsWith('<!doctype') || /<[a-z][\s\S]*>/i.test(popupData.content))) && popupData.styles.stroke && popupData.styles.stroke !== 'none' && (
-              <div className="absolute inset-0 pointer-events-none rounded-xl overflow-hidden">
-                <svg width="100%" height="100%" className="block overflow-visible">
-                  <rect
-                    x={popupData.styles.strokePosition === 'inside' ? (popupData.styles.strokeWidth || 1) / 2 : popupData.styles.strokePosition === 'outside' ? -(popupData.styles.strokeWidth || 1) / 2 : 0}
-                    y={popupData.styles.strokePosition === 'inside' ? (popupData.styles.strokeWidth || 1) / 2 : popupData.styles.strokePosition === 'outside' ? -(popupData.styles.strokeWidth || 1) / 2 : 0}
-                    rx="12"
-                    ry="12"
-                    fill="none"
-                    stroke={popupData.styles.stroke}
-                    strokeWidth={popupData.styles.strokeWidth || 1}
-                    strokeDasharray={popupData.styles.strokeType === 'dashed' ? `${popupData.styles.strokeDashLength || 4},${popupData.styles.strokeDashGap || 4}` : 'none'}
-                    strokeLinecap={popupData.styles.strokeRoundCorners ? 'round' : 'square'}
-                    style={{
-                      strokeOpacity: (popupData.styles.strokeOpacity || 100) / 100,
-                      width: popupData.styles.strokePosition === 'inside' ? `calc(100% - ${popupData.styles.strokeWidth || 1}px)` : popupData.styles.strokePosition === 'outside' ? `calc(100% + ${popupData.styles.strokeWidth || 1}px)` : '100%',
-                      height: popupData.styles.strokePosition === 'inside' ? `calc(100% - ${popupData.styles.strokeWidth || 1}px)` : popupData.styles.strokePosition === 'outside' ? `calc(100% + ${popupData.styles.strokeWidth || 1}px)` : '100%'
-                    }}
-                  />
-                </svg>
-              </div>
-            )}
-
-            <button
-              onClick={() => setPopupData({ ...popupData, isOpen: false })}
-              className="absolute top-6 right-6 p-2 hover:bg-gray-100 rounded-full transition-all text-gray-400 hover:text-gray-600 shadow-sm bg-white z-[210]"
-            >
-              <X size={24} />
-            </button>
-
-            <div className={`w-full flex flex-col items-center justify-center h-full ${popupData.content && (popupData.content.trim().toLowerCase().startsWith('<!doctype') || /<[a-z][\s\S]*>/i.test(popupData.content)) ? 'gap-0' : 'gap-10'}`}>
-              {popupData.elementType === 'image' && !popupData.content && (
-                <img
-                  src={popupData.elementSource}
-                  alt="Popup"
-                  className="max-w-full max-h-[55vh] shadow-md rounded-sm"
-                  style={{
-                    objectFit: popupData.styles.fit === 'Fill' ? 'cover' : (popupData.styles.fit === 'Stretch' ? 'fill' : 'contain')
-                  }}
-                />
-              )}
-
-              {popupData.content && (
-                popupData.content.trim().toLowerCase().startsWith('<!doctype') || /<[a-z][\s\S]*>/i.test(popupData.content) ? (
-                  <iframe
-                    srcDoc={`
-                      <!DOCTYPE html>
-                      <html>
-                        <head>
-                          <style>
-                            html, body {
-                              margin: 0 !important;
-                              padding: 0 !important;
-                              width: 100vw !important;
-                              height: 100vh !important;
-                              overflow: hidden !important;
-                              background: transparent !important;
-                              display: flex !important;
-                              align-items: center !important;
-                              justify-content: center !important;
-                            }
-                            #template-scale-wrapper {
-                              width: 1200px !important;
-                              height: 848px !important;
-                              transform-origin: center center !important;
-                              visibility: hidden;
-                              flex-shrink: 0 !important;
-                            }
-                          </style>
-                        </head>
-                        <body>
-                          <div id="template-scale-wrapper">
-                            ${popupData.content}
-                          </div>
-                          <script>
-                            (function() {
-                              const wrapper = document.getElementById('template-scale-wrapper');
-                              function fit() {
-                                if (!wrapper) return;
-                                const scaleX = window.innerWidth / 1200;
-                                const scaleY = window.innerHeight / 848;
-                                const scale = Math.min(scaleX, scaleY);
-                                wrapper.style.transform = "scale(" + scale + ")";
-                                wrapper.style.visibility = "visible";
-                              }
-                              fit();
-                              window.addEventListener('resize', fit);
-                              // Second pass to ensure everything is settled
-                              setTimeout(fit, 0);
-                            })();
-                          </script>
-                        </body>
-                      </html>
-                    `}
-                    className="w-full h-full border-none m-0 p-0 block animate-fadeIn"
-                    title="Popup Content"
-                    scrolling="no"
-                  />
-                ) : (
-                  <div
-                    className="w-full text-center px-8"
-                    style={{
-                      fontFamily: `'${popupData.styles.font || 'Poppins'}', sans-serif`,
-                      fontSize: `${popupData.styles.size || '32'}px`,
-                      fontWeight: popupData.styles.weight === 'Bold' ? '700' : (popupData.styles.weight === 'Semi Bold' ? '600' : '400'),
-                      color: popupData.styles.fill || '#000000',
-                      lineHeight: '1.4',
-                      wordBreak: 'break-word',
-                      whiteSpace: 'pre-wrap'
-                    }}
-                  >
-                    {popupData.content}
-                  </div>
-                )
-              )}
-            </div>
-          </div>
-        </div>
+        <PopupPreview
+          content={popupData.content}
+          styles={popupData.styles}
+          elementType={popupData.elementType}
+          elementSource={popupData.elementSource}
+          mode="preview"
+          onClose={() => setPopupData({ ...popupData, isOpen: false })}
+        />
       )}
 
       {/* Styles for scaleUp animation */}

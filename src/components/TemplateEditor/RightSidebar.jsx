@@ -113,7 +113,7 @@ const RightSidebar = ({
 
          {/* Dimensions Row */}
          <div className="flex items-center justify-between pt-3 pb-1">
-             <span className="text-[13px] font-semibold text-gray-800">Dimensions</span>
+             <span className="text-[13px] font-semibold text-gray-800">Dimensions in px :</span>
              <div className="flex items-center gap-4">
                  <div className="flex items-center gap-2">
                     <span className="text-gray-500 font-medium text-[11px] uppercas">W</span>

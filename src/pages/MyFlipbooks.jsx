@@ -487,6 +487,19 @@ export default function MyFlipbooks() {
   const saveBookEdit = async () => {
     if (editingBookId && tempBookTitle.trim()) {
         const book = books.find(b => b.id === editingBookId);
+        
+        // Frontend duplicate check (Global Uniqueness)
+        const isDuplicate = books.some(b => 
+            b.title.toLowerCase() === tempBookTitle.trim().toLowerCase() && 
+            b.id !== editingBookId
+        );
+
+        if (isDuplicate) {
+            showAlert('Name Exists', 'A flipbook with this name already exists (possibly in another folder). Please choose a unique name.');
+            setEditingBookId(null); // Revert to previous name
+            return; // Stop execution
+        }
+
         if (book && book.title !== tempBookTitle.trim()) {
              setIsLoading(true);
              try {
@@ -972,9 +985,8 @@ export default function MyFlipbooks() {
                                                         if (physicalBook) targetFolder = physicalBook.folder;
                                                     }
                                                     const identifier = book.v_id || encodeURIComponent(book.realName);
-                                                    navigate(`/editor/${encodeURIComponent(targetFolder)}/${identifier}`);
                                                 }}
-                                                className="flex items-center gap-1.5 text-xs font-semibold text-[#4c5add] hover:text-[#3f4bc0] transition-colors"
+                                                className="flex items-center gap-1.5 text-xs font-semibold text-gray-600 hover:text-[#3f4bc0] transition-colors"
                                             >
                                                 <Wrench size={14} /> Customize
                                             </button>

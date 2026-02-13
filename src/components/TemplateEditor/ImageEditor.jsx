@@ -880,7 +880,7 @@ const ImageEditor = ({
           type="file" 
           ref={fileInputRef} 
           onChange={handleFileUpload} 
-          accept="image/*" 
+          accept=".jpg, .jpeg, .png" 
           multiple={isSlideshow} 
           className="hidden" 
         />
