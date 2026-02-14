@@ -1,222 +1,12 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
+import { createPortal } from 'react-dom';
 import * as LucideIcons from 'lucide-react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { Upload, Replace, ChevronUp, ChevronDown, Edit3, X, Grid, ArrowLeft, ZoomIn, ZoomOut, Mail, Phone, Globe, Trash2, Save, Image, Folder, Move, Check, CheckCheck, Battery, Calendar, File, Settings, Search, Home, User, Users, Star, Heart, Share2, Download, Cloud, Clock, MapPin, Lock, Unlock, Menu, Play, Pause, AlertCircle, Info, HelpCircle, Facebook, Twitter, Instagram, Linkedin, Github, Youtube, Pipette } from 'lucide-react';
-
-const CustomColorPicker = ({ color, onChange, onCommit, onClose, position, opacity, onOpacityChange }) => {
-  const [hue, setHue] = useState(0);
-  const [sat, setSat] = useState(100);
-  const [bright, setBright] = useState(100);
-  const pickerRef = useRef(null);
-
-  // Close on click outside without blocking scroll
-  useEffect(() => {
-    const handleClickOutside = (e) => {
-      // If the clicking is inside our picker, do nothing
-      if (pickerRef.current && pickerRef.current.contains(e.target)) return;
-      
-      // If the click is on a sidebar row that might be opening the picker, do nothing
-      if (e.target.closest('.color-picker-trigger')) return;
-
-      onClose();
-    };
-    document.addEventListener('mousedown', handleClickOutside, true); // Use capture phase
-    return () => document.removeEventListener('mousedown', handleClickOutside, true);
-  }, [onClose]);
-
-  // Parse initial color to HSV
-  useEffect(() => {
-    if (color && color !== 'none') {
-      const hex = color.replace('#', '');
-      const r = parseInt(hex.substring(0, 2), 16) / 255;
-      const g = parseInt(hex.substring(2, 4), 16) / 255;
-      const b = parseInt(hex.substring(4, 6), 16) / 255;
-      
-      const max = Math.max(r, g, b), min = Math.min(r, g, b);
-      let h, s, v = max;
-      const d = max - min;
-      s = max === 0 ? 0 : d / max;
-
-      if (max === min) {
-        h = 0;
-      } else {
-        switch (max) {
-          case r: h = (g - b) / d + (g < b ? 6 : 0); break;
-          case g: h = (b - r) / d + 2; break;
-          case b: h = (r - g) / d + 4; break;
-          default: h = 0;
-        }
-        h /= 6;
-      }
-      setHue(h * 360);
-      setSat(s * 100);
-      setBright(v * 100);
-    }
-  }, [color]);
-
-  const handleMouseDown = (e, type) => {
-    e.preventDefault();
-    e.stopPropagation();
-    const rect = e.currentTarget.getBoundingClientRect();
-
-    const moveHandler = (moveEvent) => {
-      if (type === 'sat-bright') {
-        const x = Math.max(0, Math.min(1, (moveEvent.clientX - rect.left) / rect.width));
-        const y = Math.max(0, Math.min(1, 1 - (moveEvent.clientY - rect.top) / rect.height));
-        updateColor(hue, x * 100, y * 100);
-      } else if (type === 'hue') {
-        const h = Math.max(0, Math.min(1, (moveEvent.clientY - rect.top) / rect.height));
-        updateColor(h * 360, sat, bright);
-      }
-    };
-
-    const upHandler = () => {
-      window.removeEventListener('mousemove', moveHandler);
-      window.removeEventListener('mouseup', upHandler);
-      if (onCommit) onCommit();
-    };
-
-    window.addEventListener('mousemove', moveHandler);
-    window.addEventListener('mouseup', upHandler);
-    window.addEventListener('touchmove', (e) => moveHandler(e.touches[0]));
-    window.addEventListener('touchend', upHandler);
-    moveHandler(e.touches ? e.touches[0] : e);
-  };
-
-  const updateColor = (h, s, v) => {
-    setHue(h);
-    setSat(s);
-    setBright(v);
-    
-    // HSV to Hex
-    const i = Math.floor(h / 60);
-    const f = h / 60 - i;
-    const p = (v / 100) * (1 - s / 100);
-    const q = (v / 100) * (1 - f * (s / 100));
-    const t = (v / 100) * (1 - (1 - f) * (s / 100));
-    
-    let r, g, b;
-    switch (i % 6) {
-      case 0: r = v / 100, g = t, b = p; break;
-      case 1: r = q, g = v / 100, b = p; break;
-      case 2: r = p, g = v / 100, b = t; break;
-      case 3: r = p, g = q, b = v / 100; break;
-      case 4: r = t, g = p, b = v / 100; break;
-      case 5: r = v / 100, g = p, b = q; break;
-      default: r = 0, g = 0, b = 0;
-    }
-    
-    const hex = "#" + [r, g, b].map(x => Math.round(x * 255).toString(16).padStart(2, '0')).join('');
-    onChange(hex.toUpperCase());
-  };
-
-  const handleEyedropper = async () => {
-    if (!window.EyeDropper) {
-      alert("Your browser does not support the EyeDropper API");
-      return;
-    }
-    const eyeDropper = new window.EyeDropper();
-    try {
-      const result = await eyeDropper.open();
-      onChange(result.sRGBHex.toUpperCase());
-    } catch (e) {
-      console.log("Eyedropper cancelled");
-    }
-  };
-
-  return (
-    <div 
-      ref={pickerRef}
-      onMouseDown={(e) => e.stopPropagation()}
-      onClick={(e) => e.stopPropagation()}
-      className="fixed z-[10001] bg-white rounded-lg shadow-2xl border border-gray-100 p-2 pt-5 w-[200px] animate-in fade-in zoom-in-95 duration-200"
-      style={{ 
-        top: Math.max(20, Math.min(position.y, window.innerHeight - 400)),
-        left: Math.max(20, Math.min(position.x - 240, window.innerWidth - 300)) 
-      }}
-    >
-      {/* Close button at top-left corner */}
-      <button 
-        onClick={onClose}
-        className="absolute top-1 left-2 rounded-full hover:bg-gray-100 transition-colors text-gray-400 hover:text-gray-600"
-      >
-        <X size={16} />
-      </button>
-      <div className="flex gap-1 mb-2">
-        {/* Saturation/Brightness Area */}
-        <div 
-          className="relative flex-1 aspect-square rounded-[8px] cursor-crosshair overflow-hidden"
-          style={{ backgroundColor: `hsl(${hue}, 100%, 50%)` }}
-          onMouseDown={(e) => handleMouseDown(e, 'sat-bright')}
-        >
-          <div className="absolute inset-0 bg-gradient-to-r from-white to-transparent" />
-          <div className="absolute inset-0 bg-gradient-to-t from-black to-transparent" />
-          <div 
-            className="absolute w-5 h-5 border-2 border-white rounded-full shadow-lg -translate-x-1/2 translate-y-1/2 pointer-events-none"
-            style={{ left: `${sat}%`, bottom: `${bright}%` }}
-          />
-        </div>
-
-        {/* Hue Slider (Vertical as per image) */}
-        <div 
-          className="w-8 aspect-[1/4] rounded-lg cursor-pointer relative"
-          style={{ background: 'linear-gradient(to bottom, #ff0000 0%, #ffff00 17%, #00ff00 33%, #00ffff 50%, #0000ff 67%, #ff00ff 83%, #ff0000 100%)' }}
-          onMouseDown={(e) => handleMouseDown(e, 'hue')}
-        >
-          {/* Custom Indicator circle with horizontal lines */}
-          <div 
-            className="absolute left-1/2 w-8 h-8 flex items-center justify-center -translate-x-1/2 -translate-y-1/2 pointer-events-none"
-            style={{ top: `${(hue / 360) * 100}%` }}
-          >
-             <div className="w-5 h-5 border-2 border-white rounded-full bg-transparent shadow-sm" />
-             <div className="absolute w-[36px] h-[2px] bg-white -z-10" />
-          </div>
-        </div>
-      </div>
-
-      <div className="space-y-5">
-        <div className="flex items-center justify-between gap-3">
-          <span className="text-[11px] font-medium text-gray-800 whitespace-nowrap">Color Code :</span>
-          <div className="flex-1 flex items-center border border-gray-300 rounded-[12px] px-3 py-2 bg-white shadow-sm ring-1 ring-gray-100">
-            <input 
-              type="text" 
-              value={color} 
-              onChange={(e) => onChange(e.target.value)}
-              className="w-full bg-transparent text-[14px] font-medium text-gray-700 outline-none uppercase text-center"
-            />
-            <button 
-              onClick={handleEyedropper} 
-              className="p-1 hover:bg-gray-100 rounded-md transition-colors"
-            >
-              <Pipette size={18} className="text-gray-600 rotate-90" strokeWidth={2.5} />
-            </button>
-          </div>
-        </div>
-
-        <div className="flex items-center gap-3">
-          <span className="text-[11px] font-medium text-gray-800 whitespace-nowrap">Opacity :</span>
-          <div className="flex-1 flex items-center gap-2">
-             <input
-              type="range"
-              min="0"
-              max="100"
-              value={opacity}
-              onChange={(e) => onOpacityChange(Number(e.target.value))}
-              className="w-full h-1.5 bg-gray-100 rounded-full appearance-none cursor-pointer"
-              style={{
-                background: `linear-gradient(to right, #6366f1 0%, #6366f1 ${opacity}%, #f3f4f6 ${opacity}%, #f3f4f6 100%)`,
-              }}
-            />
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-};
-
 import InteractionPanel from './InteractionPanel';
 import AnimationPanel from './AnimationPanel';
 import { Icon } from '@iconify/react';
+import ColorPicker from '../ThreedEditor/ColorPicker';
 
 
 const IconEditor = ({
@@ -242,6 +32,7 @@ const IconEditor = ({
   const galleryInputRef = useRef(null);
   const [pickerTarget, setPickerTarget] = useState(null); // 'fill' or 'stroke'
   const [pickerPos, setPickerPos] = useState({ x: 0, y: 0 });
+  const panelRef = useRef(null);
   
   const rgbToHex = (rgb) => {
     if (!rgb || rgb === 'none' || rgb === 'transparent') return 'none';
@@ -689,9 +480,9 @@ const IconEditor = ({
                           backgroundColor: iconFill === 'none' ? 'transparent' : iconFill,
                         }} 
                       />
-                      {iconFill === 'none' && (
-                        <div className="absolute inset-0 flex items-center justify-center">
-                          <div className="w-[140%] h-[1.5px] bg-red-500 rotate-[-45deg] opacity-80" />
+                      { (iconFill === 'none' || iconFill === '#' || !iconFill) && (
+                        <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+                          <div className="w-[140%] h-[1.5px] bg-red-500 rotate-45" />
                         </div>
                       )}
                     </div>
@@ -736,9 +527,9 @@ const IconEditor = ({
                           backgroundColor: iconColor === 'none' ? 'transparent' : iconColor,
                         }} 
                       />
-                      {iconColor === 'none' && (
-                        <div className="absolute inset-0 flex items-center justify-center">
-                          <div className="w-[140%] h-[1.5px] bg-red-500 rotate-[-45deg] opacity-80" />
+                      { (iconColor === 'none' || iconColor === '#' || !iconColor) && (
+                        <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+                          <div className="w-[140%] h-[1.5px] bg-red-500 rotate-45" />
                         </div>
                       )}
                     </div>
@@ -1008,22 +799,26 @@ const IconEditor = ({
         onToggle={() => setActiveSection(activeSection === 'animation' ? null : 'animation')}
       />
 
-      {pickerTarget && (
-        <CustomColorPicker 
-          color={pickerTarget === 'fill' ? iconFill : iconColor}
-          opacity={opacity}
-          position={pickerPos}
-          onChange={(newColor) => {
-            if (pickerTarget === 'fill') updateIconFill(newColor);
-            else updateIconColor(newColor);
-          }}
-          onCommit={commitChanges}
-          onOpacityChange={updateOpacity}
-          onClose={() => {
-            setPickerTarget(null);
-            commitChanges();
-          }}
-        />
+      {pickerTarget && createPortal(
+        <>
+          <div className="fixed inset-0 z-[10000] bg-transparent" onClick={() => setPickerTarget(null)}></div>
+          <ColorPicker
+            className="fixed z-[10001] w-[280px]"
+            style={{
+              top: Math.max(20, Math.min(pickerPos.y, window.innerHeight - 400)),
+              left: Math.max(20, Math.min(pickerPos.x - 290, window.innerWidth - 300))
+            }}
+            color={pickerTarget === 'fill' ? iconFill : iconColor}
+            onChange={(color) => {
+              if (pickerTarget === 'fill') updateIconFill(color);
+              else updateIconColor(color);
+            }}
+            opacity={opacity}
+            onOpacityChange={updateOpacity}
+            onClose={() => setPickerTarget(null)}
+          />
+        </>,
+        document.body
       )}
     </div>
   );

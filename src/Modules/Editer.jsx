@@ -112,6 +112,7 @@ const Editor = () => {
   const [exportHandler, setExportHandler] = useState(null);
   const [saveHandler, setSaveHandler] = useState(null);
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
+  const [currentBook, setCurrentBook] = useState(null);
 
   // Save Success State for Toast
   const [saveSuccessInfo, setSaveSuccessInfo] = useState(null);
@@ -229,8 +230,10 @@ const Editor = () => {
     triggerSaveSuccess: handleSaveSuccess,
     isAutoSaveEnabled,
     threedState,        // 3D State getter
-    setThreedState      // 3D State setter
-  }), [isAutoSaveEnabled, hasUnsavedChanges, threedState]);
+    setThreedState,      // 3D State setter
+    currentBook,
+    setCurrentBook
+  }), [isAutoSaveEnabled, hasUnsavedChanges, threedState, currentBook]);
 
   if (isRestoring) {
       return (
@@ -250,6 +253,7 @@ const Editor = () => {
         saveSuccessInfo={saveSuccessInfo}
         isAutoSaveEnabled={isAutoSaveEnabled}
         onToggleAutoSave={toggleAutoSave}
+        currentBook={currentBook}
       />
       <div className="flex-1 overflow-hidden">
         <Outlet context={contextValue} />

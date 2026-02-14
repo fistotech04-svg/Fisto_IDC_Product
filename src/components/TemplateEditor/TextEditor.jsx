@@ -1,6 +1,8 @@
-import React, { useState, useRef, useEffect, useCallback } from 'react';
+import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
+import { createPortal } from 'react-dom';
 import InteractionPanel from './InteractionPanel';
 import AnimationPanel from './AnimationPanel';
+import ColorPicker from '../ThreedEditor/ColorPicker';
 
 import { Icon } from '@iconify/react';
 import {
@@ -190,7 +192,7 @@ const TextEditor = ({
   const [showFillPicker, setShowFillPicker] = useState(false);
   const [showStrokePicker, setShowStrokePicker] = useState(false);
   const [showDashedPopup, setShowDashedPopup] = useState(false);
-  const [strokeColor, setStrokeColor] = useState('#000000');
+  const [strokeColor, setStrokeColor] = useState('#');
   const [colorMode, setColorMode] = useState('fill'); // 'fill' or 'stroke'
   const [fillOpacity, setFillOpacity] = useState(100);
   const [strokeOpacity, setStrokeOpacity] = useState(100);
@@ -206,14 +208,41 @@ const TextEditor = ({
   const [showFillTypeDropdown, setShowFillTypeDropdown] = useState(false);
   const [showGradientTypeDropdown, setShowGradientTypeDropdown] = useState(false);
   const [showDetailedControls, setShowDetailedControls] = useState(false);
+  const [showDetailedStrokeControls, setShowDetailedStrokeControls] = useState(false);
   const [fillType, setFillType] = useState('solid'); // 'solid' or 'gradient'
   const [gradientType, setGradientType] = useState('Linear'); // 'Linear' or 'Radial'
   const [gradientStops, setGradientStops] = useState([
     { color: '#63D0CD', offset: 0, opacity: 100 },
     { color: '#4B3EFE', offset: 100, opacity: 100 }
   ]);
+  const [strokeFillType, setStrokeFillType] = useState('solid'); // 'solid' or 'gradient'
+  const [strokeGradientType, setStrokeGradientType] = useState('Linear'); // 'Linear' or 'Radial'
+  const [strokeGradientStops, setStrokeGradientStops] = useState([
+    { color: '#6366f1', offset: 0, opacity: 100 },
+    { color: '#a855f7', offset: 100, opacity: 100 }
+  ]);
+  const [gradientMode, setGradientMode] = useState('fill'); // 'fill' or 'stroke'
+  const [showStrokeFillTypeDropdown, setShowStrokeFillTypeDropdown] = useState(false);
+  const [showStrokeGradientTypeDropdown, setShowStrokeGradientTypeDropdown] = useState(false);
   const [editingGradientStopIndex, setEditingGradientStopIndex] = useState(null);
   const [isSyncing, setIsSyncing] = useState(false);
+
+  // Helper to get colors used on the current page
+  const colorsOnPage = useMemo(() => {
+    if (!selectedElement || !selectedElement.ownerDocument) return [];
+    const elements = selectedElement.ownerDocument.querySelectorAll('[data-fill-color], [data-stroke-color]');
+    const colors = new Set();
+    elements.forEach(el => {
+      const fill = el.getAttribute('data-fill-color');
+      const stroke = el.getAttribute('data-stroke-color');
+      if (fill && fill !== 'none') colors.add(fill.toUpperCase());
+      if (stroke && stroke !== 'none') colors.add(stroke.toUpperCase());
+    });
+    // Add default white and black if not present
+    colors.add('#FFFFFF');
+    colors.add('#000000');
+    return Array.from(colors).slice(0, 12);
+  }, [selectedElement, pages]);
 
   // Color State (Fill)
   const [hsv, setHsv] = useState({ h: 0, s: 0, v: 0 });
@@ -293,7 +322,9 @@ const TextEditor = ({
 
     // --- Fill Prep ---
     const fillRgb = hexToRgb(hex);
-    const rgbaFill = `rgba(${fillRgb.r}, ${fillRgb.g}, ${fillRgb.b}, ${fillOpacity / 100})`;
+    const rgbaFill = (hex === 'none' || hex === '#' || !hex || fillOpacity === 0)
+      ? 'rgba(0,0,0,0)'
+      : `rgba(${fillRgb.r}, ${fillRgb.g}, ${fillRgb.b}, ${fillOpacity / 100})`;
 
     let gradStr = '';
     if (fillType === 'gradient') {
@@ -309,9 +340,22 @@ const TextEditor = ({
 
     // --- Stroke Prep ---
     const sRgb = hexToRgb(strokeColor);
-    const rgbaStroke = `rgba(${sRgb.r}, ${sRgb.g}, ${sRgb.b}, ${strokeOpacity / 100})`;
+    const rgbaStroke = (strokeColor === 'none' || strokeColor === '#' || !strokeColor || strokeOpacity === 0)
+      ? 'rgba(0,0,0,0)'
+      : `rgba(${sRgb.r}, ${sRgb.g}, ${sRgb.b}, ${strokeOpacity / 100})`;
 
-    if (strokeType === 'dashed') {
+    let strokeSvgFill = rgbaStroke;
+    let strokeGradDef = '';
+    if (strokeFillType === 'gradient') {
+      const stopsXml = strokeGradientStops.map(s => `<stop offset="${s.offset}%" stop-color="${s.color}" stop-opacity="${(s.opacity || 100) / 100}" />`).join('');
+      const id = `tsg-${Math.random().toString(36).substr(2, 9)}`;
+      strokeGradDef = strokeGradientType === 'Linear'
+        ? `<linearGradient id="${id}" x1="0%" y1="0%" x2="100%" y2="0%">${stopsXml}</linearGradient>`
+        : `<radialGradient id="${id}" cx="50%" cy="50%" r="50%">${stopsXml}</radialGradient>`;
+      strokeSvgFill = `url(#${id})`;
+    }
+
+    if (strokeType === 'dashed' || strokeFillType === 'gradient') {
       // DASHED MODE: All-in-one SVG Background
       if (width === 0 || height === 0) return;
 
@@ -385,8 +429,8 @@ const TextEditor = ({
 
       const svg = `
         <svg width='${width}' height='${height}' viewBox='0 0 ${width} ${height}' xmlns='http://www.w3.org/2000/svg'>
-          <defs>${gradDef}</defs>
-          <text text-anchor='${textAnchor}' font-family='${cleanFontFamily}' font-size='${fontSize}' font-weight='${fontWeight}' letter-spacing='${letterSpacing}' fill='${svgFill}' stroke='${rgbaStroke}' stroke-width='${finalStrokeWidth}' stroke-dasharray='${dashLength},${dashGap}' stroke-linecap='${lineCap}' style="paint-order: ${paintOrder};">
+          <defs>${gradDef}${strokeGradDef}</defs>
+          <text text-anchor='${textAnchor}' font-family='${cleanFontFamily}' font-size='${fontSize}' font-weight='${fontWeight}' letter-spacing='${letterSpacing}' fill='${svgFill}' stroke='${strokeSvgFill}' stroke-width='${finalStrokeWidth}' stroke-dasharray='${strokeType === 'dashed' ? `${dashLength},${dashGap}` : 'none'}' stroke-linecap='${lineCap}' style="paint-order: ${paintOrder};">
             ${tspans}
           </text>
         </svg>
@@ -436,6 +480,8 @@ const TextEditor = ({
     el.setAttribute('data-fill-type', fillType);
     el.setAttribute('data-stroke-color', strokeColor);
     el.setAttribute('data-stroke-opacity', strokeOpacity);
+    el.setAttribute('data-stroke-fill-type', strokeFillType);
+    el.setAttribute('data-stroke-gradient-type', strokeGradientType);
     el.setAttribute('data-dash-length', dashLength);
     el.setAttribute('data-dash-gap', dashGap);
     el.setAttribute('data-round-corners', isRoundCorners);
@@ -444,7 +490,7 @@ const TextEditor = ({
     el.setAttribute('data-border-thickness', borderThickness);
 
     if (onUpdate) onUpdate();
-  }, [selectedElement, hex, fillOpacity, fillType, gradientStops, gradientType, strokeColor, strokeOpacity, strokeType, strokePosition, borderThickness, dashLength, dashGap, isRoundCorners, onUpdate]);
+  }, [selectedElement, hex, fillOpacity, fillType, gradientStops, gradientType, strokeColor, strokeOpacity, strokeFillType, strokeGradientType, strokeGradientStops, strokeType, strokePosition, borderThickness, dashLength, dashGap, isRoundCorners, onUpdate]);
 
   const applyGradient = useCallback((stops, type = gradientType) => {
     if (!selectedElement) return;
@@ -514,6 +560,7 @@ const TextEditor = ({
       const newHsv = rgbToHsv(newRgb.r, newRgb.g, newRgb.b);
       setRgb(newRgb);
       setHsv(newHsv);
+      setFillOpacity(100);
       if (fillType === 'gradient') {
         updateFillType('solid');
       }
@@ -537,6 +584,11 @@ const TextEditor = ({
   };
 
   const updateStrokeColorFromHex = (newHex) => {
+    if (newHex === '#' || newHex === 'none') {
+      setBorderThickness(0);
+      setStrokeColor('#');
+      return;
+    }
     // Auto-apply thickness 1 if currently 0
     if (borderThickness === 0) setBorderThickness(1);
     setStrokeColor(newHex);
@@ -545,6 +597,7 @@ const TextEditor = ({
       const newHsv = rgbToHsv(newRgb.r, newRgb.g, newRgb.b);
       setStrokeRgb(newRgb);
       setStrokeHsv(newHsv);
+      setStrokeOpacity(100);
     }
   };
 
@@ -578,13 +631,58 @@ const TextEditor = ({
       setGradientStopRgb(newRgb);
       setGradientStopHsv(newHsv);
       if (editingGradientStopIndex !== null) {
-        updateGradientStop(editingGradientStopIndex, { color: newHex });
+        if (gradientMode === 'fill') {
+          updateGradientStop(editingGradientStopIndex, { color: newHex });
+        } else {
+          updateStrokeGradientStop(editingGradientStopIndex, { color: newHex });
+        }
       }
     }
   };
 
-  const openGradientStopPicker = (index) => {
-    const stop = gradientStops[index];
+  const updateStrokeFillType = (type) => {
+    setStrokeFillType(type);
+    setShowStrokeFillTypeDropdown(false);
+    if (type === 'solid' && selectedElement) {
+      applyDesign();
+    }
+  };
+
+  const applyStrokeGradient = useCallback((stops, type = strokeGradientType) => {
+    if (!selectedElement) return;
+    setStrokeGradientStops(stops);
+    setStrokeGradientType(type);
+  }, [selectedElement, strokeGradientType]);
+
+  const updateStrokeGradientStop = (index, updates) => {
+    const newStops = [...strokeGradientStops];
+    newStops[index] = { ...newStops[index], ...updates };
+    setStrokeGradientStops(newStops);
+  };
+
+  const removeStrokeGradientStop = (index) => {
+    if (strokeGradientStops.length <= 2) return;
+    const newStops = strokeGradientStops.filter((_, i) => i !== index);
+    setStrokeGradientStops(newStops);
+  };
+
+  const addStrokeGradientStop = (e) => {
+    const rect = e.currentTarget.getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    const offset = Math.min(100, Math.max(0, Math.round((x / rect.width) * 100)));
+    const newStop = { color: '#6366f1', offset, opacity: 100 };
+    const newStops = [...strokeGradientStops, newStop].sort((a, b) => a.offset - b.offset);
+    setStrokeGradientStops(newStops);
+  };
+
+  const reverseStrokeGradient = () => {
+    const newStops = [...strokeGradientStops].map(s => ({ ...s, offset: 100 - s.offset })).sort((a, b) => a.offset - b.offset);
+    setStrokeGradientStops(newStops);
+  };
+
+  const openGradientStopPicker = (index, mode = 'fill') => {
+    setGradientMode(mode);
+    const stop = mode === 'fill' ? gradientStops[index] : strokeGradientStops[index];
     const rgbObj = hexToRgb(stop.color);
     const hsvObj = rgbToHsv(rgbObj.r, rgbObj.g, rgbObj.b);
     setGradientStopHex(stop.color);
@@ -772,44 +870,7 @@ const TextEditor = ({
         }
       }
 
-      // --- 2. STROKE SYNC ---
-      const attrStrokeColor = selectedElement.getAttribute('data-stroke-color');
-      const attrStrokeOpacity = selectedElement.getAttribute('data-stroke-opacity');
-
-      let newStrokeColor = '#000000';
-      let newStrokeRgb = { r: 0, g: 0, b: 0 };
-      let newStrokeHsv = { h: 0, s: 0, v: 0 };
-      let newStrokeOpacity = 100;
-
-      if (attrStrokeColor) {
-        newStrokeColor = attrStrokeColor;
-        const sRgb = hexToRgb(attrStrokeColor);
-        newStrokeRgb = sRgb;
-        newStrokeHsv = rgbToHsv(sRgb.r, sRgb.g, sRgb.b);
-      } else {
-        const sColorStyle = styles.webkitTextStrokeColor || styles.borderColor || 'rgb(0, 0, 0)';
-        let rs = 0, gs = 0, bs = 0;
-        const rgbaMatchS = sColorStyle.match(/rgba?\((\d+),\s*(\d+),\s*(\d+)/);
-        if (rgbaMatchS) {
-          rs = parseInt(rgbaMatchS[1]); gs = parseInt(rgbaMatchS[2]); bs = parseInt(rgbaMatchS[3]);
-        }
-        newStrokeColor = rgbToHex(rs, gs, bs);
-        newStrokeRgb = { r: rs, g: gs, b: bs };
-        newStrokeHsv = rgbToHsv(rs, gs, bs);
-      }
-
-      if (attrStrokeOpacity) {
-        newStrokeOpacity = parseInt(attrStrokeOpacity);
-      } else {
-        const sColorStyle = styles.webkitTextStrokeColor || styles.borderColor || 'rgb(0, 0, 0)';
-        if (sColorStyle !== 'transparent' && sColorStyle !== 'rgba(0, 0, 0, 0)') {
-          const rgbaMatchS = sColorStyle.match(/rgba?\(\d+,\s*\d+,\s*\d+,\s*([\d.]+)\)/);
-          const as = rgbaMatchS ? parseFloat(rgbaMatchS[1]) : 1;
-          newStrokeOpacity = Math.round(as * 100);
-        }
-      }
-
-      // --- 3. ADVANCED STROKE PROPERTIES ---
+      // --- 2. STROKE PROPERTIES ---
       const hasSvgBg = bgStyle && bgStyle.includes('data:image/svg+xml');
       const attrStrokeType = selectedElement.getAttribute('data-stroke-type');
       const newStrokeType = attrStrokeType || (hasSvgBg ? 'dashed' : 'solid');
@@ -837,6 +898,51 @@ const TextEditor = ({
       const newDashGap = parseInt(selectedElement.getAttribute('data-dash-gap')) || 4;
       const newIsRoundCorners = selectedElement.getAttribute('data-round-corners') === 'true';
 
+      const attrStrokeColor = selectedElement.getAttribute('data-stroke-color');
+      const attrStrokeOpacity = selectedElement.getAttribute('data-stroke-opacity');
+      const attrStrokeFillType = selectedElement.getAttribute('data-stroke-fill-type');
+      const attrStrokeGradientType = selectedElement.getAttribute('data-stroke-gradient-type');
+
+      let newStrokeColor = '#';
+      let newStrokeRgb = { r: 0, g: 0, b: 0 };
+      let newStrokeHsv = { h: 0, s: 0, v: 0 };
+      let newStrokeOpacity = 100;
+      let newStrokeFillType = attrStrokeFillType || 'solid';
+      let newStrokeGradientType = attrStrokeGradientType || 'Linear';
+
+      if (attrStrokeColor && attrStrokeColor !== '#' && attrStrokeColor !== 'none') {
+        newStrokeColor = attrStrokeColor;
+        const sRgb = hexToRgb(attrStrokeColor);
+        newStrokeRgb = sRgb;
+        newStrokeHsv = rgbToHsv(sRgb.r, sRgb.g, sRgb.b);
+      } else if (newBorderThickness > 0) {
+        const sColorStyle = styles.webkitTextStrokeColor || styles.borderColor || 'rgb(0, 0, 0)';
+        if (sColorStyle === 'transparent' || sColorStyle === 'rgba(0, 0, 0, 0)') {
+          newStrokeColor = '#';
+          newBorderThickness = 0;
+        } else {
+          let rs = 0, gs = 0, bs = 0;
+          const rgbaMatchS = sColorStyle.match(/rgba?\((\d+),\s*(\d+),\s*(\d+)/);
+          if (rgbaMatchS) {
+            rs = parseInt(rgbaMatchS[1]); gs = parseInt(rgbaMatchS[2]); bs = parseInt(rgbaMatchS[3]);
+          }
+          newStrokeColor = rgbToHex(rs, gs, bs);
+          newStrokeRgb = { r: rs, g: gs, b: bs };
+          newStrokeHsv = rgbToHsv(rs, gs, bs);
+        }
+      }
+
+      if (attrStrokeOpacity) {
+        newStrokeOpacity = parseInt(attrStrokeOpacity);
+      } else if (newBorderThickness > 0) {
+        const sColorStyle = styles.webkitTextStrokeColor || styles.borderColor || 'rgb(0, 0, 0)';
+        if (sColorStyle !== 'transparent' && sColorStyle !== 'rgba(0, 0, 0, 0)') {
+          const rgbaMatchS = sColorStyle.match(/rgba?\(\d+,\s*\d+,\s*\d+,\s*([\d.]+)\)/);
+          const as = rgbaMatchS ? parseFloat(rgbaMatchS[1]) : 1;
+          newStrokeOpacity = Math.round(as * 100);
+        }
+      }
+
       // Apply all state updates in one batch
       setHex(newHex);
       setInitialColor(newHex);
@@ -853,6 +959,8 @@ const TextEditor = ({
       setStrokeOpacity(newStrokeOpacity);
       setStrokeType(newStrokeType);
       setStrokePosition(newStrokePosition);
+      setStrokeFillType(newStrokeFillType);
+      setStrokeGradientType(newStrokeGradientType);
       setBorderThickness(newBorderThickness);
       setDashLength(newDashLength);
       setDashGap(newDashGap);
@@ -896,6 +1004,9 @@ const TextEditor = ({
     gradientType,
     strokeColor,
     strokeOpacity,
+    strokeFillType,
+    strokeGradientType,
+    strokeGradientStops,
     strokeType,
     strokePosition,
     borderThickness,
@@ -922,9 +1033,9 @@ const TextEditor = ({
         if (activePanel === 'list' && listRef.current && !listRef.current.contains(event.target) && !event.target.closest('.list-trigger')) setActivePanel(null);
       }
       if (fillTypeRef.current && !fillTypeRef.current.contains(event.target)) setShowFillTypeDropdown(false);
-      if (fillPickerRef.current && !fillPickerRef.current.contains(event.target) && !event.target.closest('.fill-picker-trigger')) setShowFillPicker(false);
-      if (strokePickerRef.current && !strokePickerRef.current.contains(event.target) && !event.target.closest('.stroke-picker-trigger')) setShowStrokePicker(false);
-      if (gradientStopPickerRef.current && !gradientStopPickerRef.current.contains(event.target)) setEditingGradientStopIndex(null);
+      if (fillPickerRef.current && !fillPickerRef.current.contains(event.target) && !event.target.closest('.fill-picker-trigger') && !event.target.closest('.color-picker-container')) setShowFillPicker(false);
+      if (strokePickerRef.current && !strokePickerRef.current.contains(event.target) && !event.target.closest('.stroke-picker-trigger') && !event.target.closest('.color-picker-container')) setShowStrokePicker(false);
+      if (gradientStopPickerRef.current && !gradientStopPickerRef.current.contains(event.target) && !event.target.closest('.color-picker-container')) setEditingGradientStopIndex(null);
       if (event.target.closest('.gradient-type-trigger') === null) setShowGradientTypeDropdown(false);
     };
     document.addEventListener('mousedown', handleClickOutside);
@@ -1031,147 +1142,346 @@ const TextEditor = ({
         </div>
       )}
 
-      {/* SIMPLE STROKE COLOR PICKER */}
-      <div ref={strokePickerRef} className={`fixed top-1/2 -translate-y-1/2 right-[22.9vw] w-[16.7vw] bg-white border border-gray-200 rounded-[1vw] shadow-xl transition-all duration-300 z-[300] overflow-hidden ${showStrokePicker ? 'opacity-100 scale-100 pointer-events-auto' : 'opacity-0 scale-95 pointer-events-none'}`}>
-        <div className="p-[1vw]">
-          <div className="grid grid-cols-6 gap-[0.5vw]">
-            {[
-              '#FFFFFF', '#000000', '#FF0000', '#FFA500', '#8B4513', '#FFFF00',
-              '#00FF00', '#808000', '#006400', '#00FFFF', '#008080', '#008B8B',
-              '#E6E6FA', '#0000FF', '#0000CD', '#000080', '#EE82EE', '#D8BFD8',
-              '#FF00FF', '#FF1493', '#808080', '#D3D3D3', '#F5F5F5', '#696969'
-            ].map((color) => (
+      {/* STROKE COLOR PICKER */}
+      <div ref={strokePickerRef} className={`fixed top-1/2 -translate-y-1/2 right-[22.2vw] w-[19.4vw] bg-white rounded-2xl shadow-[0_10px_40px_-10px_rgba(0,0,0,0.2)] transition-all duration-300 z-[300] overflow-hidden flex flex-col max-h-[90vh] ${showStrokePicker ? 'opacity-100 scale-100 pointer-events-auto' : 'opacity-0 scale-95 pointer-events-none'}`}>
+        
+        {/* Header */}
+        <div className="flex items-center justify-between p-4 border-b border-gray-50 bg-white">
+          <div className="flex items-center gap-2">
+            <div className="relative">
               <button
-                key={color}
-                onClick={() => updateStrokeColorFromHex(color)}
-                className="w-[2vw] h-[2vw] rounded-[0.25vw] border border-gray-300 hover:scale-110 transition-transform cursor-pointer"
-                style={{ backgroundColor: color }}
-                title={color}
-              />
-            ))}
+                onClick={() => setShowStrokeFillTypeDropdown(!showStrokeFillTypeDropdown)}
+                className="flex items-center gap-2 px-3 py-1.5 rounded-lg border border-gray-200 text-xs font-bold text-gray-700 hover:bg-gray-50 transition-all bg-white shadow-sm min-w-[80px] justify-between"
+              >
+                <span className="capitalize">{strokeFillType}</span>
+                <ChevronDown size={14} className={`text-gray-400 transition-transform ${showStrokeFillTypeDropdown ? 'rotate-180' : ''}`} />
+              </button>
+              {showStrokeFillTypeDropdown && (
+                <div className="absolute top-full left-0 mt-1 w-32 bg-white border border-gray-200 rounded-lg shadow-xl z-[301] overflow-hidden py-1 animate-in fade-in zoom-in-95 duration-100">
+                  <button onClick={() => updateStrokeFillType('solid')} className="w-full text-left px-4 py-2 text-xs font-bold text-gray-700 hover:bg-indigo-50 hover:text-indigo-600 transition-colors">Solid</button>
+                  <button onClick={() => updateStrokeFillType('gradient')} className="w-full text-left px-4 py-2 text-xs font-bold text-gray-700 hover:bg-indigo-50 hover:text-indigo-600 transition-colors">Gradient</button>
+                </div>
+              )}
+            </div>
+
+            {strokeFillType === 'gradient' && (
+              <div className="relative">
+                <button
+                  onClick={() => setShowStrokeGradientTypeDropdown(!showStrokeGradientTypeDropdown)}
+                  className="flex items-center gap-2 px-3 py-1.5 rounded-xl border border-gray-200 text-xs font-bold text-gray-700 hover:bg-gray-50 transition-all bg-white shadow-sm min-w-[80px] justify-between"
+                >
+                  {strokeGradientType}
+                  <ChevronDown size={14} className={`text-gray-400 transition-transform ${showStrokeGradientTypeDropdown ? 'rotate-180' : ''}`} />
+                </button>
+                {showStrokeGradientTypeDropdown && (
+                  <div className="absolute top-full left-0 mt-1 w-32 bg-white border border-gray-200 rounded-lg shadow-xl z-[301] overflow-hidden py-1 animate-in fade-in zoom-in-95 duration-100">
+                    <button onClick={() => { setStrokeGradientType('Linear'); applyStrokeGradient(strokeGradientStops, 'Linear'); setShowStrokeGradientTypeDropdown(false); }} className="w-full text-left px-4 py-2 text-xs font-bold text-gray-700 hover:bg-indigo-50 hover:text-indigo-600 transition-colors">Linear</button>
+                    <button onClick={() => { setStrokeGradientType('Radial'); applyStrokeGradient(strokeGradientStops, 'Radial'); setShowStrokeGradientTypeDropdown(false); }} className="w-full text-left px-4 py-2 text-xs font-bold text-gray-700 hover:bg-indigo-50 hover:text-indigo-600 transition-colors">Radial</button>
+                  </div>
+                )}
+              </div>
+            )}
           </div>
+
+          <div className="flex items-center gap-2">
+            <button 
+              onClick={() => {
+                setStrokeColor('#000000');
+                if (selectedElement) {
+                   applyDesign();
+                }
+              }}
+              className="p-1.5 rounded-lg text-gray-400 hover:bg-gray-50 hover:text-indigo-600 transition-all"
+              title="Reset Color"
+            >
+              <RotateCcw size={16} />
+            </button>
+            <button 
+              onClick={() => {
+                setShowStrokePicker(false);
+                setShowDetailedStrokeControls(false);
+              }}
+              className="p-1.5 rounded-lg text-gray-400 hover:bg-gray-50 hover:text-gray-600 transition-all"
+            >
+              <X size={18} />
+            </button>
+          </div>
+        </div>
+
+        <div className="flex-grow overflow-y-auto custom-scrollbar">
+          {strokeFillType === 'solid' ? (
+            <div className="flex flex-col h-full">
+              {/* Popover for Customize Colors */}
+              {showDetailedStrokeControls && createPortal(
+                <>
+                  <div 
+                    className="fixed inset-0 z-[299] bg-transparent" 
+                    onClick={() => setShowDetailedStrokeControls(false)}
+                  ></div>
+                  <ColorPicker 
+                    className="fixed z-[300] w-[260px] color-picker-container"
+                    style={{ 
+                      top: '50%',
+                      right: '6.5vw', 
+                      transform: 'translateY(-50%)'
+                    }}
+                    color={strokeColor}
+                    onChange={updateStrokeColorFromHex}
+                    opacity={strokeOpacity}
+                    onOpacityChange={setStrokeOpacity}
+                    onClose={() => setShowDetailedStrokeControls(false)}
+                  />
+                </>,
+                document.body
+              )}
+
+              <div className="p-4 space-y-6">
+                {/* Colors on this page */}
+                <div className="space-y-3">
+                  <div className="flex items-center gap-3">
+                    <span className="text-[13px] font-semibold text-gray-800 whitespace-nowrap">Colors on this page</span>
+                    <div className="h-[1px] flex-grow bg-gray-100"></div>
+                  </div>
+                  <div className="grid grid-cols-6 gap-2">
+                    {colorsOnPage.map((c, i) => (
+                      <div
+                        key={i}
+                        style={{ backgroundColor: c }}
+                        onClick={() => updateStrokeColorFromHex(c)}
+                        className="w-full aspect-square rounded-lg border border-gray-100 cursor-pointer hover:scale-110 transition-transform shadow-sm active:scale-95"
+                      ></div>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Solid Colors */}
+                <div className="space-y-3">
+                  <div className="flex items-center gap-3">
+                    <span className="text-[13px] font-semibold text-gray-800 whitespace-nowrap">Solid Colors</span>
+                    <div className="h-[1px] flex-grow bg-gray-100"></div>
+                  </div>
+                  <div className="grid grid-cols-6 gap-2">
+                    <div 
+                      onClick={() => updateStrokeColorFromHex('#')}
+                      className="w-full aspect-square rounded-lg border border-gray-200 cursor-pointer hover:scale-110 transition-transform shadow-sm active:scale-95 relative bg-white overflow-hidden"
+                      title="None"
+                    >
+                      <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[140%] h-[1.5px] bg-red-500 rotate-45"></div>
+                    </div>
+                    {[
+                      '#FFFFFF', '#000000', '#FF0000', '#FF9500', '#BF2121', '#FFFF00',
+                      '#ADFF2F', '#228B22', '#008080', '#40E0D0', '#00CED1', '#008B8B',
+                      '#ADD8E6', '#87CEEB', '#0000FF', '#000080', '#E6E6FA', '#FF00FF',
+                      '#A9A9A9', '#D3D3D3', '#F5F5F5', '#333333'
+                    ].map((c, i) => (
+                      <div
+                        key={i}
+                        style={{ backgroundColor: c }}
+                        onClick={() => {
+                          updateStrokeColorFromHex(c);
+                          setStrokeOpacity(100);
+                        }}
+                        className="w-full aspect-square rounded-lg border border-gray-100 cursor-pointer hover:scale-110 transition-transform shadow-sm active:scale-95"
+                      ></div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+
+              {/* Footer Toggle */}
+              <div className="mt-auto p-3 border-t border-gray-100">
+                <button
+                  onClick={() => setShowDetailedStrokeControls(!showDetailedStrokeControls)}
+                  className="flex items-center gap-3 px-4 py-2.5 hover:bg-gray-50 transition-all rounded-xl w-full group"
+                >
+                  <div className="w-8 h-8 rounded-full shadow-md group-hover:scale-110 transition-transform" style={{ background: 'conic-gradient(red, yellow, lime, aqua, blue, magenta, red)' }}></div>
+                  <span className="text-sm font-bold text-gray-600">Customize Colors</span>
+                </button>
+              </div>
+            </div>
+          ) : (
+            /* Gradient Content */
+            <div className="p-4 space-y-6">
+              {/* Gradient Colors */}
+              <div className="space-y-3">
+                <div className="flex items-center gap-3">
+                  <span className="text-[13px] font-bold text-gray-800 whitespace-nowrap">Gradient Colors</span>
+                  <div className="h-[1px] flex-grow bg-gray-100"></div>
+                </div>
+                <div className="grid grid-cols-6 gap-2">
+                  {[
+                    'linear-gradient(to bottom, #ff5f6d, #ffc371)',
+                    'linear-gradient(to bottom, #6366f1, #a855f7)',
+                    'linear-gradient(to bottom, #2dd4bf, #22d3ee)',
+                    'linear-gradient(to bottom, #84cc16, #4ade80)',
+                    'linear-gradient(to bottom, #fde047, #fef08a)',
+                    'linear-gradient(to bottom, #ec4899, #f472b6)',
+                    'linear-gradient(to bottom, #a5b4fc, #e0e7ff)',
+                    'linear-gradient(to bottom, #d946ef, #f0abfc)',
+                    'linear-gradient(to bottom, #06b6d4, #67e8f9)',
+                    'linear-gradient(to bottom, #9ca3af, #d1d5db)',
+                    'linear-gradient(to bottom, #a48d00, #71aa13)',
+                    'linear-gradient(to bottom, #db2777, #f43f5e)'
+                  ].map((g, i) => (
+                    <div
+                      key={i}
+                      style={{ background: g }}
+                      className="w-full aspect-square rounded-lg border border-gray-100 cursor-pointer hover:scale-110 transition-transform shadow-sm active:scale-95"
+                      onClick={() => {
+                        const matches = g.match(/#[0-9a-fA-F]{6}/g);
+                        if (matches && matches.length >= 2) {
+                          const newStops = [
+                            { color: matches[0], offset: 0, opacity: 100 },
+                            { color: matches[1], offset: 100, opacity: 100 }
+                          ];
+                          setStrokeGradientStops(newStops);
+                          applyStrokeGradient(newStops);
+                        }
+                      }}
+                    ></div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Customize Section */}
+              <div className="space-y-5">
+                <div className="flex items-center justify-between gap-3">
+                  <div className="flex items-center gap-2 flex-grow">
+                    <span className="text-[13px] font-bold text-gray-800">Customize</span>
+                    <div className="h-[1px] flex-grow bg-gray-100"></div>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <button 
+                      onClick={() => {
+                        const initialStops = [
+                          { color: '#6366f1', offset: 0, opacity: 100 },
+                          { color: '#a855f7', offset: 100, opacity: 100 }
+                        ];
+                        setStrokeGradientStops(initialStops);
+                        applyStrokeGradient(initialStops);
+                      }} 
+                      className="w-8 h-8 rounded-xl border border-gray-200 flex items-center justify-center text-gray-500 hover:bg-indigo-50 hover:text-indigo-600 shadow-sm transition-all"
+                    >
+                      <RotateCcw size={15} />
+                    </button>
+                    <button 
+                      onClick={reverseStrokeGradient} 
+                      className="w-8 h-8 rounded-xl border border-gray-200 flex items-center justify-center text-gray-500 hover:bg-indigo-50 hover:text-indigo-600 shadow-sm transition-all"
+                    >
+                      <ArrowLeftRight size={15} />
+                    </button>
+                  </div>
+                </div>
+
+                {/* Interactive Gradient Bar */}
+                <div className="relative pt-6 pb-2">
+                  <div className="absolute top-0 left-0 w-full h-8 flex items-center pointer-events-none px-1">
+                    {strokeGradientStops.map((stop, idx) => (
+                      <div
+                        key={idx}
+                        className="absolute -translate-x-1/2 flex flex-col items-center group pointer-events-auto cursor-pointer"
+                        style={{ left: `${stop.offset}%` }}
+                        onClick={() => openGradientStopPicker(idx, 'stroke')}
+                      >
+                        <div className="relative">
+                          <div className="w-4 h-5 bg-white border border-gray-200 rounded-sm shadow-md flex items-center justify-center">
+                             <div className="w-3 h-3 rounded-[2px]" style={{ backgroundColor: stop.color }}></div>
+                          </div>
+                          <div className="absolute top-[100%] left-1/2 -translate-x-1/2 w-[2px] h-2 bg-white shadow-sm"></div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                  <div
+                    className="w-full h-6 rounded-lg shadow-inner border border-gray-100 cursor-copy relative overflow-hidden"
+                    onClick={addStrokeGradientStop}
+                    style={{
+                      background: `linear-gradient(to right, ${strokeGradientStops.map(s => {
+                        const rgb = hexToRgb(s.color);
+                        const opacity = (s.opacity || 100) / 100;
+                        return `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, ${opacity}) ${s.offset}%`;
+                      }).join(', ')})`
+                    }}
+                  ></div>
+                </div>
+
+                {/* Stop Detail Row List */}
+                <div className="space-y-2 max-h-[160px] overflow-y-auto pr-1 custom-scrollbar">
+                  {strokeGradientStops.map((stop, idx) => (
+                    <div key={idx} className="flex items-center gap-2 group">
+                      <div className="flex-grow flex items-center gap-3 px-3 py-2 bg-white border border-gray-200 rounded-xl shadow-sm hover:border-indigo-300 transition-all">
+                        <div
+                          className="w-6 h-6 rounded-lg shadow-sm border border-gray-100 flex-shrink-0 cursor-pointer hover:scale-110 transition-transform"
+                          style={{ backgroundColor: stop.color }}
+                          onClick={() => openGradientStopPicker(idx, 'stroke')}
+                        ></div>
+                        <input
+                          type="text"
+                          value={stop.color.toUpperCase()}
+                          onChange={(e) => updateStrokeGradientStop(idx, { color: e.target.value })}
+                          className="text-xs font-bold text-gray-700 flex-grow uppercase font-mono tracking-tight bg-transparent outline-none"
+                          maxLength={7}
+                        />
+                        <span className="text-[10px] font-bold text-gray-400 w-8 text-right">{stop.opacity || 100}%</span>
+                      </div>
+                      <button
+                        onClick={() => removeStrokeGradientStop(idx)}
+                        disabled={strokeGradientStops.length <= 2}
+                        className={`w-10 h-10 rounded-xl border border-gray-100 flex items-center justify-center transition-all shadow-sm ${strokeGradientStops.length <= 2 ? 'text-gray-200 cursor-not-allowed bg-gray-50' : 'text-gray-400 hover:bg-red-50 hover:text-red-500'}`}
+                      >
+                        <Minus size={16} />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          )}
         </div>
       </div>
 
       {/* GRADIENT STOP COLOR PICKER */}
-      <div ref={gradientStopPickerRef} className={`fixed top-[50%] -translate-y-1/2 right-[3.5vw] w-[17.4vw] bg-white rounded-[1vw] shadow-[0_10px_40px_-10px_rgba(0,0,0,0.3)] border-2 border-blue-500 transition-all duration-300 z-[300] overflow-hidden ${editingGradientStopIndex !== null ? 'opacity-100 scale-100 pointer-events-auto' : 'opacity-0 scale-95 pointer-events-none'}`}>
-        {/* Close Icon */}
-        <button
-          onClick={() => setEditingGradientStopIndex(null)}
-          className="absolute top-[0.5vw] right-[0.5vw] w-[1.75vw] h-[1.75vw] flex items-center justify-center rounded-full bg-gray-100 hover:bg-gray-200 text-gray-600 hover:text-gray-800 transition-colors z-10"
-          title="Close"
-        >
-          <X size={16} />
-        </button>
-
-        <div className="p-[1.25vw] space-y-[1vw]">
-          {/* Color Picker: Saturation/Value + Hue Slider */}
-          <div className="flex gap-3">
-            {/* Saturation/Value Picker */}
-            <div
-              className="w-[13.9vw] h-[13.9vw] rounded-lg relative cursor-crosshair overflow-hidden border border-gray-200"
-              style={{ backgroundColor: `hsl(${gradientStopHsv.h}, 100%, 50%)` }}
-              onMouseDown={(e) => {
-                const handleMove = (moveEvent) => {
-                  const rect = e.currentTarget.getBoundingClientRect();
-                  const x = Math.max(0, Math.min(1, (moveEvent.clientX - rect.left) / rect.width));
-                  const y = Math.max(0, Math.min(1, (moveEvent.clientY - rect.top) / rect.height));
-                  updateGradientStopColorFromHsv({ ...gradientStopHsv, s: x, v: 1 - y });
-                };
-                handleMove(e);
-                window.addEventListener('mousemove', handleMove);
-                window.addEventListener('mouseup', () => window.removeEventListener('mousemove', handleMove), { once: true });
-              }}
-            >
-              <div className="absolute inset-0 bg-gradient-to-r from-white to-transparent"></div>
-              <div className="absolute inset-0 bg-gradient-to-t from-black to-transparent"></div>
-              <div
-                className="absolute w-4 h-4 border-2 border-white rounded-full shadow-lg -translate-x-1/2 -translate-y-1/2 pointer-events-none"
-                style={{ left: `${gradientStopHsv.s * 100}%`, top: `${(1 - gradientStopHsv.v) * 100}%` }}
-              ></div>
-            </div>
-
-            {/* Vertical Hue Slider */}
-            <div
-              className="w-[2.8vw] h-[13.9vw] rounded-lg relative cursor-pointer border border-gray-200"
-              style={{ background: 'linear-gradient(to bottom, #ff0000 0%, #ffff00 17%, #00ff00 33%, #00ffff 50%, #0000ff 67%, #ff00ff 83%, #ff0000 100%)' }}
-              onMouseDown={(e) => {
-                const handleMove = (moveEvent) => {
-                  const rect = e.currentTarget.getBoundingClientRect();
-                  const y = Math.max(0, Math.min(1, (moveEvent.clientY - rect.top) / rect.height));
-                  updateGradientStopColorFromHsv({ ...gradientStopHsv, h: y * 360 });
-                };
-                handleMove(e);
-                window.addEventListener('mousemove', handleMove);
-                window.addEventListener('mouseup', () => window.removeEventListener('mousemove', handleMove), { once: true });
-              }}
-            >
-              <div
-                className="absolute left-1/2 -translate-x-1/2 w-full h-2 border-2 border-white rounded-sm shadow-md"
-                style={{ top: `${(gradientStopHsv.h / 360) * 100}%` }}
-              ></div>
-            </div>
-          </div>
-
-          {/* Color Code Input */}
-          <div className="flex items-center gap-[0.25vw] bg-white">
-            <span className="text-[0.85vw] font-medium text-gray-800 whitespace-nowrap">Color Code :</span>
-            <div className="flex-grow flex items-center gap-[0.5vw] px-[0.5vw] h-[2.5vw] border border-gray-300 rounded-[0.5vw] bg-white mr-[0.25vw]">
-              <input
-                type="text"
-                value={gradientStopHex}
-                onChange={(e) => updateGradientStopColorFromHex(e.target.value)}
-                className="flex-grow text-[0.85vw] font-mono text-gray-700 outline-none uppercase w-full"
-                maxLength={7}
-              />
-              <svg className="w-[1vw] h-[1vw] text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
-              </svg>
-            </div>
-          </div>
-
-          {/* Opacity Slider */}
-          <div className="flex items-center gap-2">
-            <span className="text-sm font-medium text-gray-800 whitespace-nowrap">Opacity :</span>
-            <div className="flex-grow">
-              <input
-                type="range"
-                min="0"
-                max="100"
-                value={editingGradientStopIndex !== null ? gradientStops[editingGradientStopIndex]?.opacity || 100 : 100}
-                onChange={(e) => {
-                  if (editingGradientStopIndex !== null) {
-                    updateGradientStop(editingGradientStopIndex, { opacity: parseInt(e.target.value) });
-                  }
-                }}
-                className="w-full h-2 rounded-lg appearance-none cursor-pointer"
-                style={{
-                  background: `linear-gradient(to right, transparent 0%, ${gradientStopHex} 100%)`,
-                  accentColor: '#6366f1'
-                }}
-              />
-            </div>
-          </div>
-        </div>
-      </div>
+      {editingGradientStopIndex !== null && createPortal(
+        <>
+          <div 
+            className="fixed inset-0 z-[299] bg-transparent" 
+            onClick={() => setEditingGradientStopIndex(null)}
+          ></div>
+          <ColorPicker 
+            className="fixed z-[300] w-[260px] color-picker-container"
+            style={{ 
+              top: '50%',
+              right: '38.5vw', // Positioned next to the main editor
+              transform: 'translateY(-50%)'
+            }}
+            color={gradientMode === 'fill' ? (gradientStops[editingGradientStopIndex]?.color || '#000000') : (strokeGradientStops[editingGradientStopIndex]?.color || '#000000')}
+            onChange={(newColor) => gradientMode === 'fill' ? updateGradientStop(editingGradientStopIndex, { color: newColor }) : updateStrokeGradientStop(editingGradientStopIndex, { color: newColor })}
+            opacity={gradientMode === 'fill' ? (gradientStops[editingGradientStopIndex]?.opacity || 100) : (strokeGradientStops[editingGradientStopIndex]?.opacity || 100)}
+            onOpacityChange={(newOpacity) => gradientMode === 'fill' ? updateGradientStop(editingGradientStopIndex, { opacity: newOpacity }) : updateStrokeGradientStop(editingGradientStopIndex, { opacity: newOpacity })}
+            onClose={() => setEditingGradientStopIndex(null)}
+          />
+        </>,
+        document.body
+      )}
 
       {/* COLOR FILL CONTAINER (Only for Fill, not Stroke) */}
-      <div ref={fillPickerRef} className={`fixed top-1/2 -translate-y-1/2 right-[22.2vw] w-[19.4vw] bg-white rounded-3xl shadow-[0_10px_40px_-10px_rgba(0,0,0,0.2)] transition-all duration-300 z-[300] overflow-hidden flex flex-col max-h-[90vh] ${showFillPicker ? 'opacity-100 scale-100 pointer-events-auto' : 'opacity-0 scale-95 pointer-events-none'}`}>
+      <div ref={fillPickerRef} className={`fixed top-1/2 -translate-y-1/2 right-[22.2vw] w-[19.4vw] bg-white rounded-2xl shadow-[0_10px_40px_-10px_rgba(0,0,0,0.2)] transition-all duration-300 z-[300] overflow-hidden flex flex-col max-h-[90vh] ${showFillPicker ? 'opacity-100 scale-100 pointer-events-auto' : 'opacity-0 scale-95 pointer-events-none'}`}>
 
         {/* Header */}
-        <div className="flex items-center justify-between p-4 pb-0">
+        <div className="flex items-center justify-between p-4 border-b border-gray-50 bg-white">
           <div className="flex items-center gap-2">
             <div className="relative" ref={fillTypeRef}>
               <button
                 onClick={() => setShowFillTypeDropdown(!showFillTypeDropdown)}
-                className="flex items-center gap-2 px-3 py-1.5 rounded-xl border border-gray-200 text-xs font-medium text-gray-700 hover:bg-gray-50 transition-colors bg-white min-w-[6.9vw] justify-between shadow-sm"
+                className="flex items-center gap-2 px-3 py-1.5 rounded-lg border border-gray-200 text-xs font-bold text-gray-700 hover:bg-gray-50 transition-all bg-white shadow-sm min-w-[80px] justify-between"
               >
-                <span className="capitalize">{fillType}</span> <ChevronDown size={14} className="text-gray-400" />
+                <span className="capitalize">{fillType}</span>
+                <ChevronDown size={14} className={`text-gray-400 transition-transform ${showFillTypeDropdown ? 'rotate-180' : ''}`} />
               </button>
               {showFillTypeDropdown && (
-                <div className="absolute top-full left-0 mt-1 w-[8.3vw] bg-white border border-gray-200 rounded-xl shadow-xl z-[300] overflow-hidden py-1">
-                  <button onClick={() => updateFillType('solid')} className="w-full text-left px-4 py-2 text-xs font-medium text-gray-700 hover:bg-gray-50">Solid</button>
-                  <button onClick={() => updateFillType('gradient')} className="w-full text-left px-4 py-2 text-xs font-medium text-gray-700 hover:bg-gray-50">Gradient</button>
+                <div className="absolute top-full left-0 mt-1 w-32 bg-white border border-gray-200 rounded-lg shadow-xl z-[301] overflow-hidden py-1 animate-in fade-in zoom-in-95 duration-100">
+                  <button onClick={() => updateFillType('solid')} className="w-full text-left px-4 py-2 text-xs font-bold text-gray-700 hover:bg-indigo-50 hover:text-indigo-600 transition-colors">Solid</button>
+                  <button onClick={() => updateFillType('gradient')} className="w-full text-left px-4 py-2 text-xs font-bold text-gray-700 hover:bg-indigo-50 hover:text-indigo-600 transition-colors">Gradient</button>
                 </div>
               )}
             </div>
@@ -1180,295 +1490,273 @@ const TextEditor = ({
               <div className="relative gradient-type-trigger">
                 <button
                   onClick={() => setShowGradientTypeDropdown(!showGradientTypeDropdown)}
-                  className="flex items-center gap-2 px-3 py-1.5 rounded-xl border border-gray-200 text-xs font-medium text-gray-700 hover:bg-gray-50 transition-colors bg-white min-w-[6.9vw] justify-between shadow-sm"
+                  className="flex items-center gap-2 px-3 py-1.5 rounded-lg border border-gray-200 text-xs font-bold text-gray-700 hover:bg-gray-50 transition-all bg-white shadow-sm min-w-[80px] justify-between"
                 >
-                  {gradientType} <ChevronDown size={14} className="text-gray-400" />
+                  {gradientType}
+                  <ChevronDown size={14} className={`text-gray-400 transition-transform ${showGradientTypeDropdown ? 'rotate-180' : ''}`} />
                 </button>
                 {showGradientTypeDropdown && (
-                  <div className="absolute top-full right-0 mt-1 w-[8.3vw] bg-white border border-gray-200 rounded-xl shadow-xl z-[300] overflow-hidden py-1">
-                    <button onClick={() => { setGradientType('Linear'); applyGradient(gradientStops, 'Linear'); setShowGradientTypeDropdown(false); }} className="w-full text-left px-4 py-2 text-xs font-medium text-gray-700 hover:bg-gray-50">Linear</button>
-                    <button onClick={() => { setGradientType('Radial'); applyGradient(gradientStops, 'Radial'); setShowGradientTypeDropdown(false); }} className="w-full text-left px-4 py-2 text-xs font-medium text-gray-700 hover:bg-gray-50">Radial</button>
+                  <div className="absolute top-full left-0 mt-1 w-32 bg-white border border-gray-200 rounded-lg shadow-xl z-[301] overflow-hidden py-1 animate-in fade-in zoom-in-95 duration-100">
+                    <button onClick={() => { setGradientType('Linear'); applyGradient(gradientStops, 'Linear'); setShowGradientTypeDropdown(false); }} className="w-full text-left px-4 py-2 text-xs font-bold text-gray-700 hover:bg-indigo-50 hover:text-indigo-600 transition-colors">Linear</button>
+                    <button onClick={() => { setGradientType('Radial'); applyGradient(gradientStops, 'Radial'); setShowGradientTypeDropdown(false); }} className="w-full text-left px-4 py-2 text-xs font-bold text-gray-700 hover:bg-indigo-50 hover:text-indigo-600 transition-colors">Radial</button>
                   </div>
                 )}
               </div>
             )}
           </div>
 
-          <div className="flex items-center gap-3 text-gray-400">
+          <div className="flex items-center gap-2">
             {fillType === 'solid' && (
-              <RotateCcw
-                size={16}
-                className="hover:text-indigo-500 cursor-pointer transition-colors"
+              <button 
                 onClick={resetColor}
-              />
+                className="p-1.5 rounded-lg text-gray-400 hover:bg-gray-50 hover:text-indigo-600 transition-all"
+                title="Reset Color"
+              >
+                <RotateCcw size={16} />
+              </button>
             )}
-            <X size={18} className="hover:text-gray-600 cursor-pointer transition-colors" onClick={() => setShowFillPicker(false)} />
+            <button 
+              onClick={() => {
+                setShowFillPicker(false);
+                setShowDetailedControls(false);
+              }}
+              className="p-1.5 rounded-lg text-gray-400 hover:bg-gray-50 hover:text-gray-600 transition-all"
+            >
+              <X size={18} />
+            </button>
           </div>
         </div>
 
-        {fillType === 'solid' ? (
-          <>
-            {/* Detailed Controls Container */}
-            <div className={`transition-all duration-300 ease-in-out overflow-hidden ${showDetailedControls ? 'max-h-[500px] opacity-100 mt-2' : 'max-h-0 opacity-0'}`}>
-              <div className="p-4 space-y-4">
-                {/* Saturation/Value Picker */}
-                <div
-                  className="w-full h-36 rounded-lg relative cursor-crosshair overflow-hidden"
-                  style={{ backgroundColor: `hsl(${hsv.h}, 100%, 50%)` }}
-                  onMouseDown={(e) => {
-                    const handleMove = (moveEvent) => {
-                      const rect = e.currentTarget.getBoundingClientRect();
-                      const x = Math.max(0, Math.min(1, (moveEvent.clientX - rect.left) / rect.width));
-                      const y = Math.max(0, Math.min(1, (moveEvent.clientY - rect.top) / rect.height));
-                      updateColorFromHsv({ ...hsv, s: x, v: 1 - y });
-                    };
-                    handleMove(e);
-                    window.addEventListener('mousemove', handleMove);
-                    window.addEventListener('mouseup', () => window.removeEventListener('mousemove', handleMove), { once: true });
-                  }}
+        <div className="flex-grow overflow-y-auto custom-scrollbar">
+          {fillType === 'solid' ? (
+            <div className="flex flex-col h-full">
+              {/* Popover for Customize Colors */}
+              {showDetailedControls && createPortal(
+                <>
+                  <div 
+                    className="fixed inset-0 z-[299] bg-transparent" 
+                    onClick={() => setShowDetailedControls(false)}
+                  ></div>
+                  <ColorPicker 
+                    className="fixed z-[300] w-[260px] color-picker-container"
+                    style={{ 
+                      top: '50%',
+                      right: '6.5vw', 
+                      transform: 'translateY(-50%)'
+                    }}
+                    color={hex}
+                    onChange={updateColorFromHex}
+                    opacity={fillOpacity}
+                    onOpacityChange={setFillOpacity}
+                    onClose={() => setShowDetailedControls(false)}
+                  />
+                </>,
+                document.body
+              )}
+
+              <div className="p-4 space-y-6">
+                {/* Colors on this page */}
+                <div className="space-y-3">
+                  <div className="flex items-center gap-3">
+                    <span className="text-[13px] font-semibold text-gray-800 whitespace-nowrap">Colors on this page</span>
+                    <div className="h-[1px] flex-grow bg-gray-100"></div>
+                  </div>
+                  <div className="grid grid-cols-6 gap-2">
+                    {colorsOnPage.map((c, i) => (
+                      <div
+                        key={i}
+                        style={{ backgroundColor: c }}
+                        onClick={() => updateColorFromHex(c)}
+                        className="w-full aspect-square rounded-lg border border-gray-100 cursor-pointer hover:scale-110 transition-transform shadow-sm active:scale-95"
+                      ></div>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Solid Colors */}
+                <div className="space-y-3">
+                  <div className="flex items-center gap-3">
+                    <span className="text-[13px] font-semibold text-gray-800 whitespace-nowrap">Solid Colors</span>
+                    <div className="h-[1px] flex-grow bg-gray-100"></div>
+                  </div>
+                  <div className="grid grid-cols-6 gap-2">
+                    <div 
+                      onClick={() => setHex('#')}
+                      className="w-full aspect-square rounded-lg border border-gray-200 cursor-pointer hover:scale-110 transition-transform shadow-sm active:scale-95 relative bg-white overflow-hidden"
+                      title="None"
+                    >
+                      <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[140%] h-[1.5px] bg-red-500 rotate-45"></div>
+                    </div>
+                    {[
+                      '#FFFFFF', '#000000', '#FF0000', '#FF9500', '#BF2121', '#FFFF00',
+                      '#ADFF2F', '#228B22', '#008080', '#40E0D0', '#00CED1', '#008B8B',
+                      '#ADD8E6', '#87CEEB', '#0000FF', '#000080', '#E6E6FA', '#FF00FF',
+                      '#A9A9A9', '#D3D3D3', '#F5F5F5', '#333333'
+                    ].map((c, i) => (
+                      <div
+                        key={i}
+                        style={{ backgroundColor: c }}
+                        onClick={() => {
+                          updateColorFromHex(c);
+                          setFillOpacity(100);
+                        }}
+                        className="w-full aspect-square rounded-lg border border-gray-100 cursor-pointer hover:scale-110 transition-transform shadow-sm active:scale-95"
+                      ></div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+
+              {/* Footer Toggle */}
+              <div className="mt-auto p-3 border-t border-gray-100">
+                <button
+                  onClick={() => setShowDetailedControls(!showDetailedControls)}
+                  className="flex items-center gap-3 px-4 py-2.5 hover:bg-gray-50 transition-all rounded-xl w-full group"
                 >
-                  <div className="absolute inset-0 bg-gradient-to-r from-white to-transparent"></div>
-                  <div className="absolute inset-0 bg-gradient-to-t from-black to-transparent"></div>
-                  <div
-                    className="absolute w-3 h-3 border-2 border-white rounded-full shadow-md -translate-x-1/2 -translate-y-1/2 pointer-events-none"
-                    style={{ left: `${hsv.s * 100}%`, top: `${(1 - hsv.v) * 100}%` }}
-                  ></div>
-                  <div className="absolute top-0 left-0 w-3 h-3 border-t-2 border-l-2 border-black rounded-tl-full"></div>
-                </div>
-
-                {/* Hue and Eyedropper row */}
+                  <div className="w-8 h-8 rounded-full shadow-md group-hover:scale-110 transition-transform" style={{ background: 'conic-gradient(red, yellow, lime, aqua, blue, magenta, red)' }}></div>
+                  <span className="text-sm font-bold text-gray-600">Customize Colors</span>
+                </button>
+              </div>
+            </div>
+          ) : (
+            /* Gradient Content */
+            <div className="p-4 space-y-6">
+              {/* Gradient Colors */}
+              <div className="space-y-3">
                 <div className="flex items-center gap-3">
-                  <Pipette size={18} className="text-gray-600 cursor-pointer hover:text-indigo-600 transition-colors" onClick={handleEyeDropper} />
-                  <div className="w-8 h-8 rounded-full border border-gray-100 shadow-sm" style={{ backgroundColor: hex }}></div>
-                  <div
-                    className="flex-grow h-3 rounded-full relative cursor-pointer"
-                    style={{ background: 'linear-gradient(to right, #ff0000 0%, #ffff00 17%, #00ff00 33%, #00ffff 50%, #0000ff 67%, #ff00ff 83%, #ff0000 100%)' }}
-                    onMouseDown={(e) => {
-                      const handleMove = (moveEvent) => {
-                        const rect = e.currentTarget.getBoundingClientRect();
-                        const x = Math.max(0, Math.min(1, (moveEvent.clientX - rect.left) / rect.width));
-                        updateColorFromHsv({ ...hsv, h: x * 360 });
-                      };
-                      handleMove(e);
-                      window.addEventListener('mousemove', handleMove);
-                      window.addEventListener('mouseup', () => window.removeEventListener('mousemove', handleMove), { once: true });
-                    }}
-                  >
-                    <div
-                      className="absolute top-1/2 -translate-y-1/2 w-4 h-4 bg-red-600 border border-white rounded-full shadow-md -translate-x-1/2"
-                      style={{ left: `${(hsv.h / 360) * 100}%` }}
-                    ></div>
-                  </div>
-                </div>
-
-                {/* RGB Inputs */}
-                <div className="grid grid-cols-3 gap-2">
-                  <div className="space-y-1 text-center">
-                    <div className="h-10 border border-gray-200 rounded flex items-center justify-center font-medium text-sm text-gray-700 bg-white shadow-sm">
-                      <input
-                        type="number"
-                        value={rgb.r}
-                        onChange={(e) => updateColorFromRgb({ ...rgb, r: Math.max(0, Math.min(255, parseInt(e.target.value) || 0)) })}
-                        className="w-full text-center outline-none"
-                      />
-                    </div>
-                    <div className="text-[11px] text-gray-500 font-medium">R</div>
-                  </div>
-                  <div className="space-y-1 text-center">
-                    <div className="h-10 border border-gray-200 rounded flex items-center justify-center font-medium text-sm text-gray-700 bg-white shadow-sm">
-                      <input
-                        type="number"
-                        value={rgb.g}
-                        onChange={(e) => updateColorFromRgb({ ...rgb, g: Math.max(0, Math.min(255, parseInt(e.target.value) || 0)) })}
-                        className="w-full text-center outline-none"
-                      />
-                    </div>
-                    <div className="text-[11px] text-gray-500 font-medium">G</div>
-                  </div>
-                  <div className="space-y-1 text-center flex flex-col">
-                    <div className="h-10 border border-gray-200 rounded flex items-center justify-center font-medium text-sm text-gray-700 bg-white relative shadow-sm">
-                      <input
-                        type="number"
-                        value={rgb.b}
-                        onChange={(e) => updateColorFromRgb({ ...rgb, b: Math.max(0, Math.min(255, parseInt(e.target.value) || 0)) })}
-                        className="w-full text-center outline-none"
-                      />
-                      <div className="absolute right-1 flex flex-col grayscale opacity-40">
-                        <ChevronUp size={10} />
-                        <ChevronDown size={10} />
-                      </div>
-                    </div>
-                    <div className="text-[11px] text-gray-500 font-medium">B</div>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            {/* Presets Grid */}
-            <div className="p-4 pt-2">
-              <div className="grid grid-cols-6 gap-2">
-                {[
-                  '#FFFFFF', '#000000', '#FF0000', '#FF9500', '#BF2121', '#FFFF00',
-                  '#ADFF2F', '#228B22', '#008080', '#40E0D0', '#00CED1', '#008B8B',
-                  '#ADD8E6', '#87CEEB', '#0000FF', '#000080', '#E6E6FA', '#FF00FF',
-                  '#A9A9A9', '#D3D3D3', '#F5F5F5', '#333333'
-                ].map((c, i) => (
-                  <div
-                    key={i}
-                    style={{ backgroundColor: c }}
-                    onClick={() => updateColorFromHex(c)}
-                    className="w-full aspect-square rounded-[10px] border border-gray-100 cursor-pointer hover:scale-105 active:scale-95 transition-transform shadow-sm"
-                  ></div>
-                ))}
-              </div>
-            </div>
-
-            {/* Footer Toggle */}
-            <div className="p-3 border-t border-gray-100 flex items-center justify-center">
-              <button
-                onClick={() => setShowDetailedControls(!showDetailedControls)}
-                className="flex items-center gap-3 px-4 py-2 hover:bg-gray-50 transition-colors rounded-xl w-full"
-              >
-                <div className="w-8 h-8 rounded-full shadow-sm" style={{ background: 'conic-gradient(red, yellow, lime, aqua, blue, magenta, red)' }}></div>
-                <span className="text-sm font-medium text-gray-600">Customize Colors</span>
-              </button>
-            </div>
-          </>
-        ) : (
-          /* Gradient Content */
-          <div className="p-4 space-y-6">
-            {/* Gradient Colors */}
-            <div className="space-y-3">
-              <div className="flex items-center gap-3">
-                <span className="text-[13px] font-bold text-gray-800 whitespace-nowrap">Gradient Colors</span>
-                <div className="h-[1px] flex-grow bg-gray-100"></div>
-              </div>
-              <div className="grid grid-cols-6 gap-2">
-                {[
-                  'linear-gradient(to bottom, #ff5f6d, #ffc371)', // Red-Orange
-                  'linear-gradient(to bottom, #6366f1, #a855f7)', // Blue-Purple
-                  'linear-gradient(to bottom, #2dd4bf, #22d3ee)', // Teal-Cyan
-                  'linear-gradient(to bottom, #84cc16, #4ade80)', // Green-LightGreen
-                  'linear-gradient(to bottom, #fde047, #fef08a)', // Yellow-Cream
-                  'linear-gradient(to bottom, #ec4899, #f472b6)', // Pink-Magenta
-                  'linear-gradient(to bottom, #a5b4fc, #e0e7ff)', // Purple-White
-                  'linear-gradient(to bottom, #d946ef, #f0abfc)', // DarkPink-LightPink
-                  'linear-gradient(to bottom, #06b6d4, #67e8f9)', // Blue-Cyan
-                  'linear-gradient(to bottom, #9ca3af, #d1d5db)', // Grey-Grey
-                  'linear-gradient(to bottom, #a48d00, #71aa13)', // Olive-Green
-                  'linear-gradient(to bottom, #db2777, #f43f5e)'  // Red-DeepRed
-                ].map((g, i) => (
-                  <div
-                    key={i}
-                    style={{ background: g }}
-                    className="w-full aspect-square rounded-lg border border-gray-100 cursor-pointer hover:scale-105 transition-transform shadow-sm"
-                    onClick={() => {
-                      const matches = g.match(/#[0-9a-fA-F]{6}/g);
-                      if (matches && matches.length >= 2) {
-                        const newStops = [
-                          { color: matches[0], offset: 0, opacity: 100 },
-                          { color: matches[1], offset: 100, opacity: 100 }
-                        ];
-                        setGradientStops(newStops);
-                        applyGradient(newStops);
-                      }
-                    }}
-                  ></div>
-                ))}
-              </div>
-            </div>
-
-            {/* Customize Section */}
-            <div className="space-y-5">
-              <div className="flex items-center justify-between gap-3">
-                <div className="flex items-center gap-2 flex-grow">
-                  <span className="text-[13px] font-bold text-gray-800">Customize</span>
+                  <span className="text-[13px] font-bold text-gray-800 whitespace-nowrap">Gradient Colors</span>
                   <div className="h-[1px] flex-grow bg-gray-100"></div>
                 </div>
-                <div className="flex items-center gap-2">
-                  <button onClick={() => {
-                    const initialStops = [
-                      { color: '#63D0CD', offset: 0, opacity: 100 },
-                      { color: '#4B3EFE', offset: 100, opacity: 100 }
-                    ];
-                    setGradientStops(initialStops);
-                    applyGradient(initialStops);
-                  }} className="w-8 h-8 rounded-xl border border-gray-200 flex items-center justify-center text-gray-500 hover:bg-gray-50 shadow-sm transition-colors">
-                    <RotateCcw size={15} />
-                  </button>
-                  <button onClick={reverseGradient} className="w-8 h-8 rounded-xl border border-gray-200 flex items-center justify-center text-gray-500 hover:bg-gray-50 shadow-sm transition-colors">
-                    <ArrowLeftRight size={15} />
-                  </button>
+                <div className="grid grid-cols-6 gap-2">
+                  {[
+                    'linear-gradient(to bottom, #ff5f6d, #ffc371)',
+                    'linear-gradient(to bottom, #6366f1, #a855f7)',
+                    'linear-gradient(to bottom, #2dd4bf, #22d3ee)',
+                    'linear-gradient(to bottom, #84cc16, #4ade80)',
+                    'linear-gradient(to bottom, #fde047, #fef08a)',
+                    'linear-gradient(to bottom, #ec4899, #f472b6)',
+                    'linear-gradient(to bottom, #a5b4fc, #e0e7ff)',
+                    'linear-gradient(to bottom, #d946ef, #f0abfc)',
+                    'linear-gradient(to bottom, #06b6d4, #67e8f9)',
+                    'linear-gradient(to bottom, #9ca3af, #d1d5db)',
+                    'linear-gradient(to bottom, #a48d00, #71aa13)',
+                    'linear-gradient(to bottom, #db2777, #f43f5e)'
+                  ].map((g, i) => (
+                    <div
+                      key={i}
+                      style={{ background: g }}
+                      className="w-full aspect-square rounded-lg border border-gray-100 cursor-pointer hover:scale-110 transition-transform shadow-sm active:scale-95"
+                      onClick={() => {
+                        const matches = g.match(/#[0-9a-fA-F]{6}/g);
+                        if (matches && matches.length >= 2) {
+                          const newStops = [
+                            { color: matches[0], offset: 0, opacity: 100 },
+                            { color: matches[1], offset: 100, opacity: 100 }
+                          ];
+                          setGradientStops(newStops);
+                          applyGradient(newStops);
+                        }
+                      }}
+                    ></div>
+                  ))}
                 </div>
               </div>
 
-              {/* Interactive Gradient Bar */}
-              <div className="relative pt-[1.5vw] pb-[0.5vw] px-[0.25vw]">
-                {/* Pins/Handles above the bar */}
-                <div className="absolute top-0 left-0 w-full h-[2vw] flex items-center pointer-events-none px-[0.25vw]">
-                  {gradientStops.map((stop, idx) => (
-                    <div
-                      key={idx}
-                      className="absolute -translate-x-1/2 flex flex-col items-center group pointer-events-auto cursor-pointer"
-                      style={{ left: `${stop.offset}%` }}
-                      onClick={() => openGradientStopPicker(idx)}
-                      title="Click to edit color"
+              {/* Customize Section */}
+              <div className="space-y-5">
+                <div className="flex items-center justify-between gap-3">
+                  <div className="flex items-center gap-2 flex-grow">
+                    <span className="text-[13px] font-bold text-gray-800">Customize</span>
+                    <div className="h-[1px] flex-grow bg-gray-100"></div>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <button 
+                      onClick={() => {
+                        const initialStops = [
+                          { color: '#63D0CD', offset: 0, opacity: 100 },
+                          { color: '#4B3EFE', offset: 100, opacity: 100 }
+                        ];
+                        setGradientStops(initialStops);
+                        applyGradient(initialStops);
+                      }} 
+                      className="w-8 h-8 rounded-xl border border-gray-200 flex items-center justify-center text-gray-500 hover:bg-indigo-50 hover:text-indigo-600 shadow-sm transition-all"
                     >
-                      <div className="w-[1.25vw] h-[1.25vw] rounded-[0.4vw] border-2 border-white shadow-md relative hover:scale-110 transition-transform" style={{ backgroundColor: stop.color }}>
-                        <div className="absolute top-[100%] left-1/2 -translate-x-1/2 w-[2px] h-[5px] bg-white shadow-sm"></div>
+                      <RotateCcw size={15} />
+                    </button>
+                    <button 
+                      onClick={reverseGradient} 
+                      className="w-8 h-8 rounded-xl border border-gray-200 flex items-center justify-center text-gray-500 hover:bg-indigo-50 hover:text-indigo-600 shadow-sm transition-all"
+                    >
+                      <ArrowLeftRight size={15} />
+                    </button>
+                  </div>
+                </div>
+
+                {/* Interactive Gradient Bar */}
+                <div className="relative pt-6 pb-2">
+                  <div className="absolute top-0 left-0 w-full h-8 flex items-center pointer-events-none px-1">
+                    {gradientStops.map((stop, idx) => (
+                      <div
+                        key={idx}
+                        className="absolute -translate-x-1/2 flex flex-col items-center group pointer-events-auto cursor-pointer"
+                        style={{ left: `${stop.offset}%` }}
+                        onClick={() => openGradientStopPicker(idx)}
+                      >
+                        <div className="relative">
+                          <div className="w-4 h-5 bg-white border border-gray-200 rounded-sm shadow-md flex items-center justify-center">
+                             <div className="w-3 h-3 rounded-[2px]" style={{ backgroundColor: stop.color }}></div>
+                          </div>
+                          <div className="absolute top-[100%] left-1/2 -translate-x-1/2 w-[2px] h-2 bg-white shadow-sm"></div>
+                        </div>
                       </div>
+                    ))}
+                  </div>
+                  <div
+                    className="w-full h-6 rounded-lg shadow-inner border border-gray-100 cursor-copy relative overflow-hidden"
+                    onClick={addGradientStop}
+                    style={{
+                      background: `linear-gradient(to right, ${gradientStops.map(s => {
+                        const rgb = hexToRgb(s.color);
+                        const opacity = (s.opacity || 100) / 100;
+                        return `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, ${opacity}) ${s.offset}%`;
+                      }).join(', ')})`
+                    }}
+                  ></div>
+                </div>
+
+                {/* Stop Detail Row List */}
+                <div className="space-y-2 max-h-[160px] overflow-y-auto pr-1 custom-scrollbar">
+                  {gradientStops.map((stop, idx) => (
+                    <div key={idx} className="flex items-center gap-2 group">
+                      <div className="flex-grow flex items-center gap-3 px-3 py-2 bg-white border border-gray-200 rounded-xl shadow-sm hover:border-indigo-300 transition-all">
+                        <div
+                          className="w-6 h-6 rounded-lg shadow-sm border border-gray-100 flex-shrink-0 cursor-pointer hover:scale-110 transition-transform"
+                          style={{ backgroundColor: stop.color }}
+                          onClick={() => openGradientStopPicker(idx)}
+                        ></div>
+                        <input
+                          type="text"
+                          value={stop.color.toUpperCase()}
+                          onChange={(e) => updateGradientStop(idx, { color: e.target.value })}
+                          className="text-xs font-bold text-gray-700 flex-grow uppercase font-mono tracking-tight bg-transparent outline-none"
+                          maxLength={7}
+                        />
+                        <span className="text-[10px] font-bold text-gray-400 w-8 text-right">{stop.opacity || 100}%</span>
+                      </div>
+                      <button
+                        onClick={() => removeGradientStop(idx)}
+                        disabled={gradientStops.length <= 2}
+                        className={`w-10 h-10 rounded-xl border border-gray-100 flex items-center justify-center transition-all shadow-sm ${gradientStops.length <= 2 ? 'text-gray-200 cursor-not-allowed bg-gray-50' : 'text-gray-400 hover:bg-red-50 hover:text-red-500'}`}
+                      >
+                        <Minus size={16} />
+                      </button>
                     </div>
                   ))}
                 </div>
-                {/* The Bar */}
-                <div
-                  className="w-full h-[2vw] rounded-[0.5vw] shadow-inner border border-gray-100 cursor-copy"
-                  onClick={addGradientStop}
-                  title="Click to add a color stop"
-                  style={{
-                    background: `linear-gradient(to right, ${gradientStops.map(s => {
-                      const rgb = hexToRgb(s.color);
-                      const opacity = (s.opacity || 100) / 100;
-                      return `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, ${opacity}) ${s.offset}%`;
-                    }).join(', ')})`
-                  }}
-                ></div>
-              </div>
-
-              {/* Stop Detail Row List */}
-              <div className="space-y-[0.5vw] max-h-[180px] overflow-y-auto pr-1 custom-scrollbar">
-                {gradientStops.map((stop, idx) => (
-                  <div key={idx} className="flex items-center gap-[0.5vw]">
-                    <div className="flex-grow flex items-center gap-[0.75vw] px-[0.75vw] py-[0.6vw] bg-white border border-gray-200 rounded-[0.75vw] shadow-sm hover:border-gray-300 transition-all">
-                      <div
-                        className="w-[2vw] h-[2vw] rounded-[0.5vw] shadow-sm border border-gray-100 flex-shrink-0 cursor-pointer hover:scale-105 transition-transform"
-                        style={{ backgroundColor: stop.color }}
-                        onClick={() => openGradientStopPicker(idx)}
-                        title="Click to customize color"
-                      ></div>
-                      <input
-                        type="text"
-                        value={stop.color}
-                        onChange={(e) => updateGradientStop(idx, { color: e.target.value })}
-                        className="text-[0.75vw] font-medium text-gray-500 flex-grow uppercase font-mono tracking-tight bg-transparent outline-none w-[5vw]"
-                        maxLength={7}
-                      />
-
-                    </div>
-                    <button
-                      onClick={() => removeGradientStop(idx)}
-                      disabled={gradientStops.length <= 2}
-                      className={`w-[3vw] h-[3vw] rounded-[0.75vw] border border-gray-200 flex items-center justify-center transition-all shadow-sm ${gradientStops.length <= 2 ? 'text-gray-300 cursor-not-allowed bg-gray-50' : 'text-gray-400 hover:bg-gray-50 hover:text-gray-600'}`}
-                    >
-                      <Minus size={20} />
-                    </button>
-                  </div>
-                ))}
               </div>
             </div>
-          </div>
-        )}
-
+          )}
+        </div>
       </div>
 
       <div className="w-full max-w-[25vw] space-y-4 z-10 text-[#333]">
@@ -1706,8 +1994,16 @@ const TextEditor = ({
                   <div className="p-[1vw] space-y-[1vw] bg-white">
                     {/* Fill */}
                     <div className="flex items-center gap-[0.5vw]">
-                      <span className="text-[0.7vw] font-bold text-gray-700 w-[3vw]">Fill</span>
-                      <div onClick={() => { setShowFillPicker(!showFillPicker); setShowStrokePicker(false); setColorMode('fill'); }} className="fill-picker-trigger w-[2.5vw] h-[2.5vw] rounded-[0.5vw] border-2 border-gray-300 cursor-pointer flex-shrink-0 hover:scale-105 transition-transform shadow-sm" style={{ backgroundColor: hex }}></div>
+                      <span className="text-[0.7vw] font-bold text-gray-700 w-[3.5vw]">Fill :</span>
+                      <div 
+                        onClick={() => { setShowFillPicker(!showFillPicker); setShowStrokePicker(false); setColorMode('fill'); }} 
+                        className="fill-picker-trigger w-[2.5vw] h-[2.5vw] rounded-[0.5vw] border-2 border-gray-300 cursor-pointer flex-shrink-0 hover:scale-105 transition-transform shadow-sm relative overflow-hidden" 
+                        style={{ background: (hex === 'none' || hex === '#' || !hex || fillOpacity === 0) ? 'white' : (fillType === 'gradient' ? `linear-gradient(to right, ${gradientStops.map(s => s.color).join(', ')})` : hex) }}
+                      >
+                        {(hex === 'none' || hex === '#' || !hex || fillOpacity === 0) && (
+                          <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[140%] h-[1.5px] bg-red-500 rotate-45"></div>
+                        )}
+                      </div>
                       <div className="flex-grow flex items-center border-2 border-gray-200 rounded-[0.5vw] overflow-hidden h-[2.5vw] bg-white hover:border-indigo-300 transition-colors">
                         <input
                           type="text"
@@ -1731,19 +2027,21 @@ const TextEditor = ({
                       </div>
                     </div>
 
-                    {/* Stroke */}
                     <div className="flex items-center gap-[0.5vw]">
-                      <span className="text-[0.7vw] font-bold text-gray-700 w-[3vw]">Stroke</span>
+                      <span className="text-[0.7vw] font-bold text-gray-700 w-[3.5vw]">Stroke :</span>
                       <div
                         onClick={() => {
                           setShowStrokePicker(!showStrokePicker);
                           setShowFillPicker(false);
                           setColorMode('stroke');
-                          if (borderThickness === 0) setBorderThickness(1);
                         }}
-                        className="stroke-picker-trigger w-[2.5vw] h-[2.5vw] rounded-[0.5vw] border-2 border-gray-300 cursor-pointer flex-shrink-0 hover:scale-105 transition-transform shadow-sm"
-                        style={{ backgroundColor: strokeColor }}
-                      ></div>
+                        className="stroke-picker-trigger w-[2.5vw] h-[2.5vw] rounded-[0.5vw] border-2 border-gray-300 cursor-pointer flex-shrink-0 hover:scale-105 transition-transform shadow-sm relative overflow-hidden"
+                        style={{ background: (strokeColor === 'none' || strokeColor === '#' || !strokeColor || strokeOpacity === 0) ? 'white' : (strokeFillType === 'gradient' ? `linear-gradient(to right, ${strokeGradientStops.map(s => s.color).join(', ')})` : strokeColor) }}
+                      >
+                        {(strokeColor === 'none' || strokeColor === '#' || !strokeColor || strokeOpacity === 0) && (
+                          <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[140%] h-[1.5px] bg-red-500 rotate-45"></div>
+                        )}
+                      </div>
                       <div className="flex-grow flex items-center border-2 border-gray-200 rounded-[0.5vw] overflow-hidden h-[2.5vw] bg-white hover:border-indigo-300 transition-colors">
                         <input
                           type="text"
@@ -1768,76 +2066,78 @@ const TextEditor = ({
                     </div>
 
                     {/* Settings / Dashed */}
-                    <div className="flex items-center justify-end gap-[0.65vw] pt-[0.25vw]">
-                      <div className="p-[0.5vw] rounded-[0.5vw] hover:bg-indigo-50 transition-colors cursor-pointer group" onClick={() => setShowDashedPopup(!showDashedPopup)}>
-                        <SlidersHorizontal size={18} className={`dashed-selector-trigger transition-colors ${showDashedPopup ? 'text-blue-600' : 'text-gray-500 group-hover:text-blue-600'}`} />
-                      </div>
-
-                      <div className="relative" ref={borderStyleRef}>
-                        <div className="h-[2vw] px-[0.5vw] border border-gray-300 rounded-[0.25vw] flex items-center gap-[0.5vw] cursor-pointer min-w-[4.6vw] justify-between group hover:border-blue-400 transition-all font-bold" onClick={() => setShowBorderStyleDropdown(!showBorderStyleDropdown)}>
-                          <span className="text-[0.7vw] text-gray-700 ">{strokeType}</span>
-                          <ChevronDown size={12} className="text-gray-500 group-hover:text-blue-600" />
+                    {!(strokeColor === 'none' || strokeColor === '#' || !strokeColor) && (
+                      <div className="flex items-center justify-end gap-[0.65vw] pt-[0.25vw] animate-in fade-in slide-in-from-top-1">
+                        <div className="p-[0.5vw] rounded-[0.5vw] hover:bg-indigo-50 transition-colors cursor-pointer group" onClick={() => setShowDashedPopup(!showDashedPopup)}>
+                          <SlidersHorizontal size={18} className={`dashed-selector-trigger transition-colors ${showDashedPopup ? 'text-blue-600' : 'text-gray-500 group-hover:text-blue-600'}`} />
                         </div>
-                        {showBorderStyleDropdown && (
-                          <div className="absolute right-0 bottom-full mb-1 w-[6.9vw] bg-white border border-gray-200 rounded-lg shadow-xl z-[300] overflow-hidden py-1 animate-in fade-in slide-in-from-bottom-2">
-                            <div onClick={() => {
-                              setStrokeType('solid');
-                              setShowBorderStyleDropdown(false);
-                            }} className={`px-3 py-2 text-[0.7vw] font-bold transition-colors cursor-pointer ${strokeType === 'solid' ? 'bg-blue-50 text-blue-600' : 'text-gray-700 hover:bg-gray-50'}`}>Solid</div>
-                            <div onClick={() => {
-                              setStrokeType('dashed');
-                              setShowBorderStyleDropdown(false);
-                            }} className={`px-3 py-2 text-[0.7vw] font-bold transition-colors cursor-pointer ${strokeType === 'dashed' ? 'bg-blue-50 text-blue-600' : 'text-gray-700 hover:bg-gray-50'}`}>Dashed</div>
+
+                        <div className="relative" ref={borderStyleRef}>
+                          <div className="h-[2vw] px-[0.5vw] border border-gray-300 rounded-[0.25vw] flex items-center gap-[0.5vw] cursor-pointer min-w-[4.6vw] justify-between group hover:border-blue-400 transition-all font-bold" onClick={() => setShowBorderStyleDropdown(!showBorderStyleDropdown)}>
+                            <span className="text-[0.7vw] text-gray-700 ">{strokeType}</span>
+                            <ChevronDown size={12} className="text-gray-500 group-hover:text-blue-600" />
                           </div>
-                        )}
+                          {showBorderStyleDropdown && (
+                            <div className="absolute right-0 bottom-full mb-1 w-[6.9vw] bg-white border border-gray-200 rounded-lg shadow-xl z-[300] overflow-hidden py-1 animate-in fade-in slide-in-from-bottom-2">
+                              <div onClick={() => {
+                                setStrokeType('solid');
+                                setShowBorderStyleDropdown(false);
+                              }} className={`px-3 py-2 text-[0.7vw] font-bold transition-colors cursor-pointer ${strokeType === 'solid' ? 'bg-blue-50 text-blue-600' : 'text-gray-700 hover:bg-gray-50'}`}>Solid</div>
+                              <div onClick={() => {
+                                setStrokeType('dashed');
+                                setShowBorderStyleDropdown(false);
+                              }} className={`px-3 py-2 text-[0.7vw] font-bold transition-colors cursor-pointer ${strokeType === 'dashed' ? 'bg-blue-50 text-blue-600' : 'text-gray-700 hover:bg-gray-50'}`}>Dashed</div>
+                            </div>
+                          )}
+                        </div>
+
+                        {/* Figma-style Thickness Control with Drag */}
+                        <div
+                          className="h-[2vw] min-w-[6.5vw] border border-gray-300 rounded-[0.25vw] flex items-center px-[0.25vw] gap-[0.25vw] bg-white hover:border-blue-500 transition-colors cursor-ew-resize select-none shadow-sm"
+                          onMouseDown={(e) => {
+                            e.preventDefault();
+                            const startX = e.clientX;
+                            const startVal = borderThickness || 0;
+
+                            const handleMove = (moveEvent) => {
+                              const diff = Math.round(moveEvent.clientX - startX);
+                              const newVal = Math.max(0, startVal + diff);
+                              setBorderThickness(newVal);
+                            };
+
+                            const handleUp = () => {
+                              window.removeEventListener('mousemove', handleMove);
+                              window.removeEventListener('mouseup', handleUp);
+                            };
+
+                            window.addEventListener('mousemove', handleMove);
+                            window.addEventListener('mouseup', handleUp);
+                          }}
+                        >
+                          <Icon icon="material-symbols:line-weight" width="18" height="18" className="text-gray-500 flex-shrink-0" />
+                          <div className="w-[1px] h-[1vw] bg-gray-200 mx-[0.15vw]"></div>
+
+                          <button
+                            onMouseDown={(e) => e.stopPropagation()}
+                            onClick={() => setBorderThickness(Math.max(0, borderThickness - 1))}
+                            className="w-[1.25vw] h-[1.25vw] flex items-center justify-center text-gray-500 hover:bg-gray-100 rounded-[0.25vw] cursor-pointer"
+                          >−</button>
+
+                          <input
+                            type="number"
+                            readOnly
+                            value={borderThickness}
+                            className="w-full text-[0.7vw] font-bold outline-none text-center bg-transparent cursor-ew-resize pointer-events-none text-gray-700"
+                          />
+
+                          <button
+                            onMouseDown={(e) => e.stopPropagation()}
+                            onClick={() => setBorderThickness(borderThickness + 1)}
+                            className="w-[1.25vw] h-[1.25vw] flex items-center justify-center text-gray-500 hover:bg-gray-100 rounded-[0.25vw] cursor-pointer"
+                          >+</button>
+                        </div>
                       </div>
-
-                      {/* Figma-style Thickness Control with Drag */}
-                      <div
-                        className="h-[2vw] min-w-[6.5vw] border border-gray-300 rounded-[0.25vw] flex items-center px-[0.25vw] gap-[0.25vw] bg-white hover:border-blue-500 transition-colors cursor-ew-resize select-none shadow-sm"
-                        onMouseDown={(e) => {
-                          e.preventDefault();
-                          const startX = e.clientX;
-                          const startVal = borderThickness || 0;
-
-                          const handleMove = (moveEvent) => {
-                            const diff = Math.round(moveEvent.clientX - startX);
-                            const newVal = Math.max(0, startVal + diff);
-                            setBorderThickness(newVal);
-                          };
-
-                          const handleUp = () => {
-                            window.removeEventListener('mousemove', handleMove);
-                            window.removeEventListener('mouseup', handleUp);
-                          };
-
-                          window.addEventListener('mousemove', handleMove);
-                          window.addEventListener('mouseup', handleUp);
-                        }}
-                      >
-                        <Icon icon="material-symbols:line-weight" width="18" height="18" className="text-gray-500 flex-shrink-0" />
-                        <div className="w-[1px] h-[1vw] bg-gray-200 mx-[0.15vw]"></div>
-
-                        <button
-                          onMouseDown={(e) => e.stopPropagation()}
-                          onClick={() => setBorderThickness(Math.max(0, borderThickness - 1))}
-                          className="w-[1.25vw] h-[1.25vw] flex items-center justify-center text-gray-500 hover:bg-gray-100 rounded-[0.25vw] cursor-pointer"
-                        >−</button>
-
-                        <input
-                          type="number"
-                          readOnly
-                          value={borderThickness}
-                          className="w-full text-[0.7vw] font-bold outline-none text-center bg-transparent cursor-ew-resize pointer-events-none text-gray-700"
-                        />
-
-                        <button
-                          onMouseDown={(e) => e.stopPropagation()}
-                          onClick={() => setBorderThickness(borderThickness + 1)}
-                          className="w-[1.25vw] h-[1.25vw] flex items-center justify-center text-gray-500 hover:bg-gray-100 rounded-[0.25vw] cursor-pointer"
-                        >+</button>
-                      </div>
-                    </div>
+                    )}
                   </div>
                 )}
               </div>

@@ -243,6 +243,14 @@ const ColorPicker = ({ color, onChange, onClose, onReset }) => {
 
           {/* Presets Grid */}
           <div className="grid grid-cols-6 gap-3 mb-8">
+            <button
+              onClick={() => {
+                onChange('none');
+              }}
+              className={`w-8 h-8 rounded-[10px] border border-gray-100 transition-all active:scale-90 hover:scale-110 shadow-sm relative bg-white overflow-hidden ${color === 'none' ? 'ring-2 ring-indigo-500 ring-offset-2' : ''}`}
+            >
+              <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[140%] h-[1.5px] bg-red-400 rotate-45"></div>
+            </button>
             {presets.map((p) => (
               <button
                 key={p}

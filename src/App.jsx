@@ -10,6 +10,7 @@ import Settings from './pages/Settings';
 import Editor from './Modules/Editer';
 import { MainEditor } from './components/TemplateEditor'; // Import MainEditor
 import ThreedEditor from './components/ThreedEditor/ThreedEditor';
+import CustomizedEditor from './components/CustomizedEditor/CustomizedEditor';
 import { ToastProvider } from './components/CustomToast';
 
 function App() {
@@ -25,6 +26,8 @@ function App() {
           <Route path="/editor" element={<Editor />}>
             <Route index element={<MainEditor />} />
             <Route path="threed_editor" element={<ThreedEditor />} />
+            <Route path="customized_editor" element={<CustomizedEditor />} />
+            <Route path="customized_editor/:folder/:v_id" element={<CustomizedEditor />} />
             <Route path=":folder/:v_id" element={<MainEditor />} />
             <Route path=":id" element={<MainEditor />} />
           </Route>

@@ -14,18 +14,30 @@ const Navbar = ({ onExport, onSave, hasUnsavedChanges, saveSuccessInfo, isAutoSa
   const [lastEditorPath, setLastEditorPath] = useState(() => {
     return localStorage.getItem('lastEditorPath') || '/editor';
   });
+  const [lastCustomizedPath, setLastCustomizedPath] = useState(() => {
+    return localStorage.getItem('lastCustomizedPath') || '/editor/customized_editor';
+  });
 
   useEffect(() => {
-    if (location.pathname.startsWith('/editor') && !location.pathname.includes('threed_editor')) {
+    if (location.pathname.startsWith('/editor') && !location.pathname.includes('threed_editor') && !location.pathname.includes('customized_editor')) {
       setLastEditorPath(location.pathname);
       localStorage.setItem('lastEditorPath', location.pathname);
+    }
+    if (location.pathname.includes('customized_editor')) {
+      setLastCustomizedPath(location.pathname);
+      localStorage.setItem('lastCustomizedPath', location.pathname);
     }
   }, [location]);
 
   // Helper to determine if a link is active
   const isActive = (path) => {
-    if (path === '/editor') return location.pathname.startsWith('/editor') && !location.pathname.includes('threed_editor');
+    if (path === '/editor') {
+      return location.pathname.startsWith('/editor') && 
+             !location.pathname.includes('threed_editor') && 
+             !location.pathname.includes('customized_editor');
+    }
     if (path === '/editor/threed_editor') return location.pathname.includes('threed_editor');
+    if (path === '/editor/customized_editor') return location.pathname.includes('customized_editor');
     return location.pathname === path;
   };
 
@@ -92,8 +104,8 @@ const Navbar = ({ onExport, onSave, hasUnsavedChanges, saveSuccessInfo, isAutoSa
             My Flipbook
           </Link>
           <Link
-            to="/customized"
-            className={isActive('/customized') ? activeLinkStyle : baseLinkStyle}
+            to={lastCustomizedPath}
+            className={isActive('/editor/customized_editor') ? activeLinkStyle : baseLinkStyle}
           >
             Customize
           </Link>
